@@ -1,0 +1,190 @@
+<main class="bi-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/drsul-logo.svg" alt="Grupo DRSUL" />
+      <div>
+        <p class="system-name">Veiculos</p>
+        <h1>B.I Venda de Veiculos</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="filters">
+    <div>
+      <p class="system-name">Comercial</p>
+      <h2>Performance de faturamento, margem, modelos e canais.</h2>
+      <span>Fonte temporaria local. Dados reais serao conectados posteriormente.</span>
+    </div>
+    <label>
+      Periodo
+      <select [value]="periodo()" (change)="periodo.set($any($event.target).value)">
+        <option>Semestre atual</option>
+        <option>Ultimos 12 meses</option>
+        <option>Mes atual</option>
+      </select>
+    </label>
+    <label>
+      Empresa
+      <select [value]="empresa()" (change)="empresa.set($any($event.target).value)">
+        @for (item of empresas(); track item) {
+          <option [value]="item">{{ item }}</option>
+        }
+      </select>
+    </label>
+    <label>
+      Canal
+      <select [value]="canal()" (change)="canal.set($any($event.target).value)">
+        @for (item of canaisFiltro; track item) {
+          <option [value]="item">{{ item }}</option>
+        }
+      </select>
+    </label>
+    <button class="secondary" type="button" (click)="load()" [disabled]="loading()">
+      {{ loading() ? 'Atualizando...' : 'Atualizar' }}
+    </button>
+  </section>
+
+  <section class="metrics">
+    <article>
+      <span>Faturamento</span>
+      <strong>{{ formatMoney(faturamentoTotal()) }}</strong>
+      <p>{{ formatPercent(crescimento()) }} em unidades vs mes anterior</p>
+    </article>
+    <article>
+      <span>Unidades vendidas</span>
+      <strong>{{ formatNumber(unidadesTotal()) }}</strong>
+      <p>Forecast {{ formatNumber(forecast()) }} unidades</p>
+    </article>
+    <article>
+      <span>Margem bruta</span>
+      <strong>{{ formatMoney(margemTotal()) }}</strong>
+      <p>{{ formatPercent(margemPercentual()) }} sobre vendas</p>
+    </article>
+    <article>
+      <span>Ticket medio</span>
+      <strong>{{ formatMoney(ticketMedio()) }}</strong>
+      <p>Periodo selecionado</p>
+    </article>
+  </section>
+
+  <section class="bi-grid">
+    <article class="panel revenue-panel">
+      <header>
+        <div>
+          <p class="system-name">Evolucao mensal</p>
+          <h2>Faturamento e margem</h2>
+        </div>
+        <span>Atualizado {{ atualizadoEm() | date: 'dd/MM/yyyy HH:mm' }}</span>
+      </header>
+      <div class="column-chart">
+        @for (item of vendas(); track item.mes) {
+          <div class="column-item">
+            <div class="column-track">
+              <span class="margin" [style.height.%]="barHeight(item.margem)"></span>
+              <strong [style.height.%]="barHeight(item.faturamento)"></strong>
+            </div>
+            <p>{{ item.mes }}</p>
+            <small>{{ formatNumber(item.unidades) }} un.</small>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel">
+      <header>
+        <div>
+          <p class="system-name">Modelos</p>
+          <h2>Ranking por faturamento</h2>
+        </div>
+      </header>
+      <div class="bar-list">
+        @for (item of modelos(); track item.modelo) {
+          <div class="bar-row">
+            <div>
+              <strong>{{ item.modelo }}</strong>
+              <span>{{ item.unidades }} un. - {{ formatPercent(item.margemPercentual) }}</span>
+            </div>
+            <p><span [style.width.%]="percent(item.faturamento, maxModelo())"></span></p>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel">
+      <header>
+        <div>
+          <p class="system-name">Canais</p>
+          <h2>Origem comercial</h2>
+        </div>
+      </header>
+      <div class="bar-list">
+        @for (item of canais(); track item.nome) {
+          <div class="bar-row">
+            <div>
+              <strong>{{ item.nome }}</strong>
+              <span>{{ item.unidades }} un. - {{ formatMoney(item.faturamento) }}</span>
+            </div>
+            <p><span [style.width.%]="percent(item.faturamento, maxCanal())"></span></p>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel table-panel">
+      <header>
+        <div>
+          <p class="system-name">Detalhamento</p>
+          <h2>Modelos em destaque</h2>
+        </div>
+      </header>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Modelo</th>
+              <th>Familia</th>
+              <th>Unidades</th>
+              <th>Faturamento</th>
+              <th>Margem</th>
+              <th>Ticket medio</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of modelos(); track item.modelo) {
+              <tr>
+                <td>{{ item.modelo }}</td>
+                <td>{{ item.familia }}</td>
+                <td>{{ item.unidades }}</td>
+                <td>{{ formatMoney(item.faturamento) }}</td>
+                <td>{{ formatPercent(item.margemPercentual) }}</td>
+                <td>{{ formatMoney(item.ticketMedio) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+</main>

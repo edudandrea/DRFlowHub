@@ -10,20 +10,22 @@ namespace DRFlowHub.Api.Services
     {
         private readonly IChamadosTIRepo _repo;
         private readonly IUserRepo _userRepo;
+        private readonly IConfiguration _configuration;
 
-        public ChamadosTIService(IChamadosTIRepo repo, IUserRepo userRepo)
+        public ChamadosTIService(IChamadosTIRepo repo, IUserRepo userRepo, IConfiguration configuration)
         {
             _repo = repo;
             _userRepo = userRepo;
+            _configuration = configuration;
         }
 
-        public List<ChamadoTIResponseDto> List(string role, int userId)
+        public List<ChamadoTIResponseDto> List(string role, int userId, IEnumerable<string> acessos)
         {
             IQueryable<ChamadosTI> query = _repo.Query()
                 .AsNoTracking()
                 .Include(s => s.Comunicacoes);
 
-            if (!CanManage(role))
+            if (!CanManage(role, acessos))
                 query = query.Where(s => s.Userid == userId);
 
             return query
@@ -32,17 +34,18 @@ namespace DRFlowHub.Api.Services
                 .ToList();
         }
 
-        public ChamadoTIResponseDto Add(ChamadoTICreateDto dto, string role, int currentUserId, string imagemUrl)
+        public ChamadoTIResponseDto Add(ChamadoTICreateDto dto, string role, int currentUserId, string imagemUrl, IEnumerable<string> acessos)
         {
             var titulo = dto.Titulo?.Trim() ?? string.Empty;
             var descricao = dto.Descricao?.Trim() ?? string.Empty;
             Validate(titulo, descricao);
 
-            var ownerUserId = CanManage(role)
+            var ownerUserId = CanManage(role, acessos)
                 ? (dto.Userid > 0 ? dto.Userid : currentUserId)
                 : currentUserId;
 
-            if (!_userRepo.Query().Any(u => u.Id == ownerUserId))
+            var ownerUser = _userRepo.Query().AsNoTracking().FirstOrDefault(u => u.Id == ownerUserId);
+            if (ownerUser is null)
                 throw new InvalidOperationException("Usuario solicitante invalido.");
 
             var chamado = new ChamadosTI
@@ -57,6 +60,17 @@ namespace DRFlowHub.Api.Services
                 Status = string.IsNullOrWhiteSpace(dto.Status) ? "Aberto" : dto.Status.Trim(),
                 Responsavel = dto.Responsavel?.Trim() ?? string.Empty,
                 AcessoRemotoUrl = dto.AcessoRemotoUrl?.Trim() ?? string.Empty,
+                RustDeskId = string.IsNullOrWhiteSpace(dto.RustDeskId) ? ownerUser.RustDeskId : dto.RustDeskId.Trim(),
+                RustDeskSenha = string.IsNullOrWhiteSpace(dto.RustDeskSenha) ? ownerUser.RustDeskSenha : dto.RustDeskSenha.Trim(),
+                RustDeskServidor = GetRustDeskServer(dto.RustDeskServidor),
+                RustDeskKey = GetRustDeskKey(dto.RustDeskKey),
+                EquipamentoNome = string.IsNullOrWhiteSpace(dto.EquipamentoNome) || dto.EquipamentoNome == "Nao informado pelo navegador"
+                    ? ownerUser.RustDeskHostname
+                    : dto.EquipamentoNome.Trim(),
+                EquipamentoIp = dto.EquipamentoIp?.Trim() ?? string.Empty,
+                EquipamentoSistemaOperacional = string.IsNullOrWhiteSpace(dto.EquipamentoSistemaOperacional)
+                    ? ownerUser.RustDeskSistemaOperacional
+                    : dto.EquipamentoSistemaOperacional.Trim(),
                 Observacoes = dto.Observacoes?.Trim() ?? string.Empty,
                 AnexoImagemUrl = imagemUrl,
                 DataAbertura = DateTime.UtcNow,
@@ -69,9 +83,9 @@ namespace DRFlowHub.Api.Services
             return MapResponse(chamado);
         }
 
-        public ChamadoTIResponseDto Update(int id, ChamadoTIUpdateDto dto, string role, int currentUserId)
+        public ChamadoTIResponseDto Update(int id, ChamadoTIUpdateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var chamado = GetAccessibleChamado(id, role, currentUserId);
+            var chamado = GetAccessibleChamado(id, role, currentUserId, acessos);
 
             if (IsFinalizado(chamado))
                 throw new InvalidOperationException("Chamados encerrados nao podem ser editados. Reabra o chamado para alterar.");
@@ -90,6 +104,13 @@ namespace DRFlowHub.Api.Services
             chamado.Status = string.IsNullOrWhiteSpace(dto.Status) ? chamado.Status : dto.Status.Trim();
             chamado.Responsavel = dto.Responsavel?.Trim() ?? string.Empty;
             chamado.AcessoRemotoUrl = dto.AcessoRemotoUrl?.Trim() ?? string.Empty;
+            chamado.RustDeskId = dto.RustDeskId?.Trim() ?? string.Empty;
+            chamado.RustDeskSenha = dto.RustDeskSenha?.Trim() ?? string.Empty;
+            chamado.RustDeskServidor = GetRustDeskServer(dto.RustDeskServidor);
+            chamado.RustDeskKey = GetRustDeskKey(dto.RustDeskKey);
+            chamado.EquipamentoNome = dto.EquipamentoNome?.Trim() ?? chamado.EquipamentoNome;
+            chamado.EquipamentoIp = dto.EquipamentoIp?.Trim() ?? chamado.EquipamentoIp;
+            chamado.EquipamentoSistemaOperacional = dto.EquipamentoSistemaOperacional?.Trim() ?? chamado.EquipamentoSistemaOperacional;
             chamado.Observacoes = dto.Observacoes?.Trim() ?? string.Empty;
 
             _repo.Update(chamado);
@@ -98,9 +119,9 @@ namespace DRFlowHub.Api.Services
             return MapResponse(chamado);
         }
 
-        public List<ChamadoTIComunicacaoResponseDto> ListComunicacoes(int id, string role, int currentUserId)
+        public List<ChamadoTIComunicacaoResponseDto> ListComunicacoes(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            GetAccessibleChamado(id, role, currentUserId, asNoTracking: true);
+            GetAccessibleChamado(id, role, currentUserId, acessos, asNoTracking: true);
 
             return _repo.QueryComunicacoes()
                 .AsNoTracking()
@@ -110,9 +131,9 @@ namespace DRFlowHub.Api.Services
                 .ToList();
         }
 
-        public ChamadoTIComunicacaoResponseDto AddComunicacao(int id, ChamadoTIComunicacaoCreateDto dto, string role, int currentUserId)
+        public ChamadoTIComunicacaoResponseDto AddComunicacao(int id, ChamadoTIComunicacaoCreateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var chamado = GetAccessibleChamado(id, role, currentUserId);
+            var chamado = GetAccessibleChamado(id, role, currentUserId, acessos);
             if (IsFinalizado(chamado))
                 throw new InvalidOperationException("Chamados encerrados ou cancelados nao permitem novas mensagens.");
 
@@ -140,16 +161,16 @@ namespace DRFlowHub.Api.Services
             return MapComunicacao(comunicacao);
         }
 
-        public ChamadoTIResponseDto Encerrar(int id, ChamadoTIEncerrarDto dto, string role, int currentUserId)
+        public ChamadoTIResponseDto Encerrar(int id, ChamadoTIEncerrarDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            if (!CanManage(role))
+            if (!CanManage(role, acessos))
                 throw new UnauthorizedAccessException("Somente administradores de TI podem encerrar chamados.");
 
             var observacoesEncerramento = dto.ObservacoesEncerramento?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(observacoesEncerramento))
                 throw new InvalidOperationException("Observacoes de encerramento sao obrigatorias.");
 
-            var chamado = GetAccessibleChamado(id, role, currentUserId);
+            var chamado = GetAccessibleChamado(id, role, currentUserId, acessos);
             if (chamado.DataEncerramento.HasValue && !chamado.DataPrimeiroEncerramento.HasValue)
                 chamado.DataPrimeiroEncerramento = chamado.DataEncerramento.Value;
 
@@ -167,12 +188,12 @@ namespace DRFlowHub.Api.Services
             return MapResponse(chamado);
         }
 
-        public ChamadoTIResponseDto AvaliarSatisfacao(int id, ChamadoTISatisfacaoDto dto, string role, int currentUserId)
+        public ChamadoTIResponseDto AvaliarSatisfacao(int id, ChamadoTISatisfacaoDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            if (CanManage(role))
+            if (CanManage(role, acessos))
                 throw new UnauthorizedAccessException("Administradores apenas visualizam a pesquisa de satisfacao.");
 
-            var chamado = GetAccessibleChamado(id, role, currentUserId);
+            var chamado = GetAccessibleChamado(id, role, currentUserId, acessos);
             if (!chamado.DataEncerramento.HasValue)
                 throw new InvalidOperationException("A pesquisa de satisfacao so pode ser preenchida apos o encerramento do chamado.");
 
@@ -192,9 +213,9 @@ namespace DRFlowHub.Api.Services
             return MapResponse(chamado);
         }
 
-        public ChamadoTIResponseDto Reabrir(int id, string role, int currentUserId)
+        public ChamadoTIResponseDto Reabrir(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var chamado = GetAccessibleChamado(id, role, currentUserId);
+            var chamado = GetAccessibleChamado(id, role, currentUserId, acessos);
             if (!IsFinalizado(chamado))
                 throw new InvalidOperationException("Somente chamados encerrados ou cancelados podem ser reabertos.");
 
@@ -215,13 +236,13 @@ namespace DRFlowHub.Api.Services
             return MapResponse(chamado);
         }
 
-        public ChamadosTI GetAttachmentOwner(int id, string role, int currentUserId)
+        public ChamadosTI GetAttachmentOwner(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
             var chamado = _repo.Query().AsNoTracking().FirstOrDefault(s => s.Id == id);
             if (chamado is null)
                 throw new KeyNotFoundException("Chamado nao encontrado.");
 
-            if (!CanManage(role) && chamado.Userid != currentUserId)
+            if (!CanManage(role, acessos) && chamado.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar esta imagem.");
 
             if (string.IsNullOrWhiteSpace(chamado.AnexoImagemUrl))
@@ -230,10 +251,13 @@ namespace DRFlowHub.Api.Services
             return chamado;
         }
 
-        public static bool CanManage(string role)
+        public static bool CanManage(string role, IEnumerable<string> acessos)
         {
-            return RoleScope.IsAdmin(role) || RoleScope.IsTI(role);
+            return RoleScope.IsAdmin(role) || HasAccess(acessos, "ti-admin");
         }
+
+        private static bool HasAccess(IEnumerable<string> acessos, string chave)
+            => acessos.Any(acesso => string.Equals(acesso, chave, StringComparison.OrdinalIgnoreCase));
 
         private static bool IsFinalizado(ChamadosTI chamado)
         {
@@ -267,6 +291,13 @@ namespace DRFlowHub.Api.Services
                 Status = s.Status,
                 Responsavel = s.Responsavel,
                 AcessoRemotoUrl = s.AcessoRemotoUrl,
+                RustDeskId = s.RustDeskId,
+                RustDeskSenha = s.RustDeskSenha,
+                RustDeskServidor = s.RustDeskServidor,
+                RustDeskKey = s.RustDeskKey,
+                EquipamentoNome = s.EquipamentoNome,
+                EquipamentoIp = s.EquipamentoIp,
+                EquipamentoSistemaOperacional = s.EquipamentoSistemaOperacional,
                 AnexoImagemUrl = s.AnexoImagemUrl,
                 Observacoes = s.Observacoes,
                 ObservacoesEncerramento = s.ObservacoesEncerramento,
@@ -281,6 +312,20 @@ namespace DRFlowHub.Api.Services
                 UltimaMovimentacao = GetUltimaMovimentacao(s),
                 Reaberto = s.Reaberto
             };
+        }
+
+        private string GetRustDeskServer(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? _configuration["RustDesk:Server"] ?? string.Empty
+                : value.Trim();
+        }
+
+        private string GetRustDeskKey(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? _configuration["RustDesk:Key"] ?? string.Empty
+                : value.Trim();
         }
 
         private static DateTime GetUltimaMovimentacao(ChamadosTI chamado)
@@ -307,14 +352,14 @@ namespace DRFlowHub.Api.Services
             return ultima;
         }
 
-        private ChamadosTI GetAccessibleChamado(int id, string role, int currentUserId, bool asNoTracking = false)
+        private ChamadosTI GetAccessibleChamado(int id, string role, int currentUserId, IEnumerable<string> acessos, bool asNoTracking = false)
         {
             var query = asNoTracking ? _repo.Query().AsNoTracking() : _repo.Query();
             var chamado = query.FirstOrDefault(s => s.Id == id);
             if (chamado is null)
                 throw new KeyNotFoundException("Chamado nao encontrado.");
 
-            if (!CanManage(role) && chamado.Userid != currentUserId)
+            if (!CanManage(role, acessos) && chamado.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar este chamado.");
 
             return chamado;

@@ -13,6 +13,7 @@ import { ProfileFlowService } from '../../core/profile-flow.service';
 import { UnidadesService } from '../../core/unidades.service';
 
 type CompraTab = 'minhas' | 'aprovacao' | 'compras' | 'todas';
+type CompraSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'valorEstimado' | 'status' | 'dataSolicitacao';
 
 @Component({
   selector: 'app-compras',
@@ -48,10 +49,14 @@ export class ComprasPage implements OnInit, OnDestroy {
   readonly sendingMessage = signal(false);
   readonly activeTab = signal<CompraTab>('minhas');
   readonly search = signal('');
+  readonly page = signal(1);
+  readonly pageSize = signal(10);
+  readonly sortField = signal<CompraSortField>('id');
+  readonly sortDirection = signal<'asc' | 'desc'>('desc');
   readonly selectedFileName = signal('');
   readonly profileMenuOpen = signal(false);
   readonly canApprove = computed(() => this.auth.hasAnyRole(['Admin', 'Diretoria']));
-  readonly canBuy = computed(() => this.auth.hasAnyRole(['Admin', 'Compras']));
+  readonly canBuy = computed(() => this.auth.hasAccess('compras-admin'));
   readonly aguardandoDiretoria = computed(() => this.items().filter((item) => item.status === 'Aguardando Diretoria').length);
   readonly emCompras = computed(() => this.items().filter((item) => item.status.includes('Compras') || item.status === 'Em compras').length);
   readonly concluidas = computed(() => this.items().filter((item) => item.status === 'Concluida').length);
@@ -68,7 +73,7 @@ export class ComprasPage implements OnInit, OnDestroy {
     }
 
     const term = this.normalize(this.search());
-    return items.filter((item) => !term || [
+    const filtered = items.filter((item) => !term || [
       item.titulo,
       item.solicitante,
       item.departamento,
@@ -76,7 +81,11 @@ export class ComprasPage implements OnInit, OnDestroy {
       item.status,
       item.comprador,
     ].some((value) => this.normalize(value).includes(term)));
+
+    return this.sortItems(filtered);
   });
+  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.visibleItems().length / this.pageSize())));
+  readonly pagedItems = computed(() => this.visibleItems().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
 
   private selectedFile: File | null = null;
   private communicationRefreshId: ReturnType<typeof setInterval> | null = null;
@@ -176,7 +185,26 @@ export class ComprasPage implements OnInit, OnDestroy {
 
   setTab(tab: CompraTab): void {
     this.activeTab.set(tab);
+    this.page.set(1);
     this.closeModal();
+  }
+
+  setSort(field: CompraSortField): void {
+    if (this.sortField() === field) {
+      this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortField.set(field);
+      this.sortDirection.set(field === 'id' || field === 'dataSolicitacao' ? 'desc' : 'asc');
+    }
+    this.page.set(1);
+  }
+
+  previousPage(): void {
+    this.page.set(Math.max(1, this.safePage() - 1));
+  }
+
+  nextPage(): void {
+    this.page.set(Math.min(this.totalPages(), this.safePage() + 1));
   }
 
   openCreateModal(): void {
@@ -454,6 +482,23 @@ export class ComprasPage implements OnInit, OnDestroy {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+  }
+
+  private safePage(): number {
+    return Math.min(Math.max(this.page(), 1), this.totalPages());
+  }
+
+  private sortItems(items: SolicitacaoCompra[]): SolicitacaoCompra[] {
+    const field = this.sortField();
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    return items.slice().sort((a, b) => {
+      const aValue = a[field];
+      const bValue = b[field];
+      const result = typeof aValue === 'number' && typeof bValue === 'number'
+        ? aValue - bValue
+        : this.normalize(aValue as string | number | null | undefined).localeCompare(this.normalize(bValue as string | number | null | undefined));
+      return result * direction;
+    });
   }
 
   private getErrorMessage(fallback: string, error?: unknown): string {

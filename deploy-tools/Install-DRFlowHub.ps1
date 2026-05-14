@@ -66,6 +66,42 @@ function Start-IisTarget() {
     }
 }
 
+function Sync-OracleProductionConnection($SourceConfigPath, $TargetConfigPath) {
+    if (-not (Test-Path -LiteralPath $SourceConfigPath) -or -not (Test-Path -LiteralPath $TargetConfigPath)) {
+        return
+    }
+
+    try {
+        $sourceConfig = Get-Content -LiteralPath $SourceConfigPath -Raw | ConvertFrom-Json
+        $targetConfig = Get-Content -LiteralPath $TargetConfigPath -Raw | ConvertFrom-Json
+        $productionConnection = $sourceConfig.ConnectionStrings.OracleConnectionProduction
+
+        if ([string]::IsNullOrWhiteSpace($productionConnection)) {
+            return
+        }
+
+        if ($null -eq $targetConfig.ConnectionStrings) {
+            $targetConfig | Add-Member -MemberType NoteProperty -Name "ConnectionStrings" -Value ([pscustomobject]@{})
+        }
+
+        $currentConnection = $targetConfig.ConnectionStrings.OracleConnectionProduction
+        if ([string]::IsNullOrWhiteSpace($currentConnection)) {
+            if ($targetConfig.ConnectionStrings.PSObject.Properties.Name -contains "OracleConnectionProduction") {
+                $targetConfig.ConnectionStrings.OracleConnectionProduction = $productionConnection
+            }
+            else {
+                $targetConfig.ConnectionStrings | Add-Member -MemberType NoteProperty -Name "OracleConnectionProduction" -Value $productionConnection
+            }
+
+            $targetConfig | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $TargetConfigPath -Encoding UTF8
+            Write-Host "OracleConnectionProduction preenchida no appsettings.json preservado."
+        }
+    }
+    catch {
+        Write-Host "Nao foi possivel sincronizar OracleConnectionProduction no appsettings preservado: $($_.Exception.Message)"
+    }
+}
+
 $sourcePath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if ([string]::IsNullOrWhiteSpace($TargetPath)) {
@@ -114,6 +150,12 @@ try {
 
             Copy-Item -LiteralPath $_.FullName -Destination $destination -Recurse -Force
         }
+    }
+
+    if ($preserveAppSettings) {
+        Sync-OracleProductionConnection `
+            -SourceConfigPath (Join-Path $source "appsettings.json") `
+            -TargetConfigPath (Join-Path $target "appsettings.json")
     }
 
     $migrationDir = Join-Path $source "migrations"

@@ -2,6 +2,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
 import { AuthService } from './auth.service';
+import { toDateInputValue } from './date-utils';
 import { ProfileFlowService } from './profile-flow.service';
 
 @Component({
@@ -9,7 +10,7 @@ import { ProfileFlowService } from './profile-flow.service';
   imports: [ReactiveFormsModule],
   template: `
     @if (flow.open()) {
-      <div class="profile-modal-backdrop" role="presentation" (click)="close()">
+      <div class="profile-modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && close()">
         <section class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" (click)="$event.stopPropagation()">
           <div class="profile-modal-header">
             <div>
@@ -112,7 +113,7 @@ export class ProfileDialogComponent {
         cpf: user?.cpf ?? '',
         departamento: user?.departamento ?? '',
         cargo: user?.cargo ?? '',
-        dataNascimento: this.toDateInputValue(user?.dataNascimento),
+        dataNascimento: toDateInputValue(user?.dataNascimento),
       });
     });
 
@@ -179,8 +180,4 @@ export class ProfileDialogComponent {
     });
   }
 
-  private toDateInputValue(value?: string): string {
-    const date = value ? new Date(value) : null;
-    return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : '';
-  }
 }

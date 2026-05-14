@@ -21,7 +21,47 @@ namespace DRFlowHub.Api.Controllers
         [HttpGet]
         public IActionResult List()
         {
-            return Ok(_service.List());
+            var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+            return Ok(_service.List(role));
+        }
+
+        [HttpGet("empresas")]
+        public IActionResult ListEmpresas()
+        {
+            var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+            return Ok(_service.ListEmpresas(role));
+        }
+
+        [HttpPost("empresas")]
+        public IActionResult AddEmpresa([FromBody] EmpresaCreateDto dto)
+        {
+            try
+            {
+                var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                return Ok(_service.AddEmpresa(dto, role));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("empresas/{id:int}")]
+        public IActionResult UpdateEmpresa(int id, [FromBody] EmpresaCreateDto dto)
+        {
+            try
+            {
+                var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                return Ok(_service.UpdateEmpresa(id, dto, role));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
         }
 
         [HttpPost]

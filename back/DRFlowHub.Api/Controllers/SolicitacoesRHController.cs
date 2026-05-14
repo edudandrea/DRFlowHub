@@ -34,7 +34,7 @@ namespace DRFlowHub.Api.Controllers
         [HttpGet]
         public IActionResult List()
         {
-            var solicitacoes = _service.List(GetRole(), GetUserId());
+            var solicitacoes = _service.List(GetRole(), GetUserId(), GetAcessos());
             return Ok(solicitacoes);
         }
 
@@ -52,7 +52,7 @@ namespace DRFlowHub.Api.Controllers
                 return BadRequest(ex.Message);
             }
 
-            var solicitacao = _service.Add(dto, GetRole(), GetUserId());
+            var solicitacao = _service.Add(dto, GetRole(), GetUserId(), GetAcessos());
 
             return Ok(new
             {
@@ -65,7 +65,7 @@ namespace DRFlowHub.Api.Controllers
         [HttpGet("{id:int}/anexo")]
         public IActionResult DownloadAttachment(int id)
         {
-            var solicitacao = _service.GetAttachmentOwner(id, GetRole(), GetUserId());
+            var solicitacao = _service.GetAttachmentOwner(id, GetRole(), GetUserId(), GetAcessos());
             var fullPath = GetAttachmentPath(solicitacao.AnexossUrl);
 
             if (!System.IO.File.Exists(fullPath))
@@ -81,7 +81,7 @@ namespace DRFlowHub.Api.Controllers
         {
             try
             {
-                var solicitacao = _service.Update(id, dto, GetRole(), GetUserId());
+                var solicitacao = _service.Update(id, dto, GetRole(), GetUserId(), GetAcessos());
 
                 return Ok(new
                 {
@@ -99,7 +99,7 @@ namespace DRFlowHub.Api.Controllers
         [HttpGet("{id:int}/comunicacoes")]
         public IActionResult ListComunicacoes(int id)
         {
-            return Ok(_service.ListComunicacoes(id, GetRole(), GetUserId()));
+            return Ok(_service.ListComunicacoes(id, GetRole(), GetUserId(), GetAcessos()));
         }
 
         [HttpPost("{id:int}/comunicacoes")]
@@ -107,7 +107,7 @@ namespace DRFlowHub.Api.Controllers
         {
             try
             {
-                var comunicacao = _service.AddComunicacao(id, dto, GetRole(), GetUserId());
+                var comunicacao = _service.AddComunicacao(id, dto, GetRole(), GetUserId(), GetAcessos());
 
                 return Ok(new
                 {
@@ -127,7 +127,7 @@ namespace DRFlowHub.Api.Controllers
         {
             try
             {
-                var solicitacao = _service.Encerrar(id, dto, GetRole(), GetUserId());
+                var solicitacao = _service.Encerrar(id, dto, GetRole(), GetUserId(), GetAcessos());
 
                 return Ok(new
                 {
@@ -145,7 +145,7 @@ namespace DRFlowHub.Api.Controllers
         [HttpPost("{id:int}/reabrir")]
         public IActionResult Reabrir(int id)
         {
-            var solicitacao = _service.Reabrir(id, GetRole(), GetUserId());
+            var solicitacao = _service.Reabrir(id, GetRole(), GetUserId(), GetAcessos());
 
             return Ok(new
             {
@@ -160,7 +160,7 @@ namespace DRFlowHub.Api.Controllers
         {
             try
             {
-                var solicitacao = _service.AvaliarSatisfacao(id, dto, GetRole(), GetUserId());
+                var solicitacao = _service.AvaliarSatisfacao(id, dto, GetRole(), GetUserId(), GetAcessos());
 
                 return Ok(new
                 {
@@ -187,6 +187,11 @@ namespace DRFlowHub.Api.Controllers
         private string GetRole()
         {
             return User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        }
+
+        private IEnumerable<string> GetAcessos()
+        {
+            return User.FindAll("access").Select(claim => claim.Value);
         }
 
         private async Task<string> SaveAttachment(IFormFile file)

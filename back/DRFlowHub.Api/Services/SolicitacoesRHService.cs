@@ -17,11 +17,11 @@ namespace DRFlowHub.Api.Services
             _userRepo = userRepo;
         }
 
-        public List<SolicitacoesRHResponseDto> List(string role, int userId)
+        public List<SolicitacoesRHResponseDto> List(string role, int userId, IEnumerable<string> acessos)
         {
             var query = _repo.Query().AsNoTracking();
 
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsRH(role))
+            if (!CanManage(role, acessos))
                 query = query.Where(s => s.Userid == userId);
 
             return query
@@ -30,11 +30,11 @@ namespace DRFlowHub.Api.Services
                 .ToList();
         }
 
-        public SolicitacoesRHResponseDto Add(SolicitacoesRHCreateDto dto, string role, int currentUserId)
+        public SolicitacoesRHResponseDto Add(SolicitacoesRHCreateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
             Validate(dto.Unidade, dto.Titulo, dto.Descricao);
 
-            var ownerUserId = RoleScope.IsAdmin(role) || RoleScope.IsRH(role)
+            var ownerUserId = CanManage(role, acessos)
                 ? (dto.Userid > 0 ? dto.Userid : currentUserId)
                 : currentUserId;
 
@@ -64,13 +64,13 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public SolicitacoesRHResponseDto Update(int id, SolicitacoesRHUpdateDto dto, string role, int currentUserId)
+        public SolicitacoesRHResponseDto Update(int id, SolicitacoesRHUpdateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
             var solicitacao = _repo.Query().FirstOrDefault(s => s.Id == id);
             if (solicitacao is null)
                 throw new KeyNotFoundException("Solicitacao nao encontrada.");
 
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsRH(role) && solicitacao.Userid != currentUserId)
+            if (!CanManage(role, acessos) && solicitacao.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode alterar esta solicitacao.");
 
             if (IsFinalizada(solicitacao))
@@ -99,9 +99,9 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public List<SolicitacaoRHComunicacaoResponseDto> ListComunicacoes(int id, string role, int currentUserId)
+        public List<SolicitacaoRHComunicacaoResponseDto> ListComunicacoes(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            GetAccessibleSolicitacao(id, role, currentUserId);
+            GetAccessibleSolicitacao(id, role, currentUserId, acessos);
 
             return _repo.QueryComunicacoes()
                 .AsNoTracking()
@@ -111,9 +111,9 @@ namespace DRFlowHub.Api.Services
                 .ToList();
         }
 
-        public SolicitacaoRHComunicacaoResponseDto AddComunicacao(int id, SolicitacaoRHComunicacaoCreateDto dto, string role, int currentUserId)
+        public SolicitacaoRHComunicacaoResponseDto AddComunicacao(int id, SolicitacaoRHComunicacaoCreateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
             if (IsFinalizada(solicitacao))
                 throw new InvalidOperationException("Solicitacoes encerradas ou canceladas nao permitem novas mensagens.");
 
@@ -141,16 +141,16 @@ namespace DRFlowHub.Api.Services
             return MapComunicacao(comunicacao);
         }
 
-        public SolicitacoesRHResponseDto Encerrar(int id, SolicitacoesRHEncerrarDto dto, string role, int currentUserId)
+        public SolicitacoesRHResponseDto Encerrar(int id, SolicitacoesRHEncerrarDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            if (!CanManage(role))
+            if (!CanManage(role, acessos))
                 throw new UnauthorizedAccessException("Somente administradores de RH podem encerrar solicitacoes.");
 
             var observacoesEncerramento = dto.ObservacoesEncerramento?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(observacoesEncerramento))
                 throw new InvalidOperationException("Observacoes de encerramento sao obrigatorias.");
 
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
             solicitacao.Status = "Concluida";
             solicitacao.DataEncerramento = DateTime.UtcNow;
             solicitacao.ObservacoesEncerramento = observacoesEncerramento;
@@ -164,12 +164,12 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public SolicitacoesRHResponseDto Reabrir(int id, string role, int currentUserId)
+        public SolicitacoesRHResponseDto Reabrir(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            if (!CanManage(role))
+            if (!CanManage(role, acessos))
                 throw new UnauthorizedAccessException("Somente administradores de RH podem reabrir solicitacoes.");
 
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
             solicitacao.Status = "Aberta";
             solicitacao.DataEncerramento = null;
             solicitacao.ObservacoesEncerramento = string.Empty;
@@ -183,12 +183,12 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public SolicitacoesRHResponseDto AvaliarSatisfacao(int id, SolicitacoesRHSatisfacaoDto dto, string role, int currentUserId)
+        public SolicitacoesRHResponseDto AvaliarSatisfacao(int id, SolicitacoesRHSatisfacaoDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            if (CanManage(role))
+            if (CanManage(role, acessos))
                 throw new UnauthorizedAccessException("Administradores apenas visualizam a pesquisa de satisfacao.");
 
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
             if (!solicitacao.DataEncerramento.HasValue)
                 throw new InvalidOperationException("A pesquisa de satisfacao so pode ser preenchida apos o encerramento da solicitacao.");
 
@@ -208,13 +208,13 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public SolicitacoesRH GetAttachmentOwner(int id, string role, int currentUserId)
+        public SolicitacoesRH GetAttachmentOwner(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
             var solicitacao = _repo.Query().AsNoTracking().FirstOrDefault(s => s.Id == id);
             if (solicitacao is null)
                 throw new KeyNotFoundException("Solicitacao nao encontrada.");
 
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsRH(role) && solicitacao.Userid != currentUserId)
+            if (!CanManage(role, acessos) && solicitacao.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar este anexo.");
 
             if (string.IsNullOrWhiteSpace(solicitacao.AnexossUrl))
@@ -235,10 +235,13 @@ namespace DRFlowHub.Api.Services
                 throw new InvalidOperationException("Descricao e obrigatoria.");
         }
 
-        private static bool CanManage(string role)
+        private static bool CanManage(string role, IEnumerable<string> acessos)
         {
-            return RoleScope.IsAdmin(role) || RoleScope.IsRH(role);
+            return RoleScope.IsAdmin(role) || HasAccess(acessos, "rh-admin");
         }
+
+        private static bool HasAccess(IEnumerable<string> acessos, string chave)
+            => acessos.Any(acesso => string.Equals(acesso, chave, StringComparison.OrdinalIgnoreCase));
 
         private static bool IsFinalizada(SolicitacoesRH solicitacao)
         {
@@ -247,13 +250,13 @@ namespace DRFlowHub.Api.Services
                 || string.Equals(solicitacao.Status, "Cancelada", StringComparison.OrdinalIgnoreCase);
         }
 
-        private SolicitacoesRH GetAccessibleSolicitacao(int id, string role, int currentUserId)
+        private SolicitacoesRH GetAccessibleSolicitacao(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
             var solicitacao = _repo.Query().FirstOrDefault(s => s.Id == id);
             if (solicitacao is null)
                 throw new KeyNotFoundException("Solicitacao nao encontrada.");
 
-            if (!CanManage(role) && solicitacao.Userid != currentUserId)
+            if (!CanManage(role, acessos) && solicitacao.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar esta solicitacao.");
 
             return solicitacao;

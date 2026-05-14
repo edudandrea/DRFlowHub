@@ -1,3 +1,4 @@
+using DRFlowHub.Api.Data;
 using DRFlowHub.Api.Data.Interfaces;
 using DRFlowHub.Api.Dtos;
 using DRFlowHub.Api.Models;
@@ -9,10 +10,12 @@ namespace DRFlowHub.Api.Services
     public class UsersService
     {
         private readonly IUserRepo _repo;
+        private readonly AppDbContext _context;
 
-        public UsersService(IUserRepo repo)
+        public UsersService(IUserRepo repo, AppDbContext context)
         {
             _repo = repo;
+            _context = context;
         }
 
         private static List<UserResponseDto> MapUsers(IQueryable<Users> query)
@@ -26,6 +29,9 @@ namespace DRFlowHub.Api.Services
                 Role = u.Role,
                 Departamento = u.Departamento,
                 Cargo = u.Cargo,
+                RustDeskId = u.RustDeskId,
+                RustDeskHostname = u.RustDeskHostname,
+                RustDeskSistemaOperacional = u.RustDeskSistemaOperacional,
                 Ativo = u.Ativo,
                 UnidadeId = u.UnidadeId,
                 UnidadeNome = u.Unidade != null ? u.Unidade.Nome : string.Empty,
@@ -74,8 +80,10 @@ namespace DRFlowHub.Api.Services
             if (string.IsNullOrWhiteSpace(email))
                 throw new InvalidOperationException("Email e obrigatorio.");
 
-            if (!AuthService.IsValidRole(dto.Role))
-                throw new InvalidOperationException("Perfil invalido.");
+            dto.Role = AuthService.NormalizeRole(dto.Role);
+            EnsureConfiguredRole(dto.Role);
+            if (!AuthService.ShouldRequireUnidade(dto.Role))
+                dto.UnidadeId = null;
 
             AuthService.ValidateUnidadeForRole(dto.Role, dto.UnidadeId);
 
@@ -85,7 +93,7 @@ namespace DRFlowHub.Api.Services
             user.Nome = dto.Nome.Trim();
             user.Cpf = dto.Cpf.Trim();
             user.Email = email;
-            user.Role = AuthService.NormalizeRole(dto.Role);
+            user.Role = dto.Role;
             user.Departamento = dto.Departamento.Trim();
             user.Cargo = dto.Cargo.Trim();
             user.Ativo = dto.Ativo;
@@ -104,6 +112,15 @@ namespace DRFlowHub.Api.Services
             _repo.Save();
 
             return MapUsers(_repo.Query().Include(u => u.Unidade).Where(u => u.Id == id)).Single();
+        }
+
+        private void EnsureConfiguredRole(string role)
+        {
+            if (string.IsNullOrWhiteSpace(role))
+                throw new InvalidOperationException("Perfil invalido.");
+
+            if (!_context.PerfilSistema.Any(p => p.Nome == role))
+                throw new InvalidOperationException("Perfil invalido.");
         }
 
         public UserResponseDto UpdateProfile(int id, UserProfileUpdateDto dto)
@@ -145,6 +162,27 @@ namespace DRFlowHub.Api.Services
             user.Senha = PasswordHasher.Hash(dto.NovaSenha);
             _repo.Update(user);
             _repo.Save();
+        }
+
+        public UserResponseDto RegisterRustDesk(int id, UserRustDeskRegisterDto dto)
+        {
+            var user = _repo.Query().Include(u => u.Unidade).FirstOrDefault(u => u.Id == id);
+            if (user is null)
+                throw new KeyNotFoundException("Usuario nao encontrado.");
+
+            var rustDeskId = dto.RustDeskId?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(rustDeskId))
+                throw new InvalidOperationException("ID RustDesk e obrigatorio.");
+
+            user.RustDeskId = rustDeskId;
+            user.RustDeskSenha = dto.RustDeskSenha?.Trim() ?? string.Empty;
+            user.RustDeskHostname = dto.Hostname?.Trim() ?? string.Empty;
+            user.RustDeskSistemaOperacional = dto.SistemaOperacional?.Trim() ?? string.Empty;
+
+            _repo.Update(user);
+            _repo.Save();
+
+            return MapUsers(_repo.Query().Include(u => u.Unidade).Where(u => u.Id == id)).Single();
         }
     }
 }

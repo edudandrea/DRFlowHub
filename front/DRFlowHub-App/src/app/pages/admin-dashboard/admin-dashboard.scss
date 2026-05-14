@@ -1,0 +1,48 @@
+.admin-dashboard {
+  min-height: 100dvh;
+  padding: 28px clamp(18px, 4vw, 48px);
+  background: var(--color-page);
+  color: var(--color-text);
+}
+
+p,
+h1 {
+  margin: 0;
+}
+
+header {
+  margin-bottom: 18px;
+}
+
+header p {
+  color: var(--color-brand-blue);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+article {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+span {
+  color: var(--color-muted);
+  font-weight: 900;
+}
+
+strong {
+  color: var(--color-brand-blue);
+  font-size: 34px;
+}

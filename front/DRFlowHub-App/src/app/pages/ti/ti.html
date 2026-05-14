@@ -8,9 +8,6 @@
       </div>
     </button>
     <div class="user-box profile-area">
-      @if (canManage()) {
-        <button class="secondary" type="button" (click)="openEquipmentControl()">Equipamentos</button>
-      }
       <label class="theme-picker">
         Tema
         <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
@@ -92,6 +89,23 @@
         <button class="secondary" type="button" (click)="clearDateFilters()">Limpar periodo</button>
       </div>
 
+      <div class="date-filters">
+        <label>
+          Ordenar
+          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
+            <option value="id">Numero</option>
+            <option value="titulo">Titulo</option>
+            <option value="solicitante">Solicitante</option>
+            <option value="unidade">Unidade</option>
+            <option value="departamento">Departamento</option>
+            <option value="prioridade">Prioridade</option>
+            <option value="status">Status</option>
+            <option value="dataAbertura">Data</option>
+          </select>
+        </label>
+        <button class="secondary" type="button" (click)="setSort(sortField())">{{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}</button>
+      </div>
+
       @if (createdTicketNumber()) {
         <p class="notice">Chamado #{{ createdTicketNumber() }} criado com sucesso.</p>
       }
@@ -140,7 +154,7 @@
         } @else if (filteredChamados().length === 0) {
           <p class="empty">Nenhum chamado encontrado.</p>
         } @else {
-          @for (item of filteredChamados(); track item.id) {
+          @for (item of pagedChamados(); track item.id) {
             <article class="request-card" [class.active]="selected()?.id === item.id" (click)="openTicketModal(item, ticketModalTemplate)">
               @if (item.reaberto) {
                 <span class="reopen-alert">Reaberto</span>
@@ -175,6 +189,13 @@
           }
         }
       </div>
+      @if (filteredChamados().length > pageSize()) {
+        <div class="date-filters">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+          <span>Pagina {{ page() }} de {{ totalPages() }}</span>
+          <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Proxima</button>
+        </div>
+      }
     </aside>
 
     <ng-template #createTicketModalTemplate>
@@ -251,19 +272,37 @@
               <textarea formControlName="observacoes" rows="3" placeholder="Inclua detalhes adicionais, horarios ou restricoes"></textarea>
             </label>
 
-            <div class="grid two">
-              <label>
-                Acesso remoto
-                <input formControlName="acessoRemotoUrl" placeholder="Link AnyDesk, Teams, RustDesk ou similar" />
-              </label>
-              <label>
-                Anexo
-                <input #anexoInput type="file" accept=".pdf,.doc,.docx,image/*" (change)="onAttachmentSelected($event)" />
-                @if (selectedFileName()) {
-                  <small class="file-name">{{ selectedFileName() }}</small>
-                }
-              </label>
-            </div>
+            <section class="closure-notes remote-access-card">
+              <div class="info-card-heading">
+                <strong>Acesso RustDesk</strong>
+                <small>Informe os dados para a TI acessar o equipamento, se estiver disponivel.</small>
+              </div>
+              <div class="grid two">
+                <label>
+                  RustDesk ID
+                  <input formControlName="rustDeskId" placeholder="ID do equipamento" />
+                </label>
+                <label>
+                  Senha RustDesk
+                  <input formControlName="rustDeskSenha" placeholder="Senha de acesso" />
+                </label>
+              </div>
+            </section>
+
+            <section class="closure-notes">
+              <strong>Equipamento</strong>
+              <span>Nome: {{ form.controls.equipamentoNome.value || 'Nao informado pelo navegador' }}</span>
+              <span>Sistema operacional: {{ form.controls.equipamentoSistemaOperacional.value || 'Nao identificado' }}</span>
+              <small>O IP sera registrado automaticamente ao enviar o chamado.</small>
+            </section>
+
+            <label>
+              Anexo
+              <input #anexoInput type="file" accept=".pdf,.doc,.docx,image/*" (change)="onAttachmentSelected($event)" />
+              @if (selectedFileName()) {
+                <small class="file-name">{{ selectedFileName() }}</small>
+              }
+            </label>
 
             @if (selectedFilePreviewUrl()) {
               <section class="attachment-preview">
@@ -398,20 +437,47 @@
                       </label>
                     </div>
 
-                    <div class="grid two">
-                      <label>
-                        Acesso remoto
-                        <input formControlName="acessoRemotoUrl" />
-                      </label>
-                      <label>
-                        Acoes
-                        <div class="attachment-actions">
-                          <button class="secondary" type="button" (click)="openRemoteAccess(adminForm.controls.acessoRemotoUrl.value)">Abrir acesso</button>
-                          <button class="secondary" type="button" (click)="previewAttachment()">Previsualizar anexo</button>
-                          <button class="secondary" type="button" (click)="downloadAttachment()">Baixar anexo</button>
-                        </div>
-                      </label>
-                    </div>
+                    <section class="closure-notes equipment-card">
+                      <div class="info-card-heading">
+                        <strong>Equipamento que abriu o chamado</strong>
+                        <small>{{ equipmentSummary() }}</small>
+                      </div>
+                      <div class="ticket-dates equipment-meta">
+                        <span><strong>Nome do computador:</strong> {{ selected()?.equipamentoNome || 'Nao informado pelo navegador' }}</span>
+                        <span><strong>IP:</strong> {{ selected()?.equipamentoIp || 'Nao identificado' }}</span>
+                        <span><strong>Sistema operacional:</strong> {{ selected()?.equipamentoSistemaOperacional || 'Nao identificado' }}</span>
+                      </div>
+                    </section>
+
+                    <section class="closure-notes remote-access-card">
+                      <div class="info-card-heading">
+                        <strong>Acesso remoto</strong>
+                        <small>Servidor RustDesk: {{ rustDeskServerLabel() }}</small>
+                      </div>
+                      <small>{{ selected()?.rustDeskId ? 'Dispositivo RustDesk registrado para este usuario.' : 'Nenhum dispositivo RustDesk registrado para este usuario.' }}</small>
+                      <div class="grid two">
+                        <label>
+                          RustDesk ID
+                          <input formControlName="rustDeskId" placeholder="ID do equipamento" />
+                        </label>
+                        <label>
+                          Senha RustDesk
+                          <input formControlName="rustDeskSenha" placeholder="Senha de acesso" />
+                        </label>
+                      </div>
+                      <div class="attachment-actions">
+                        <button class="primary remote-primary" type="button" (click)="openRustDeskAccess()">Acesso remoto</button>
+                        <button class="secondary" type="button" (click)="copyRustDeskPassword()">Copiar senha</button>
+                      </div>
+                    </section>
+
+                    <section class="closure-notes">
+                      <strong>Acoes</strong>
+                      <div class="attachment-actions">
+                        <button class="secondary" type="button" (click)="previewAttachment()">Previsualizar anexo</button>
+                        <button class="secondary" type="button" (click)="downloadAttachment()">Baixar anexo</button>
+                      </div>
+                    </section>
 
                     <div class="ticket-dates">
                       <span>Criado em {{ selected()?.dataAbertura | date: 'dd/MM/yyyy HH:mm' }}</span>

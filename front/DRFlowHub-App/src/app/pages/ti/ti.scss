@@ -334,6 +334,7 @@ textarea {
   font-size: 12px;
 }
 
+
 .notice {
   padding: 10px 12px;
   border: 1px solid var(--color-brand-green-strong);
@@ -460,6 +461,10 @@ textarea {
 .close-form {
   display: grid;
   gap: 12px;
+}
+
+.remote-access-card small {
+  overflow-wrap: anywhere;
 }
 
 .satisfaction-view > div {

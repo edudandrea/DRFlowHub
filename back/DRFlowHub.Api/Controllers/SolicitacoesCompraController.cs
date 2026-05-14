@@ -27,7 +27,7 @@ namespace DRFlowHub.Api.Controllers
         [HttpGet]
         public IActionResult List()
         {
-            return Ok(_service.List(GetRole(), GetUserId()));
+            return Ok(_service.List(GetRole(), GetUserId(), GetAcessos()));
         }
 
         [HttpPost]
@@ -37,7 +37,7 @@ namespace DRFlowHub.Api.Controllers
             try
             {
                 var documentoUrl = dto.Documento is null ? string.Empty : await SaveAttachment(dto.Documento);
-                var solicitacao = _service.Add(dto, GetRole(), GetUserId(), documentoUrl);
+                var solicitacao = _service.Add(dto, GetRole(), GetUserId(), documentoUrl, GetAcessos());
 
                 return Ok(new { sucesso = true, mensagem = "Solicitacao de compra criada com sucesso", solicitacao });
             }
@@ -52,7 +52,7 @@ namespace DRFlowHub.Api.Controllers
         {
             try
             {
-                var solicitacao = _service.Update(id, dto, GetRole(), GetUserId());
+                var solicitacao = _service.Update(id, dto, GetRole(), GetUserId(), GetAcessos());
                 return Ok(new { sucesso = true, mensagem = "Solicitacao de compra atualizada com sucesso", solicitacao });
             }
             catch (InvalidOperationException ex)
@@ -64,7 +64,7 @@ namespace DRFlowHub.Api.Controllers
         [HttpGet("{id:int}/comunicacoes")]
         public IActionResult ListComunicacoes(int id)
         {
-            return Ok(_service.ListComunicacoes(id, GetRole(), GetUserId()));
+            return Ok(_service.ListComunicacoes(id, GetRole(), GetUserId(), GetAcessos()));
         }
 
         [HttpPost("{id:int}/comunicacoes")]
@@ -72,7 +72,7 @@ namespace DRFlowHub.Api.Controllers
         {
             try
             {
-                var comunicacao = _service.AddComunicacao(id, dto, GetRole(), GetUserId());
+                var comunicacao = _service.AddComunicacao(id, dto, GetRole(), GetUserId(), GetAcessos());
                 return Ok(new { sucesso = true, mensagem = "Mensagem enviada com sucesso", comunicacao });
             }
             catch (InvalidOperationException ex)
@@ -84,14 +84,14 @@ namespace DRFlowHub.Api.Controllers
         [HttpPost("{id:int}/aprovacao")]
         public IActionResult Aprovar(int id, [FromBody] SolicitacaoCompraAprovacaoDto dto)
         {
-            var solicitacao = _service.Aprovar(id, dto, GetRole(), GetUserId());
+            var solicitacao = _service.Aprovar(id, dto, GetRole(), GetUserId(), GetAcessos());
             return Ok(new { sucesso = true, mensagem = "Aprovacao registrada com sucesso", solicitacao });
         }
 
         [HttpGet("{id:int}/documento")]
         public IActionResult DownloadAttachment(int id)
         {
-            var solicitacao = _service.GetAttachmentOwner(id, GetRole(), GetUserId());
+            var solicitacao = _service.GetAttachmentOwner(id, GetRole(), GetUserId(), GetAcessos());
             var fullPath = GetAttachmentPath(solicitacao.DocumentoUrl);
 
             if (!System.IO.File.Exists(fullPath))
@@ -112,6 +112,11 @@ namespace DRFlowHub.Api.Controllers
         private string GetRole()
         {
             return User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        }
+
+        private IEnumerable<string> GetAcessos()
+        {
+            return User.FindAll("access").Select(claim => claim.Value);
         }
 
         private async Task<string> SaveAttachment(IFormFile file)

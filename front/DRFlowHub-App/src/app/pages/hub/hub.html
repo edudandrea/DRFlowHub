@@ -34,7 +34,8 @@
     <section class="dashboard-intro">
       <div>
         <p class="system-name">{{ user()?.departamento || 'Setor' }}</p>
-        <h2>{{ dashboardSubtitle() }}</h2>
+        <h2>{{ greeting() }}</h2>
+        <p>{{ dashboardSubtitle() }}</p>
       </div>
       <button class="refresh-button" type="button" (click)="loadDashboard()" [disabled]="loading()">
         {{ loading() ? 'Atualizando...' : 'Atualizar' }}
@@ -68,6 +69,40 @@
     </section>
 
     <section class="dashboard-grid">
+      <article class="panel forecast-panel">
+        <header>
+          <div>
+            <p class="system-name">Forecast</p>
+            <h2>Previsão do tempo</h2>
+            <span>{{ forecastLocation() }}</span>
+          </div>
+          <button class="mini-button" type="button" (click)="loadForecast()" [disabled]="forecastLoading()">
+            {{ forecastLoading() ? '...' : 'Atualizar' }}
+          </button>
+        </header>
+
+        @if (forecast().length) {
+          <div class="forecast-list">
+            @for (day of forecast(); track day.date) {
+              <article class="forecast-day">
+                <div>
+                  <i class="weather-icon" [class]="day.iconTone" aria-hidden="true">{{ day.icon }}</i>
+                  <strong>{{ day.label }}</strong>
+                </div>
+                <span>{{ day.temperatureMin }}° / {{ day.temperatureMax }}°</span>
+                <p>{{ day.summary }}</p>
+                <small>{{ day.rainChance }}% chuva</small>
+              </article>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            <strong>{{ forecastLoading() ? 'Carregando previsao...' : 'Forecast indisponivel' }}</strong>
+            <p>{{ forecastError() || 'A previsao aparece aqui assim que os dados forem carregados.' }}</p>
+          </div>
+        }
+      </article>
+
       <article class="panel alerts-panel">
         <header>
           <div>

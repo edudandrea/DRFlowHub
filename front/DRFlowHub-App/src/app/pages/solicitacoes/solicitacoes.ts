@@ -23,6 +23,7 @@ const ALLOWED_ATTACHMENT_TYPES = [
   'image/webp',
 ];
 const ALLOWED_ATTACHMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+type SolicitacaoSortField = 'id' | 'titulo' | 'tipoSolicitacao' | 'departamento' | 'status' | 'dataSolicitacao';
 
 @Component({
   selector: 'app-solicitacoes',
@@ -57,11 +58,17 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
   readonly sendingMessage = signal(false);
   readonly selectedFileName = signal('');
   readonly profileMenuOpen = signal(false);
+  readonly page = signal(1);
+  readonly pageSize = signal(10);
+  readonly sortField = signal<SolicitacaoSortField>('id');
+  readonly sortDirection = signal<'asc' | 'desc'>('desc');
   readonly user = computed(() => this.auth.user());
   readonly minhasSolicitacoes = computed(() => {
     const currentUserId = this.user()?.id;
-    return this.solicitacoes().filter((item) => !currentUserId || item.userid === currentUserId);
+    return this.sortItems(this.solicitacoes().filter((item) => !currentUserId || item.userid === currentUserId));
   });
+  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.minhasSolicitacoes().length / this.pageSize())));
+  readonly pagedSolicitacoes = computed(() => this.minhasSolicitacoes().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
   readonly avaliacoesPendentes = computed(() => this.minhasSolicitacoes().filter((item) => this.canEvaluate(item)).length);
   readonly abertas = computed(() => this.minhasSolicitacoes().filter((item) => item.status === 'Aberta').length);
   readonly encerradas = computed(() => this.minhasSolicitacoes().filter((item) => !!item.dataEncerramento).length);
@@ -107,6 +114,24 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
   readonly messageForm = this.fb.nonNullable.group({
     mensagem: ['', Validators.required],
   });
+
+  setSort(field: SolicitacaoSortField): void {
+    if (this.sortField() === field) {
+      this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortField.set(field);
+      this.sortDirection.set(field === 'id' || field === 'dataSolicitacao' ? 'desc' : 'asc');
+    }
+    this.page.set(1);
+  }
+
+  previousPage(): void {
+    this.page.set(Math.max(1, this.safePage() - 1));
+  }
+
+  nextPage(): void {
+    this.page.set(Math.min(this.totalPages(), this.safePage() + 1));
+  }
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -433,6 +458,23 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
     }
 
     return user.unidadeNome || this.unidades().find((unidade) => unidade.id === user.unidadeId)?.nome || '';
+  }
+
+  private safePage(): number {
+    return Math.min(Math.max(this.page(), 1), this.totalPages());
+  }
+
+  private sortItems(items: SolicitacaoRH[]): SolicitacaoRH[] {
+    const field = this.sortField();
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    return items.slice().sort((a, b) => {
+      const aValue = a[field];
+      const bValue = b[field];
+      const result = typeof aValue === 'number' && typeof bValue === 'number'
+        ? aValue - bValue
+        : String(aValue ?? '').localeCompare(String(bValue ?? ''));
+      return result * direction;
+    });
   }
 
   private getErrorMessage(fallback: string, error?: unknown): string {

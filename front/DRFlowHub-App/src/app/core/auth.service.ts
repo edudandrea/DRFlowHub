@@ -35,7 +35,7 @@ export class AuthService {
   }
 
   updateUser(id: number, payload: UserUpdatePayload): Observable<User> {
-    return this.http.put<User>(`${API_URL}/users/${id}`, payload);
+    return this.http.post<User>(`${API_URL}/users/${id}/update`, payload);
   }
 
   updateProfile(payload: UserProfileUpdatePayload): Observable<User> {
@@ -74,7 +74,20 @@ export class AuthService {
     return !!role && roles.includes(role);
   }
 
+  hasAccess(access: string): boolean {
+    const user = this.user();
+    return !!user && (user.role === 'Admin' || (user.acessos ?? []).includes(access));
+  }
+
+  hasAnyAccess(accesses: string[]): boolean {
+    return accesses.some((access) => this.hasAccess(access));
+  }
+
   landingRoute(): string {
+    if (this.hasAccess('dashboard-admin')) {
+      return '/admin';
+    }
+
     return '/hub';
   }
 

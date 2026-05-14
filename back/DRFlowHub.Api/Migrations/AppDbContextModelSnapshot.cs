@@ -22,6 +22,101 @@ namespace DRFlowHub.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DRFlowHub.Api.Models.CartaoPontoArquivo", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CnpjUnidade")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("DataImportacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ImportadoPorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NomeArquivo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("UnidadeId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImportadoPorUserId");
+
+                    b.HasIndex("UnidadeId");
+
+                    b.ToTable("CartaoPontoArquivo");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.CartaoPontoRegistro", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CartaoPontoArquivoId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("ConfirmadoPeloUsuario")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Cpf")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Data")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DataEdicao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DataRespostaUsuario")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EditadoPorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FuncionarioNome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("HorarioEditado")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("HorarioOriginal")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LinhaOriginal")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("PrecisaAjuste")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Sequencia")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CartaoPontoArquivoId");
+
+                    b.HasIndex("EditadoPorUserId");
+
+                    b.ToTable("CartaoPontoRegistro");
+                });
+
             modelBuilder.Entity("DRFlowHub.Api.Models.ChamadoTIComunicacao", b =>
                 {
                     b.Property<int>("Id")
@@ -101,6 +196,18 @@ namespace DRFlowHub.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("EquipamentoIp")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EquipamentoNome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EquipamentoSistemaOperacional")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Observacoes")
                         .IsRequired()
                         .HasColumnType("text");
@@ -117,6 +224,22 @@ namespace DRFlowHub.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<string>("Responsavel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskSenha")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskServidor")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -151,6 +274,32 @@ namespace DRFlowHub.Migrations
                     b.HasIndex("Userid");
 
                     b.ToTable("ChamadoTI");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.Empresa", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("DataCadastro")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Numero")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Numero")
+                        .IsUnique();
+
+                    b.ToTable("Empresa");
                 });
 
             modelBuilder.Entity("DRFlowHub.Api.Models.EquipamentoTI", b =>
@@ -215,6 +364,128 @@ namespace DRFlowHub.Migrations
                     b.HasIndex("Userid");
 
                     b.ToTable("EquipamentoTI");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.GuiaIcmsPagamento", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AtualizadoPorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("DataAtualizacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DataPagamento")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GuiaId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AtualizadoPorUserId");
+
+                    b.HasIndex("GuiaId")
+                        .IsUnique();
+
+                    b.ToTable("GuiaIcmsPagamento");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.PecaVendedorMeta", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AtualizadoPorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CpfVendedor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("DataAtualizacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DataFim")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DataInicio")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NomeVendedor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("ValorMeta")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AtualizadoPorUserId");
+
+                    b.HasIndex("CpfVendedor")
+                        .IsUnique();
+
+                    b.ToTable("PecaVendedorMeta");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.PerfilSistema", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("PadraoSistema")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Nome")
+                        .IsUnique();
+
+                    b.ToTable("PerfilSistema");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.PerfilSistemaAcesso", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Chave")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PerfilSistemaId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PerfilSistemaId", "Chave")
+                        .IsUnique();
+
+                    b.ToTable("PerfilSistemaAcesso");
                 });
 
             modelBuilder.Entity("DRFlowHub.Api.Models.SolicitacaoCompra", b =>
@@ -483,6 +754,13 @@ namespace DRFlowHub.Migrations
                     b.Property<DateTime>("DataCadastro")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Empresa")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("EmpresaId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Endereco")
                         .IsRequired()
                         .HasColumnType("text");
@@ -491,7 +769,16 @@ namespace DRFlowHub.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("NumeroRevenda")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Revenda")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId");
 
                     b.ToTable("Unidade");
                 });
@@ -537,6 +824,22 @@ namespace DRFlowHub.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("RustDeskHostname")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskSenha")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RustDeskSistemaOperacional")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Senha")
                         .IsRequired()
                         .HasColumnType("text");
@@ -551,6 +854,73 @@ namespace DRFlowHub.Migrations
                     b.HasIndex("UnidadeId");
 
                     b.ToTable("User");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.VeiculoReserva", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AtualizadoPorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Chassi")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("DataAtualizacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Reservado")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AtualizadoPorUserId");
+
+                    b.HasIndex("Chassi")
+                        .IsUnique();
+
+                    b.ToTable("VeiculoReserva");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.CartaoPontoArquivo", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.Users", "ImportadoPorUser")
+                        .WithMany()
+                        .HasForeignKey("ImportadoPorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DRFlowHub.Api.Models.Unidade", "Unidade")
+                        .WithMany()
+                        .HasForeignKey("UnidadeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ImportadoPorUser");
+
+                    b.Navigation("Unidade");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.CartaoPontoRegistro", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.CartaoPontoArquivo", "Arquivo")
+                        .WithMany("Registros")
+                        .HasForeignKey("CartaoPontoArquivoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DRFlowHub.Api.Models.Users", "EditadoPorUser")
+                        .WithMany()
+                        .HasForeignKey("EditadoPorUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Arquivo");
+
+                    b.Navigation("EditadoPorUser");
                 });
 
             modelBuilder.Entity("DRFlowHub.Api.Models.ChamadoTIComunicacao", b =>
@@ -584,6 +954,39 @@ namespace DRFlowHub.Migrations
                         .IsRequired();
 
                     b.Navigation("OwnerUser");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.GuiaIcmsPagamento", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.Users", "AtualizadoPorUser")
+                        .WithMany()
+                        .HasForeignKey("AtualizadoPorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AtualizadoPorUser");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.PecaVendedorMeta", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.Users", "AtualizadoPorUser")
+                        .WithMany()
+                        .HasForeignKey("AtualizadoPorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AtualizadoPorUser");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.PerfilSistemaAcesso", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.PerfilSistema", "PerfilSistema")
+                        .WithMany("Acessos")
+                        .HasForeignKey("PerfilSistemaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PerfilSistema");
                 });
 
             modelBuilder.Entity("DRFlowHub.Api.Models.SolicitacaoCompra", b =>
@@ -630,6 +1033,16 @@ namespace DRFlowHub.Migrations
                     b.Navigation("OwnerUser");
                 });
 
+            modelBuilder.Entity("DRFlowHub.Api.Models.Unidade", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.Empresa", "EmpresaCadastro")
+                        .WithMany("Revendas")
+                        .HasForeignKey("EmpresaId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("EmpresaCadastro");
+                });
+
             modelBuilder.Entity("DRFlowHub.Api.Models.Users", b =>
                 {
                     b.HasOne("DRFlowHub.Api.Models.Users", "CreatedByUser")
@@ -647,9 +1060,35 @@ namespace DRFlowHub.Migrations
                     b.Navigation("Unidade");
                 });
 
+            modelBuilder.Entity("DRFlowHub.Api.Models.VeiculoReserva", b =>
+                {
+                    b.HasOne("DRFlowHub.Api.Models.Users", "AtualizadoPorUser")
+                        .WithMany()
+                        .HasForeignKey("AtualizadoPorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AtualizadoPorUser");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.CartaoPontoArquivo", b =>
+                {
+                    b.Navigation("Registros");
+                });
+
             modelBuilder.Entity("DRFlowHub.Api.Models.ChamadosTI", b =>
                 {
                     b.Navigation("Comunicacoes");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.Empresa", b =>
+                {
+                    b.Navigation("Revendas");
+                });
+
+            modelBuilder.Entity("DRFlowHub.Api.Models.PerfilSistema", b =>
+                {
+                    b.Navigation("Acessos");
                 });
 
             modelBuilder.Entity("DRFlowHub.Api.Models.SolicitacaoCompra", b =>

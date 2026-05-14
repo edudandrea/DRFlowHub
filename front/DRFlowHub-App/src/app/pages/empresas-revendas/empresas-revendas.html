@@ -1,0 +1,109 @@
+<main class="company-shell">
+  <header>
+    <div>
+      <p>Cadastros</p>
+      <h1>Empresas e revendas</h1>
+    </div>
+  </header>
+
+  <section class="grid">
+    <article class="panel">
+      <div class="panel-title">
+        <div>
+          <h2>Empresas cadastradas</h2>
+          <span>{{ empresas().length }} registros</span>
+        </div>
+        <button type="button" (click)="novaEmpresa()">Nova empresa</button>
+      </div>
+
+      <div class="item-list">
+        @for (empresa of empresas(); track empresa.id) {
+          <button class="record-card" type="button" (click)="editEmpresa(empresa)">
+            <span class="code">{{ empresa.numero }}</span>
+            <strong>{{ empresa.nome }}</strong>
+            <small>Clique para editar</small>
+          </button>
+        } @empty {
+          <p class="empty">Nenhuma empresa cadastrada.</p>
+        }
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-title">
+        <div>
+          <h2>Revendas cadastradas</h2>
+          <span>{{ revendas().length }} registros</span>
+        </div>
+        <button type="button" (click)="novaRevenda()">Nova revenda</button>
+      </div>
+
+      <div class="item-list">
+        @for (revenda of revendas(); track revenda.id) {
+          <button class="record-card" type="button" (click)="editRevenda(revenda)">
+            <span class="code">{{ revenda.empresaNumero }} / {{ revenda.numeroRevenda }}</span>
+            <strong>{{ revenda.revenda }}</strong>
+            <small>{{ revenda.empresa }} - {{ revenda.cnpj }}</small>
+          </button>
+        } @empty {
+          <p class="empty">Nenhuma revenda cadastrada.</p>
+        }
+      </div>
+    </article>
+  </section>
+
+  @if (empresaModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-dialog" [formGroup]="empresaForm" (ngSubmit)="saveEmpresa()" (click)="$event.stopPropagation()">
+        <header>
+          <div>
+            <p>Empresa</p>
+            <h2>{{ selectedEmpresa() ? 'Editar empresa' : 'Nova empresa' }}</h2>
+          </div>
+          <button class="icon-button" type="button" (click)="closeEmpresaModal()">x</button>
+        </header>
+        <div class="form-grid">
+          <label>Codigo <input type="number" formControlName="numero" /></label>
+          <label>Nome <input formControlName="nome" /></label>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeEmpresaModal()">Cancelar</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar empresa' }}</button>
+        </div>
+      </form>
+    </section>
+  }
+
+  @if (revendaModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-dialog" [formGroup]="revendaForm" (ngSubmit)="saveRevenda()" (click)="$event.stopPropagation()">
+        <header>
+          <div>
+            <p>Revenda</p>
+            <h2>{{ selectedRevenda() ? 'Editar revenda' : 'Nova revenda' }}</h2>
+          </div>
+          <button class="icon-button" type="button" (click)="closeRevendaModal()">x</button>
+        </header>
+        <div class="form-grid two">
+          <label>
+            Empresa
+            <select formControlName="empresaId">
+              <option [ngValue]="0">Selecione</option>
+              @for (empresa of empresas(); track empresa.id) {
+                <option [ngValue]="empresa.id">{{ empresa.numero }} - {{ empresa.nome }}</option>
+              }
+            </select>
+          </label>
+          <label>Codigo revenda <input type="number" formControlName="numeroRevenda" /></label>
+          <label>Revenda <input formControlName="revenda" /></label>
+          <label>CNPJ <input formControlName="cnpj" /></label>
+          <label class="wide">Endereco <textarea formControlName="endereco" rows="3"></textarea></label>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeRevendaModal()">Cancelar</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar revenda' }}</button>
+        </div>
+      </form>
+    </section>
+  }
+</main>

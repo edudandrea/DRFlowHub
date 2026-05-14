@@ -23,15 +23,38 @@
 
     <nav class="app-side-nav">
       @for (link of visibleShellLinks(); track link.label) {
-        <button
-          type="button"
-          [class.active]="isActive(link)"
-          [class.disabled]="!link.enabled"
-          (click)="openShellLink(link)"
-        >
-          <span>{{ link.label }}</span>
-          <small>{{ link.description }}</small>
-        </button>
+        <div class="nav-group" [class.has-children]="visibleChildren(link).length > 0">
+          <button
+            type="button"
+            [class.active]="isActive(link) || hasActiveChild(link)"
+            [class.disabled]="!link.enabled"
+            [attr.aria-expanded]="visibleChildren(link).length > 0 ? isExpanded(link) : null"
+            (click)="openShellLink(link)"
+          >
+            <span>{{ link.label }}</span>
+            <small>{{ link.description }}</small>
+          </button>
+          @if (visibleChildren(link).length > 0) {
+            <div
+              class="sub-nav"
+              [class.expanded]="isExpanded(link)"
+              [attr.aria-hidden]="!isExpanded(link)"
+              [attr.aria-label]="'Submenu ' + link.label"
+            >
+              @for (child of visibleChildren(link); track child.label) {
+                <button
+                  type="button"
+                  [class.active]="isActive(child)"
+                  [class.disabled]="!child.enabled"
+                  (click)="openShellLink(child)"
+                >
+                  <span>{{ child.label }}</span>
+                  <small>{{ child.description }}</small>
+                </button>
+              }
+            </div>
+          }
+        </div>
       }
     </nav>
   </aside>

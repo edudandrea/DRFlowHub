@@ -12,7 +12,7 @@ import { ProfileFlowService } from '../../core/profile-flow.service';
 import { SolicitacoesService } from '../../core/solicitacoes.service';
 import { ThemeService } from '../../core/theme.service';
 
-type DashboardArea = 'admin' | 'rh' | 'ti' | 'compras' | 'financeiro' | 'departamento';
+type DashboardArea = 'admin' | 'rh' | 'ti' | 'compras' | 'controladoria' | 'financeiro' | 'departamento';
 
 interface MetricCard {
   label: string;
@@ -48,6 +48,17 @@ interface BirthdayItem {
   isToday: boolean;
 }
 
+interface ForecastDay {
+  date: string;
+  label: string;
+  icon: string;
+  iconTone: string;
+  temperatureMin: number;
+  temperatureMax: number;
+  rainChance: number;
+  summary: string;
+}
+
 @Component({
   selector: 'app-hub',
   imports: [],
@@ -73,6 +84,17 @@ export class HubPage implements OnInit {
   readonly tiItems = signal<ChamadoTI[]>([]);
   readonly comprasItems = signal<SolicitacaoCompra[]>([]);
   readonly users = signal<User[]>([]);
+  readonly forecast = signal<ForecastDay[]>([]);
+  readonly forecastLocation = signal('Porto Alegre');
+  readonly forecastLoading = signal(false);
+  readonly forecastError = signal('');
+
+  readonly greeting = computed(() => {
+    const firstName = (this.user()?.nome || 'Usuario').trim().split(/\s+/)[0];
+    const hour = new Date().getHours();
+    const period = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+    return `${period}, ${firstName}`;
+  });
 
   readonly currentArea = computed<DashboardArea>(() => {
     const user = this.user();
@@ -95,6 +117,10 @@ export class HubPage implements OnInit {
       return 'compras';
     }
 
+    if (role === 'Controladoria' || department.includes('controladoria')) {
+      return 'controladoria';
+    }
+
     if (department.includes('financeiro')) {
       return 'financeiro';
     }
@@ -107,19 +133,23 @@ export class HubPage implements OnInit {
     const user = this.user();
 
     if (area === 'admin') {
-      return 'Dashboard da administração';
+      return 'Dashboard da Administração';
     }
 
     if (area === 'rh') {
-      return this.auth.hasAnyRole(['RH']) ? 'Dashboard da administração de RH' : 'Dashboard de Recursos Humanos';
+      return this.auth.hasAnyRole(['RH']) ? 'Dashboard da Administração de RH' : 'Dashboard de Recursos Humanos';
     }
 
     if (area === 'ti') {
-      return this.auth.hasAnyRole(['TI']) ? 'Dashboard da administração de TI' : 'Dashboard de TI';
+      return this.auth.hasAnyRole(['TI']) ? 'Dashboard da Administração de TI' : 'Dashboard de TI';
     }
 
     if (area === 'compras') {
-      return this.auth.hasAnyRole(['Compras', 'Diretoria']) ? 'Dashboard da administração de Compras' : 'Dashboard de Compras';
+      return this.auth.hasAnyRole(['Compras', 'Diretoria']) ? 'Dashboard da Administração de Compras' : 'Dashboard de Compras';
+    }
+
+    if (area === 'controladoria') {
+      return 'Dashboard da Controladoria';
     }
 
     return `Dashboard de ${user?.departamento || 'departamento'}`;
@@ -131,7 +161,7 @@ export class HubPage implements OnInit {
       return 'Acompanhe os alertas dos setores ativos e entre nas administrações quando precisar agir.';
     }
 
-    return `${user?.nome || 'Usuario'}, estes sao os alertas priorizados para seu perfil e setor.`;
+    return `${user?.nome || 'Usuario'}, estes são os alertas priorizados para seu perfil e setor.`;
   });
 
   readonly isBirthdayToday = computed(() => {
@@ -141,10 +171,10 @@ export class HubPage implements OnInit {
 
   readonly birthdayGreeting = computed(() => {
     const firstName = (this.user()?.nome || 'voce').trim().split(/\s+/)[0];
-    return `Feliz aniversario, ${firstName}! Que seu dia seja leve, especial e cheio de boas noticias.`;
+    return `Feliz aniversario, ${firstName}! Que seu dia seja leve, especial e cheio de boas notícias.`;
   });
 
-  readonly showBirthdays = computed(() => this.currentArea() === 'rh' && this.auth.hasAnyRole(['Admin', 'RH']));
+  readonly showBirthdays = computed(() => this.currentArea() === 'rh' && this.auth.hasAccess('rh-admin'));
 
   readonly monthBirthdays = computed<BirthdayItem[]>(() => {
     const today = new Date();
@@ -177,16 +207,16 @@ export class HubPage implements OnInit {
         this.metric('Abertas agora', this.openRh().length + this.openTi().length + this.openCompras().length, 'RH, TI e Compras', 'attention'),
         this.metric('Prioridade alta', this.highPriorityAlerts().length, 'Solicitações criticas ou altas', 'danger'),
         this.metric('Reabertas', this.reopenedRh().length + this.reopenedTi().length, 'Itens que voltaram ao fluxo', 'danger'),
-        this.metric('Administracao', this.adminQueue().length, 'Pendencias para responsaveis', 'neutral'),
+        this.metric('Administracao', this.adminQueue().length, 'Pendencias para responsáveis', 'neutral'),
       ];
     }
 
     if (area === 'rh') {
       const items = this.rhScope();
       return [
-        this.metric('Abertas', items.filter((item) => this.isOpenStatus(item.status)).length, 'Solicitacoes em atendimento', 'attention'),
-        this.metric('Reabertas', items.filter((item) => this.isReopened(item.status)).length, 'Retornaram para analise', 'danger'),
-        this.metric('Alta prioridade', items.filter((item) => this.isHighPriority(item.prioridade)).length, 'Demandas sensiveis', 'danger'),
+        this.metric('Abertas', items.filter((item) => this.isOpenStatus(item.status)).length, 'Solicitações em atendimento', 'attention'),
+        this.metric('Reabertas', items.filter((item) => this.isReopened(item.status)).length, 'Retornaram para análise', 'danger'),
+        this.metric('Alta prioridade', items.filter((item) => this.isHighPriority(item.prioridade)).length, 'Demandas sensíveis', 'danger'),
         this.metric('Sem responsavel', items.filter((item) => !item.responsavel?.trim()).length, 'Precisam de triagem', 'neutral'),
       ];
     }
@@ -207,7 +237,16 @@ export class HubPage implements OnInit {
         this.metric('Aguardando diretoria', items.filter((item) => item.status === 'Aguardando Diretoria').length, 'Pendentes de aprovacao', 'attention'),
         this.metric('Em compras', items.filter((item) => item.status.includes('Compras') || item.status === 'Em compras').length, 'Com comprador ou fila ativa', 'neutral'),
         this.metric('Alta prioridade', items.filter((item) => this.isHighPriority(item.prioridade)).length, 'Compras urgentes', 'danger'),
-        this.metric('Concluidas', items.filter((item) => item.status === 'Concluida').length, 'Finalizadas no fluxo', 'success'),
+        this.metric('Concluídas', items.filter((item) => item.status === 'Concluida').length, 'Finalizadas no fluxo', 'success'),
+      ];
+    }
+
+    if (area === 'controladoria') {
+      return [
+        this.metric('Guias de ICMS', 0, 'Acesse a tela para consultar o Oracle', 'neutral'),
+        this.metric('Pendencias', 0, 'Indicadores serao exibidos no modulo', 'attention'),
+        this.metric('Pagamentos', 0, 'Controle por status pago ou pendente', 'success'),
+        this.metric('Integracao', 1, 'Banco Oracle configuravel', 'neutral'),
       ];
     }
 
@@ -253,30 +292,38 @@ export class HubPage implements OnInit {
     if (area === 'admin') {
       return [
         { label: 'Administrar RH', route: '/rh', description: 'Fila completa de solicitações de RH.', enabled: true },
-        { label: 'Administrar TI', route: '/ti', description: 'Chamados, responsaveis e reaberturas.', enabled: true },
+        { label: 'Administrar TI', route: '/ti', description: 'Chamados, responsáveis e reaberturas.', enabled: true },
         { label: 'Administrar Compras', route: '/compras', description: 'Aprovações e etapa de compras.', enabled: true },
+        { label: 'Controladoria', route: '/controladoria', description: 'Controle de guias de ICMS.', enabled: true },
         { label: 'Usuarios', route: '/usuarios', description: 'Crie acessos e ajuste perfis.', enabled: this.auth.hasAnyRole(['Admin', 'TI']) },
       ];
     }
 
     if (area === 'rh') {
       return [
-        { label: 'Abrir solicitacao', route: '/solicitacoes', description: 'Registrar uma nova demanda de RH.', enabled: true },
-        { label: 'Painel RH', route: '/rh', description: 'Administrar fila de RH.', enabled: this.auth.hasAnyRole(['Admin', 'RH']) },
+        { label: 'Abrir solicitação', route: '/solicitacoes', description: 'Registrar uma nova demanda de RH.', enabled: true },
+        { label: 'Painel RH', route: '/rh', description: 'Administrar fila de RH.', enabled: this.auth.hasAccess('rh-admin') },
       ];
     }
 
     if (area === 'ti') {
       return [
         { label: 'Abrir chamado', route: '/ti', description: 'Criar ou acompanhar chamado de TI.', enabled: true },
-        { label: 'Equipamentos', route: '/ti/equipamentos', description: 'Controle de entregas e retornos.', enabled: this.auth.hasAnyRole(['Admin', 'TI']) },
+        { label: 'Equipamentos', route: '/ti/equipamentos', description: 'Controle de entregas e retornos.', enabled: this.auth.hasAccess('ti-admin') },
       ];
     }
 
     if (area === 'compras') {
       return [
         { label: 'Nova compra', route: '/compras', description: 'Solicitar material, serviço ou contratação.', enabled: true },
-        { label: 'Aprovacoes', route: '/compras', description: 'Acompanhar diretoria e comprador.', enabled: this.auth.hasAnyRole(['Admin', 'Diretoria', 'Compras']) },
+        { label: 'Aprovacoes', route: '/compras', description: 'Acompanhar diretoria e comprador.', enabled: this.auth.hasAnyRole(['Admin', 'Diretoria']) || this.auth.hasAccess('compras-admin') },
+      ];
+    }
+
+    if (area === 'controladoria') {
+      return [
+        { label: 'Guias de ICMS', route: '/controladoria', description: 'Conferir pagamentos e pendencias no Oracle.', enabled: true },
+        { label: 'Compras', route: '/compras', description: 'Acompanhar solicitacoes que impactam pagamentos.', enabled: true },
       ];
     }
 
@@ -293,6 +340,7 @@ export class HubPage implements OnInit {
     }
 
     this.loadDashboard();
+    this.loadForecast();
   }
 
   loadDashboard(): void {
@@ -333,6 +381,26 @@ export class HubPage implements OnInit {
     void this.router.navigateByUrl(alert.route);
   }
 
+  loadForecast(): void {
+    this.forecastLoading.set(true);
+    this.forecastError.set('');
+
+    const fallback = { latitude: -30.0346, longitude: -51.2177, label: 'Porto Alegre' };
+    if (!navigator.geolocation) {
+      void this.fetchForecast(fallback.latitude, fallback.longitude, fallback.label);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        this.forecastLocation.set('Sua localizacao');
+        void this.fetchForecast(position.coords.latitude, position.coords.longitude, 'Sua localizacao');
+      },
+      () => void this.fetchForecast(fallback.latitude, fallback.longitude, fallback.label),
+      { timeout: 3500, maximumAge: 30 * 60 * 1000 },
+    );
+  }
+
   logout(): void {
     this.auth.logout();
   }
@@ -359,16 +427,94 @@ export class HubPage implements OnInit {
     return { label, value, detail, tone };
   }
 
+  private async fetchForecast(latitude: number, longitude: number, label: string): Promise<void> {
+    try {
+      const params = new URLSearchParams({
+        latitude: String(latitude),
+        longitude: String(longitude),
+        daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+        timezone: 'America/Sao_Paulo',
+        forecast_days: '4',
+      });
+      const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Forecast unavailable');
+      }
+
+      const data = await response.json() as {
+        daily?: {
+          time?: string[];
+          weather_code?: number[];
+          temperature_2m_max?: number[];
+          temperature_2m_min?: number[];
+          precipitation_probability_max?: number[];
+        };
+      };
+
+      const days = data.daily?.time ?? [];
+      this.forecast.set(days.slice(0, 4).map((date, index) => ({
+        date,
+        label: index === 0 ? 'Hoje' : this.weekdayLabel(date),
+        icon: this.weatherIcon(data.daily?.weather_code?.[index] ?? 0),
+        iconTone: this.weatherIconTone(data.daily?.weather_code?.[index] ?? 0),
+        temperatureMin: Math.round(data.daily?.temperature_2m_min?.[index] ?? 0),
+        temperatureMax: Math.round(data.daily?.temperature_2m_max?.[index] ?? 0),
+        rainChance: Math.round(data.daily?.precipitation_probability_max?.[index] ?? 0),
+        summary: this.weatherSummary(data.daily?.weather_code?.[index] ?? 0),
+      })));
+      this.forecastLocation.set(label);
+      this.forecastLoading.set(false);
+    } catch {
+      this.forecast.set([]);
+      this.forecastLoading.set(false);
+      this.forecastError.set('Nao foi possivel carregar a previsao agora.');
+    }
+  }
+
+  private weekdayLabel(value: string): string {
+    const date = new Date(`${value}T12:00:00`);
+    return date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' }).replace('.', '');
+  }
+
+  private weatherSummary(code: number): string {
+    if ([0].includes(code)) return 'Ceu limpo';
+    if ([1, 2].includes(code)) return 'Parcialmente nublado';
+    if ([3, 45, 48].includes(code)) return 'Nublado';
+    if ([51, 53, 55, 56, 57].includes(code)) return 'Garoa';
+    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'Chuva';
+    if ([95, 96, 99].includes(code)) return 'Temporal';
+    return 'Tempo instavel';
+  }
+
+  private weatherIcon(code: number): string {
+    if ([0].includes(code)) return '☀';
+    if ([1, 2].includes(code)) return '◐';
+    if ([3, 45, 48].includes(code)) return '☁';
+    if ([51, 53, 55, 56, 57].includes(code)) return '☂';
+    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '☔';
+    if ([95, 96, 99].includes(code)) return '⚡';
+    return '◌';
+  }
+
+  private weatherIconTone(code: number): string {
+    if ([0].includes(code)) return 'sun';
+    if ([1, 2].includes(code)) return 'partial';
+    if ([3, 45, 48].includes(code)) return 'cloud';
+    if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'rain';
+    if ([95, 96, 99].includes(code)) return 'storm';
+    return 'neutral';
+  }
+
   private rhScope(): SolicitacaoRH[] {
-    return this.auth.hasAnyRole(['Admin', 'RH']) ? this.rhItems() : this.myRhItems();
+    return this.auth.hasAccess('rh-admin') ? this.rhItems() : this.myRhItems();
   }
 
   private tiScope(): ChamadoTI[] {
-    return this.auth.hasAnyRole(['Admin', 'TI']) ? this.tiItems() : this.myTiItems();
+    return this.auth.hasAccess('ti-admin') ? this.tiItems() : this.myTiItems();
   }
 
   private comprasScope(): SolicitacaoCompra[] {
-    return this.auth.hasAnyRole(['Admin', 'Compras', 'Diretoria']) ? this.comprasItems() : this.myCompraItems();
+    return this.auth.hasAnyRole(['Admin', 'Diretoria']) || this.auth.hasAccess('compras-admin') ? this.comprasItems() : this.myCompraItems();
   }
 
   private openRh(): SolicitacaoRH[] {
@@ -439,7 +585,7 @@ export class HubPage implements OnInit {
         detail: `${item.solicitante} - ${item.departamento || 'Sem departamento'}`,
         priority: item.prioridade,
         status: item.status,
-        route: this.auth.hasAnyRole(['Admin', 'RH']) ? '/rh' : '/solicitacoes',
+        route: this.auth.hasAccess('rh-admin') ? '/rh' : '/solicitacoes',
         date: item.dataSolicitacao,
       }));
   }

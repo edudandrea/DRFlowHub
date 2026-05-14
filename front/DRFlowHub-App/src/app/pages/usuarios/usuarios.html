@@ -42,10 +42,14 @@
     </article>
     <article>
       <span>Perfis</span>
-      <strong>{{ roles.length }}</strong>
+      <strong>{{ roles().length }}</strong>
     </article>
     <article>
-      <span>Unidades</span>
+      <span>Empresas</span>
+      <strong>{{ empresas().length }}</strong>
+    </article>
+    <article>
+      <span>Revendas</span>
       <strong>{{ unidades().length }}</strong>
     </article>
   </section>
@@ -59,6 +63,15 @@
         </div>
         <div class="filters">
           <input type="search" placeholder="Buscar usuario" [value]="search()" (input)="search.set($any($event.target).value)" />
+          <select [value]="userSortField()" (change)="setUserSort($any($event.target).value)">
+            <option value="nome">Nome</option>
+            <option value="email">Email</option>
+            <option value="role">Perfil</option>
+            <option value="departamento">Departamento</option>
+            <option value="cargo">Cargo</option>
+            <option value="unidadeNome">Empresa / Revenda</option>
+          </select>
+          <button class="secondary" type="button" (click)="toggleSortDirection()">{{ sortDirection() === 'asc' ? 'A-Z' : 'Z-A' }}</button>
           <button class="primary" type="button" (click)="openCreate()">Criar usuario</button>
         </div>
       </div>
@@ -73,7 +86,7 @@
               <th>Perfil</th>
               <th>Status</th>
               <th>Departamento</th>
-              <th>Unidade</th>
+              <th>Empresa / Revenda</th>
               <th>Cargo</th>
               <th>Nascimento</th>
             </tr>
@@ -88,7 +101,7 @@
                 <td colspan="9">Nenhum usuario encontrado.</td>
               </tr>
             } @else {
-              @for (item of filtered(); track item.id) {
+              @for (item of pagedUsers(); track item.id) {
                 <tr [class.active]="selected()?.id === item.id" [class.inactive-user]="!item.ativo" (click)="openEdit(item)">
                   <td>{{ item.nome }}</td>
                   <td>{{ item.cpf }}</td>
@@ -98,58 +111,25 @@
                   <td>{{ item.departamento }}</td>
                   <td>{{ item.unidadeNome || 'Nao vinculada' }}</td>
                   <td>{{ item.cargo }}</td>
-                  <td>{{ item.dataNascimento | date: 'dd/MM/yyyy' }}</td>
+                  <td>{{ item.dataNascimento | date: 'dd/MM/yyyy' : 'UTC' }}</td>
                 </tr>
               }
             }
           </tbody>
         </table>
       </div>
-    </div>
-
-    <div class="table-panel">
-      <div class="panel-title">
-        <div>
-          <h2>Unidades cadastradas</h2>
-          <p>Cadastre as unidades usadas nas solicitacoes.</p>
+      @if (filtered().length > pageSize()) {
+        <div class="pagination">
+          <button class="secondary" type="button" (click)="previousUserPage()" [disabled]="userPage() <= 1">Anterior</button>
+          <span>Pagina {{ userPage() }} de {{ totalUserPages() }}</span>
+          <button class="secondary" type="button" (click)="nextUserPage()" [disabled]="userPage() >= totalUserPages()">Proxima</button>
         </div>
-        <div class="filters">
-          <input type="search" placeholder="Buscar unidade" [value]="unidadeSearch()" (input)="unidadeSearch.set($any($event.target).value)" />
-          <button class="primary" type="button" (click)="openCreateUnidade()">Criar unidade</button>
-        </div>
-      </div>
-
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>CNPJ</th>
-              <th>Endereco</th>
-            </tr>
-          </thead>
-          <tbody>
-            @if (filteredUnidades().length === 0) {
-              <tr>
-                <td colspan="3">Nenhuma unidade cadastrada.</td>
-              </tr>
-            } @else {
-              @for (unidade of filteredUnidades(); track unidade.id) {
-                <tr [class.active]="selectedUnidade()?.id === unidade.id" (click)="openEditUnidade(unidade)">
-                  <td>{{ unidade.nome }}</td>
-                  <td>{{ unidade.cnpj }}</td>
-                  <td>{{ unidade.endereco }}</td>
-                </tr>
-              }
-            }
-          </tbody>
-        </table>
-      </div>
+      }
     </div>
   </section>
 
   @if (modalOpen()) {
-    <div class="modal-backdrop" role="presentation" (click)="closeModal()">
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
       <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div>
@@ -180,7 +160,7 @@
             <label>
               Perfil
               <select formControlName="role">
-                @for (role of roles; track role) {
+                @for (role of roles(); track role) {
                   <option [value]="role">{{ role }}</option>
                 }
               </select>
@@ -203,15 +183,26 @@
             </label>
           </div>
 
-          <label>
-            Unidade
-            <select formControlName="unidadeId">
-              <option [value]="0">Sem unidade vinculada</option>
-              @for (unidade of unidades(); track unidade.id) {
-                <option [value]="unidade.id">{{ unidade.nome }}</option>
-              }
-            </select>
-          </label>
+          <div class="grid two">
+            <label>
+              Empresa
+              <select formControlName="empresaSelecionadaId" (change)="onEmpresaUsuarioChange(form.controls.empresaSelecionadaId.value)">
+                <option [ngValue]="0">Sem empresa vinculada</option>
+                @for (empresa of empresas(); track empresa.id) {
+                  <option [ngValue]="empresa.id">{{ empresa.numero }} - {{ empresa.nome }}</option>
+                }
+              </select>
+            </label>
+            <label>
+              Revenda
+              <select formControlName="unidadeId" [disabled]="!form.controls.empresaSelecionadaId.value">
+                <option [ngValue]="0">Sem revenda vinculada</option>
+                @for (unidade of revendasDoUsuario(); track unidade.id) {
+                  <option [ngValue]="unidade.id">{{ unidade.numeroRevenda }} - {{ unidade.revenda }}</option>
+                }
+              </select>
+            </label>
+          </div>
 
           <label>
             Status
@@ -244,21 +235,36 @@
   }
 
   @if (unidadeModalOpen()) {
-    <div class="modal-backdrop" role="presentation" (click)="closeUnidadeModal()">
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeUnidadeModal()">
       <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="unidade-modal-title" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div>
-            <p class="system-name">{{ unidadeModalMode() === 'create' ? 'Nova unidade' : 'Unidade #' + selectedUnidade()?.id }}</p>
-            <h2 id="unidade-modal-title">{{ unidadeModalMode() === 'create' ? 'Criar unidade' : 'Editar unidade' }}</h2>
+            <p class="system-name">{{ unidadeModalMode() === 'create' ? 'Nova empresa/revenda' : 'Empresa/revenda #' + selectedUnidade()?.id }}</p>
+            <h2 id="unidade-modal-title">{{ unidadeModalMode() === 'create' ? 'Criar revenda' : 'Editar revenda' }}</h2>
             <span>{{ selectedUnidade()?.cnpj }}</span>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeUnidadeModal()" [disabled]="saving()">x</button>
         </div>
 
         <form class="user-form" [formGroup]="unidadeForm" (ngSubmit)="submitUnidade()">
+          <div class="grid two">
+            <label>
+              Empresa
+              <select formControlName="empresaId">
+                <option [ngValue]="0">Selecione a empresa</option>
+                @for (empresa of empresas(); track empresa.id) {
+                  <option [ngValue]="empresa.id">{{ empresa.numero }} - {{ empresa.nome }}</option>
+                }
+              </select>
+            </label>
+            <label>
+              Numero da revenda
+              <input type="number" formControlName="numeroRevenda" min="1" />
+            </label>
+          </div>
           <label>
-            Nome
-            <input formControlName="nome" />
+            Revenda
+            <input formControlName="revenda" placeholder="Ex: Caxias do Sul" />
           </label>
           <label>
             CNPJ
@@ -271,7 +277,39 @@
           <div class="modal-actions">
             <button class="secondary" type="button" (click)="closeUnidadeModal()" [disabled]="saving()">Cancelar</button>
             <button class="primary" type="submit" [disabled]="saving()">
-              {{ saving() ? 'Salvando...' : 'Salvar unidade' }}
+              {{ saving() ? 'Salvando...' : 'Salvar revenda' }}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (empresaModalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeEmpresaModal()">
+      <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="empresa-modal-title" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <p class="system-name">{{ empresaModalMode() === 'create' ? 'Nova empresa' : 'Empresa #' + selectedEmpresa()?.id }}</p>
+            <h2 id="empresa-modal-title">{{ empresaModalMode() === 'create' ? 'Criar empresa' : 'Editar empresa' }}</h2>
+            <span>{{ empresaModalMode() === 'create' ? 'Informe o numero e o nome da empresa.' : selectedEmpresa()?.nome }}</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeEmpresaModal()" [disabled]="saving()">x</button>
+        </div>
+
+        <form class="user-form" [formGroup]="empresaForm" (ngSubmit)="submitEmpresa()">
+          <label>
+            Numero da empresa
+            <input type="number" formControlName="numero" min="1" />
+          </label>
+          <label>
+            Nome da empresa
+            <input formControlName="nome" placeholder="Ex: Renault" />
+          </label>
+          <div class="modal-actions">
+            <button class="secondary" type="button" (click)="closeEmpresaModal()" [disabled]="saving()">Cancelar</button>
+            <button class="primary" type="submit" [disabled]="saving()">
+              {{ saving() ? 'Salvando...' : (empresaModalMode() === 'create' ? 'Salvar empresa' : 'Atualizar empresa') }}
             </button>
           </div>
         </form>

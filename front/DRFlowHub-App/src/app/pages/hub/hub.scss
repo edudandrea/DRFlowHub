@@ -172,6 +172,12 @@ select {
   line-height: 1.15;
 }
 
+.dashboard-intro p:not(.system-name) {
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-weight: 750;
+}
+
 .birthday-banner {
   align-items: center;
   justify-content: space-between;
@@ -255,10 +261,15 @@ select {
 .dashboard-grid {
   align-items: flex-start;
   gap: 18px;
+  flex-wrap: wrap;
 }
 
 .alerts-panel {
   flex: 1 1 auto;
+}
+
+.forecast-panel {
+  flex: 1 1 100%;
 }
 
 .actions-panel {
@@ -276,6 +287,97 @@ select {
   border-radius: 8px;
   background: var(--color-surface);
   box-shadow: var(--shadow-panel);
+}
+
+.panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel header span {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mini-button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--color-button-soft-bg);
+  color: var(--color-button-soft-text);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.forecast-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.forecast-day {
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card-alt);
+}
+
+.forecast-day div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.weather-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-surface);
+  font-size: 24px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.weather-icon.sun {
+  color: #d97706;
+}
+
+.weather-icon.partial {
+  color: #2563eb;
+}
+
+.weather-icon.cloud {
+  color: #64748b;
+}
+
+.weather-icon.rain {
+  color: #0284c7;
+}
+
+.weather-icon.storm {
+  color: #7c3aed;
+}
+
+.forecast-day span {
+  color: var(--color-brand-blue);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.forecast-day p,
+.forecast-day small {
+  color: var(--color-muted);
 }
 
 .alert-list {
@@ -429,6 +531,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .forecast-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dashboard-grid {
     flex-direction: column;
   }
@@ -477,8 +583,13 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .forecast-list {
+    grid-template-columns: 1fr;
+  }
+
   .user-box,
-  .alert-row {
+  .alert-row,
+  .panel header {
     align-items: stretch;
     flex-direction: column;
     width: 100%;

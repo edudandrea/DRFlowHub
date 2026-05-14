@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using DRFlowHub.Api.Data;
 using DRFlowHub.Api.Data.Interfaces;
 using DRFlowHub.Api.Dtos;
 using DRFlowHub.Api.Dtos.Auth;
@@ -15,11 +16,13 @@ namespace DRFlowHub.Api.Services
     {
         private readonly IUserRepo _repo;
         private readonly IConfiguration _configuration;
+        private readonly AppDbContext _context;
 
-        public AuthService(IUserRepo repo, IConfiguration configuration)
+        public AuthService(IUserRepo repo, IConfiguration configuration, AppDbContext context)
         {
             _repo = repo;
             _configuration = configuration;
+            _context = context;
         }
 
         public LoginResponseDto Login(LoginRequestDto dto)
@@ -37,7 +40,12 @@ namespace DRFlowHub.Api.Services
 
         public UserResponseDto CreateUser(UserCreateDto dto, int? createdByUserId)
         {
+            dto.Role = NormalizeRole(dto.Role);
+            if (!ShouldRequireUnidade(dto.Role))
+                dto.UnidadeId = null;
+
             ValidateUser(dto.Nome, dto.Cpf, dto.Email, dto.Senha, dto.Role);
+            ValidateConfiguredRole(dto.Role);
             ValidateUnidadeForRole(dto.Role, dto.UnidadeId);
 
             if (_repo.Query().Any(u => u.Email == dto.Email.Trim()))
@@ -52,7 +60,7 @@ namespace DRFlowHub.Api.Services
                 Cpf = dto.Cpf.Trim(),
                 Email = dto.Email.Trim().ToLowerInvariant(),
                 Senha = PasswordHasher.Hash(dto.Senha),
-                Role = NormalizeRole(dto.Role),
+                Role = dto.Role,
                 Departamento = dto.Departamento.Trim(),
                 Cargo = dto.Cargo.Trim(),
                 Ativo = dto.Ativo,
@@ -74,8 +82,16 @@ namespace DRFlowHub.Api.Services
 
         private LoginResponseDto CreateLoginResponse(Users user)
         {
+            EnsureDefaultPerfis();
             var expiresAt = DateTime.UtcNow.AddMinutes(
                 _configuration.GetValue<int?>("Jwt:ExpiresMinutes") ?? 480);
+
+            var role = NormalizeRole(user.Role);
+            var acessos = _context.PerfilSistema
+                .Where(p => p.Nome == role)
+                .SelectMany(p => p.Acessos.Select(a => a.Chave))
+                .Distinct()
+                .ToList();
 
             var claims = new List<Claim>
             {
@@ -84,8 +100,9 @@ namespace DRFlowHub.Api.Services
                 new(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new(ClaimTypes.Name, user.Nome),
                 new(ClaimTypes.Email, user.Email),
-                new(ClaimTypes.Role, NormalizeRole(user.Role))
+                new(ClaimTypes.Role, role)
             };
+            claims.AddRange(acessos.Select(acesso => new Claim("access", acesso)));
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -100,7 +117,7 @@ namespace DRFlowHub.Api.Services
             {
                 Token = new JwtSecurityTokenHandler().WriteToken(token),
                 ExpiresAt = expiresAt,
-                User = ToResponse(user)
+                User = ToResponse(user, acessos)
             };
         }
 
@@ -118,7 +135,7 @@ namespace DRFlowHub.Api.Services
             if (string.IsNullOrWhiteSpace(senha) || senha.Length < 6)
                 throw new InvalidOperationException("Senha deve ter pelo menos 6 caracteres.");
 
-            if (!IsValidRole(role))
+            if (string.IsNullOrWhiteSpace(role))
                 throw new InvalidOperationException("Perfil invalido.");
         }
 
@@ -129,33 +146,63 @@ namespace DRFlowHub.Api.Services
                 || RoleScope.IsTI(role)
                 || RoleScope.IsDiretoria(role)
                 || RoleScope.IsCompras(role)
+                || RoleScope.IsControladoria(role)
+                || RoleScope.IsQualidadeNissan(role)
+                || RoleScope.IsGerenteGeralPecas(role)
+                || RoleScope.IsGerentePecas(role)
+                || RoleScope.IsVendedorPecas(role)
                 || RoleScope.IsGerente(role)
                 || RoleScope.IsUser(role);
         }
 
         public static string NormalizeRole(string role)
         {
+            var builtIn = NormalizeBuiltInRole(role);
+            return string.IsNullOrWhiteSpace(builtIn) ? role.Trim() : builtIn;
+        }
+
+        public static string NormalizeBuiltInRole(string role)
+        {
             if (RoleScope.IsAdmin(role)) return "Admin";
             if (RoleScope.IsRH(role)) return "RH";
             if (RoleScope.IsTI(role)) return "TI";
             if (RoleScope.IsDiretoria(role)) return "Diretoria";
             if (RoleScope.IsCompras(role)) return "Compras";
+            if (RoleScope.IsControladoria(role)) return "Controladoria";
+            if (RoleScope.IsQualidadeNissan(role)) return "Qualidade Nissan";
+            if (RoleScope.IsGerenteGeralPecas(role)) return "Gerente Geral de Pecas";
+            if (RoleScope.IsGerentePecas(role)) return "Gerente de Pecas";
+            if (RoleScope.IsVendedorPecas(role)) return "Vendedor de Pecas";
             if (RoleScope.IsGerente(role)) return "Gestor";
-            return "Usuario";
+            if (RoleScope.IsUser(role)) return "Usuario";
+            return string.Empty;
         }
 
         public static bool ShouldRequireUnidade(string role)
         {
-            return RoleScope.IsGerente(role) || RoleScope.IsUser(role);
+            if (RoleScope.IsAdmin(role)
+                || RoleScope.IsTI(role)
+                || RoleScope.IsControladoria(role)
+                || RoleScope.IsQualidadeNissan(role)
+                || RoleScope.IsGerenteGeralPecas(role)
+                || RoleScope.IsVendedorPecas(role)
+                || RoleScope.IsRH(role)
+                || RoleScope.IsDiretoria(role)
+                || RoleScope.IsCompras(role))
+            {
+                return false;
+            }
+
+            return RoleScope.IsGerentePecas(role) || RoleScope.IsGerente(role) || RoleScope.IsUser(role);
         }
 
         public static void ValidateUnidadeForRole(string role, int? unidadeId)
         {
             if (ShouldRequireUnidade(role) && (!unidadeId.HasValue || unidadeId.Value <= 0))
-                throw new InvalidOperationException("Unidade e obrigatoria para perfis Gestor e Usuario.");
+                throw new InvalidOperationException("Empresa e revenda sao obrigatorias para este perfil.");
         }
 
-        public static UserResponseDto ToResponse(Users user)
+        public static UserResponseDto ToResponse(Users user, List<string>? acessos = null)
         {
             return new UserResponseDto
             {
@@ -166,11 +213,63 @@ namespace DRFlowHub.Api.Services
                 Role = NormalizeRole(user.Role),
                 Departamento = user.Departamento,
                 Cargo = user.Cargo,
+                RustDeskId = user.RustDeskId,
+                RustDeskHostname = user.RustDeskHostname,
+                RustDeskSistemaOperacional = user.RustDeskSistemaOperacional,
                 Ativo = user.Ativo,
                 UnidadeId = user.UnidadeId,
                 UnidadeNome = user.Unidade?.Nome ?? string.Empty,
-                DataNascimento = user.DataNascimento
+                DataNascimento = user.DataNascimento,
+                Acessos = acessos ?? new List<string>()
             };
+        }
+
+        private void ValidateConfiguredRole(string role)
+        {
+            EnsureDefaultPerfis();
+            if (!_context.PerfilSistema.Any(p => p.Nome == role))
+                throw new InvalidOperationException("Perfil invalido.");
+        }
+
+        private void EnsureDefaultPerfis()
+        {
+            var defaults = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Admin"] = PerfisService.AcessosDisponiveis.Select(a => a.Chave).ToArray(),
+                ["TI"] = new[] { "dashboard-admin", "ti", "ti-admin", "equipamentos-ti", "controladoria", "vendas-pecas", "veiculos", "veiculos-bi", "usuarios", "empresas-revendas", "perfis" },
+                ["RH"] = new[] { "dashboard-rh", "rh", "rh-admin", "cartao-ponto" },
+                ["Diretoria"] = new[] { "compras" },
+                ["Compras"] = new[] { "compras", "compras-admin" },
+                ["Controladoria"] = new[] { "controladoria" },
+                ["Qualidade Nissan"] = new[] { "veiculos", "veiculos-bi" },
+                ["Gerente Geral de Pecas"] = new[] { "vendas-pecas" },
+                ["Gerente de Pecas"] = new[] { "vendas-pecas" },
+                ["Vendedor de Pecas"] = new[] { "vendas-pecas" },
+                ["Gestor"] = Array.Empty<string>(),
+                ["Usuario"] = Array.Empty<string>(),
+            };
+
+            foreach (var item in defaults)
+            {
+                var perfil = _context.PerfilSistema.Include(p => p.Acessos).FirstOrDefault(p => p.Nome == item.Key);
+                if (perfil is null)
+                {
+                    perfil = new PerfilSistema { Nome = item.Key, PadraoSistema = true };
+                    foreach (var acesso in item.Value)
+                        perfil.Acessos.Add(new PerfilSistemaAcesso { Chave = acesso });
+                    _context.PerfilSistema.Add(perfil);
+                    continue;
+                }
+
+                if (!perfil.PadraoSistema)
+                    continue;
+
+                var current = perfil.Acessos.Select(a => a.Chave).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var acesso in item.Value.Where(acesso => !current.Contains(acesso)))
+                    perfil.Acessos.Add(new PerfilSistemaAcesso { Chave = acesso });
+            }
+
+            _context.SaveChanges();
         }
     }
 }

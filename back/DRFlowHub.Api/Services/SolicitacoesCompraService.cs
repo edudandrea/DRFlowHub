@@ -17,11 +17,11 @@ namespace DRFlowHub.Api.Services
             _userRepo = userRepo;
         }
 
-        public List<SolicitacaoCompraResponseDto> List(string role, int userId)
+        public List<SolicitacaoCompraResponseDto> List(string role, int userId, IEnumerable<string> acessos)
         {
             var query = _repo.Query().AsNoTracking();
 
-            if (!CanViewAll(role))
+            if (!CanViewAll(role, acessos))
                 query = query.Where(s => s.Userid == userId);
 
             return query
@@ -30,11 +30,11 @@ namespace DRFlowHub.Api.Services
                 .ToList();
         }
 
-        public SolicitacaoCompraResponseDto Add(SolicitacaoCompraCreateDto dto, string role, int currentUserId, string documentoUrl)
+        public SolicitacaoCompraResponseDto Add(SolicitacaoCompraCreateDto dto, string role, int currentUserId, string documentoUrl, IEnumerable<string> acessos)
         {
             Validate(dto.Titulo, dto.Descricao, dto.Justificativa, dto.FornecedorSugerido);
 
-            var ownerUserId = RoleScope.IsAdmin(role) || RoleScope.IsCompras(role) || RoleScope.IsDiretoria(role)
+            var ownerUserId = CanViewAll(role, acessos)
                 ? (dto.Userid > 0 ? dto.Userid : currentUserId)
                 : currentUserId;
 
@@ -66,11 +66,11 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public SolicitacaoCompraResponseDto Update(int id, SolicitacaoCompraUpdateDto dto, string role, int currentUserId)
+        public SolicitacaoCompraResponseDto Update(int id, SolicitacaoCompraUpdateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
 
-            if (!CanManageCompras(role) && !RoleScope.IsAdmin(role))
+            if (!CanManageCompras(role, acessos))
                 throw new UnauthorizedAccessException("Somente Compras pode atualizar a etapa de compra.");
 
             if (IsFinalizada(solicitacao))
@@ -105,9 +105,9 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public List<SolicitacaoCompraComunicacaoResponseDto> ListComunicacoes(int id, string role, int currentUserId)
+        public List<SolicitacaoCompraComunicacaoResponseDto> ListComunicacoes(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            GetAccessibleSolicitacao(id, role, currentUserId, asNoTracking: true);
+            GetAccessibleSolicitacao(id, role, currentUserId, acessos, asNoTracking: true);
 
             return _repo.QueryComunicacoes()
                 .AsNoTracking()
@@ -117,9 +117,9 @@ namespace DRFlowHub.Api.Services
                 .ToList();
         }
 
-        public SolicitacaoCompraComunicacaoResponseDto AddComunicacao(int id, SolicitacaoCompraComunicacaoCreateDto dto, string role, int currentUserId)
+        public SolicitacaoCompraComunicacaoResponseDto AddComunicacao(int id, SolicitacaoCompraComunicacaoCreateDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
             if (IsFinalizada(solicitacao))
                 throw new InvalidOperationException("Solicitacoes concluidas ou canceladas nao permitem novas mensagens.");
 
@@ -147,12 +147,12 @@ namespace DRFlowHub.Api.Services
             return MapComunicacao(comunicacao);
         }
 
-        public SolicitacaoCompraResponseDto Aprovar(int id, SolicitacaoCompraAprovacaoDto dto, string role, int currentUserId)
+        public SolicitacaoCompraResponseDto Aprovar(int id, SolicitacaoCompraAprovacaoDto dto, string role, int currentUserId, IEnumerable<string> acessos)
         {
             if (!CanApprove(role))
                 throw new UnauthorizedAccessException("Somente Diretoria pode aprovar solicitacoes de compras.");
 
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos);
             var aprovador = _userRepo.Query().AsNoTracking().FirstOrDefault(u => u.Id == currentUserId);
 
             solicitacao.Status = dto.Aprovada ? "Aprovada - Enviada para Compras" : "Reprovada";
@@ -167,18 +167,18 @@ namespace DRFlowHub.Api.Services
             return MapResponse(solicitacao);
         }
 
-        public SolicitacaoCompra GetAttachmentOwner(int id, string role, int currentUserId)
+        public SolicitacaoCompra GetAttachmentOwner(int id, string role, int currentUserId, IEnumerable<string> acessos)
         {
-            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, asNoTracking: true);
+            var solicitacao = GetAccessibleSolicitacao(id, role, currentUserId, acessos, asNoTracking: true);
             if (string.IsNullOrWhiteSpace(solicitacao.DocumentoUrl))
                 throw new FileNotFoundException("Esta solicitacao nao possui documento.");
 
             return solicitacao;
         }
 
-        private static bool CanViewAll(string role)
+        private static bool CanViewAll(string role, IEnumerable<string> acessos)
         {
-            return RoleScope.IsAdmin(role) || RoleScope.IsDiretoria(role) || RoleScope.IsCompras(role);
+            return RoleScope.IsAdmin(role) || RoleScope.IsDiretoria(role) || HasAccess(acessos, "compras-admin");
         }
 
         private static bool CanApprove(string role)
@@ -186,10 +186,13 @@ namespace DRFlowHub.Api.Services
             return RoleScope.IsAdmin(role) || RoleScope.IsDiretoria(role);
         }
 
-        private static bool CanManageCompras(string role)
+        private static bool CanManageCompras(string role, IEnumerable<string> acessos)
         {
-            return RoleScope.IsAdmin(role) || RoleScope.IsCompras(role);
+            return RoleScope.IsAdmin(role) || HasAccess(acessos, "compras-admin");
         }
+
+        private static bool HasAccess(IEnumerable<string> acessos, string chave)
+            => acessos.Any(acesso => string.Equals(acesso, chave, StringComparison.OrdinalIgnoreCase));
 
         private static bool IsFinalizada(SolicitacaoCompra solicitacao)
         {
@@ -199,14 +202,14 @@ namespace DRFlowHub.Api.Services
                 || string.Equals(solicitacao.Status, "Reprovada", StringComparison.OrdinalIgnoreCase);
         }
 
-        private SolicitacaoCompra GetAccessibleSolicitacao(int id, string role, int currentUserId, bool asNoTracking = false)
+        private SolicitacaoCompra GetAccessibleSolicitacao(int id, string role, int currentUserId, IEnumerable<string> acessos, bool asNoTracking = false)
         {
             var query = asNoTracking ? _repo.Query().AsNoTracking() : _repo.Query();
             var solicitacao = query.FirstOrDefault(s => s.Id == id);
             if (solicitacao is null)
                 throw new KeyNotFoundException("Solicitacao de compra nao encontrada.");
 
-            if (!CanViewAll(role) && solicitacao.Userid != currentUserId)
+            if (!CanViewAll(role, acessos) && solicitacao.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar esta solicitacao de compra.");
 
             return solicitacao;

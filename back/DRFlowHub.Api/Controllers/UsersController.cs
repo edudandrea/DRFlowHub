@@ -52,6 +52,12 @@ namespace DRFlowHub.Api.Controllers
             }
         }
 
+        [HttpPost("{id:int}/update")]
+        public IActionResult UpdateViaPost(int id, [FromBody] UserUpdateDto dto)
+        {
+            return Update(id, dto);
+        }
+
         [HttpPut("me")]
         public IActionResult UpdateProfile([FromBody] UserProfileUpdateDto dto)
         {
@@ -76,6 +82,23 @@ namespace DRFlowHub.Api.Controllers
             {
                 _service.ChangePassword(GetCurrentUserId(), dto);
                 return Ok(new { sucesso = true, mensagem = "Senha alterada com sucesso." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+        }
+
+        [HttpPost("me/rustdesk")]
+        public IActionResult RegisterRustDesk([FromBody] UserRustDeskRegisterDto dto)
+        {
+            try
+            {
+                return Ok(_service.RegisterRustDesk(GetCurrentUserId(), dto));
             }
             catch (InvalidOperationException ex)
             {

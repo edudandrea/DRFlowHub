@@ -21,6 +21,7 @@ interface BirthdayItem {
   day: number;
   isToday: boolean;
 }
+type AdminSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'prioridade' | 'status' | 'dataSolicitacao';
 
 @Component({
   selector: 'app-admin',
@@ -62,6 +63,10 @@ export class AdminPage implements OnInit, OnDestroy {
   readonly search = signal('');
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
+  readonly page = signal(1);
+  readonly pageSize = signal(10);
+  readonly sortField = signal<AdminSortField>('id');
+  readonly sortDirection = signal<'asc' | 'desc'>('desc');
   readonly user = computed(() => this.auth.user());
   readonly abertas = computed(() => this.solicitacoes().filter((item) => item.status === 'Aberta').length);
   readonly avaliacoesRespondidas = computed(() => this.solicitacoes().filter((item) => !!item.satisfacaoNota).length);
@@ -96,7 +101,7 @@ export class AdminPage implements OnInit, OnDestroy {
     const from = this.parseDateFilter(this.dateFrom(), false);
     const to = this.parseDateFilter(this.dateTo(), true);
 
-    return this.solicitacoes().filter((item) => {
+    const filtered = this.solicitacoes().filter((item) => {
       const itemDate = new Date(item.dataSolicitacao);
       const matchesTerm = !term || [item.titulo, item.solicitante, item.departamento, item.status, item.prioridade]
         .join(' ')
@@ -107,7 +112,11 @@ export class AdminPage implements OnInit, OnDestroy {
 
       return matchesTerm && matchesFrom && matchesTo;
     });
+
+    return this.sortItems(filtered);
   });
+  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.filtered().length / this.pageSize())));
+  readonly paged = computed(() => this.filtered().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
 
   readonly form = this.fb.nonNullable.group({
     unidade: ['', Validators.required],
@@ -416,6 +425,25 @@ export class AdminPage implements OnInit, OnDestroy {
   clearDateFilters(): void {
     this.dateFrom.set('');
     this.dateTo.set('');
+    this.page.set(1);
+  }
+
+  setSort(field: AdminSortField): void {
+    if (this.sortField() === field) {
+      this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortField.set(field);
+      this.sortDirection.set(field === 'id' || field === 'dataSolicitacao' ? 'desc' : 'asc');
+    }
+    this.page.set(1);
+  }
+
+  previousPage(): void {
+    this.page.set(Math.max(1, this.safePage() - 1));
+  }
+
+  nextPage(): void {
+    this.page.set(Math.min(this.totalPages(), this.safePage() + 1));
   }
 
   isFinalized(item: SolicitacaoRH | null): boolean {
@@ -478,6 +506,23 @@ export class AdminPage implements OnInit, OnDestroy {
 
     const date = new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private safePage(): number {
+    return Math.min(Math.max(this.page(), 1), this.totalPages());
+  }
+
+  private sortItems(items: SolicitacaoRH[]): SolicitacaoRH[] {
+    const field = this.sortField();
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    return items.slice().sort((a, b) => {
+      const aValue = a[field];
+      const bValue = b[field];
+      const result = typeof aValue === 'number' && typeof bValue === 'number'
+        ? aValue - bValue
+        : String(aValue ?? '').localeCompare(String(bValue ?? ''));
+      return result * direction;
+    });
   }
 
   private dateParts(value: string): { month: number; day: number } | null {

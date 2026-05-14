@@ -6,6 +6,7 @@
 
 .topbar,
 .filters,
+.goal-alert,
 .metrics,
 .bi-grid {
   padding-inline: clamp(18px, 4vw, 48px);
@@ -16,6 +17,7 @@
 .user-box,
 .filters,
 .panel header,
+.goal-alert,
 .seller-list article {
   display: flex;
   align-items: center;
@@ -119,7 +121,8 @@ label {
   font-weight: 800;
 }
 
-select {
+select,
+input {
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--color-border);
@@ -134,6 +137,49 @@ select {
   padding: 0 14px;
   background: var(--color-button-soft-bg);
   color: var(--color-button-soft-text);
+}
+
+.goal-alert {
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 clamp(18px, 4vw, 48px) 18px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-left-width: 6px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.goal-alert h2 {
+  margin-block: 4px;
+}
+
+.celebration-icons {
+  display: inline-flex;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.goal-alert span {
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.goal-alert strong {
+  font-size: clamp(24px, 3vw, 38px);
+}
+
+.goal-alert.danger {
+  border-left-color: #dc2626;
+}
+
+.goal-alert.warning {
+  border-left-color: #f59e0b;
+}
+
+.goal-alert.success {
+  border-left-color: var(--color-brand-green-strong);
 }
 
 .metrics {
@@ -185,6 +231,7 @@ select {
 }
 
 .revenue-panel,
+.seller-panel,
 .table-panel {
   grid-column: span 2;
 }
@@ -318,6 +365,101 @@ select {
   font-weight: 900;
 }
 
+.seller-name {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.seller-name:hover {
+  color: var(--color-brand-blue);
+}
+
+.seller-list aside {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  text-align: right;
+}
+
+.seller-list small {
+  font-weight: 900;
+}
+
+.seller-list small.danger {
+  color: #dc2626;
+}
+
+.seller-list small.warning {
+  color: #d97706;
+}
+
+.seller-list small.success {
+  color: var(--color-brand-green-strong);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0 0 0 280px;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(15 23 42 / 58%);
+}
+
+.goal-modal {
+  display: grid;
+  gap: 18px;
+  width: min(440px, 100%);
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+
+.goal-modal .grid.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.goal-modal header,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.goal-modal header button {
+  display: grid;
+  width: 36px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card-alt);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.modal-actions {
+  justify-content: flex-end;
+}
+
+.modal-actions .primary {
+  background: var(--color-button-bg);
+  color: var(--color-button-text);
+}
+
 .table-scroll {
   overflow: auto;
 }
@@ -382,9 +524,14 @@ th {
 }
 
 @media (max-width: 760px) {
+  .modal-backdrop {
+    inset: 0;
+  }
+
   .topbar,
   .filters,
   .user-box,
+  .goal-alert,
   .bar-row div {
     align-items: flex-start;
     flex-direction: column;
@@ -406,7 +553,16 @@ th {
   label,
   .theme-picker,
   .theme-picker select,
-  .secondary {
+  .secondary,
+  .seller-list aside {
     width: 100%;
+  }
+
+  .seller-list aside {
+    text-align: left;
+  }
+
+  .goal-modal .grid.two {
+    grid-template-columns: 1fr;
   }
 }

@@ -6,13 +6,19 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { NgxSpinnerService } from 'ngx-spinner';
 import { ToastrService } from 'ngx-toastr';
 import { AuthService } from '../../core/auth.service';
-import { Role, Unidade, User, UserCreatePayload, UserUpdatePayload } from '../../core/models';
+import { Empresa, Role, Unidade, User, UserCreatePayload, UserUpdatePayload } from '../../core/models';
 import { ThemeService } from '../../core/theme.service';
 import { ProfileFlowService } from '../../core/profile-flow.service';
+import { PerfisService } from '../../core/perfis.service';
 import { UnidadesService } from '../../core/unidades.service';
+import { toDateInputValue } from '../../core/date-utils';
 
 type UserModalMode = 'create' | 'edit';
 type UnidadeModalMode = 'create' | 'edit';
+type EmpresaModalMode = 'create' | 'edit';
+type UserSortField = 'nome' | 'email' | 'role' | 'departamento' | 'cargo' | 'unidadeNome';
+type UnidadeSortField = 'empresa' | 'empresaNumero' | 'revenda' | 'numeroRevenda' | 'cnpj';
+type EmpresaSortField = 'nome' | 'numero';
 
 @Component({
   selector: 'app-usuarios',
@@ -27,14 +33,17 @@ export class UsuariosPage implements OnInit {
   private readonly toastr = inject(ToastrService);
   private readonly spinner = inject(NgxSpinnerService);
   private readonly profileFlow = inject(ProfileFlowService);
+  private readonly perfisService = inject(PerfisService);
   private readonly unidadesService = inject(UnidadesService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   readonly theme = inject(ThemeService);
   readonly user = computed(() => this.auth.user());
   readonly users = signal<User[]>([]);
+  readonly empresasCadastro = signal<Empresa[]>([]);
   readonly unidades = signal<Unidade[]>([]);
   readonly selectedUnidade = signal<Unidade | null>(null);
+  readonly selectedEmpresa = signal<Empresa | null>(null);
   readonly selected = signal<User | null>(null);
   readonly loading = signal(false);
   readonly saving = signal(false);
@@ -42,30 +51,48 @@ export class UsuariosPage implements OnInit {
   readonly modalMode = signal<UserModalMode>('create');
   readonly unidadeModalOpen = signal(false);
   readonly unidadeModalMode = signal<UnidadeModalMode>('create');
+  readonly empresaModalOpen = signal(false);
+  readonly empresaModalMode = signal<EmpresaModalMode>('create');
   readonly search = signal('');
   readonly unidadeSearch = signal('');
   readonly profileMenuOpen = signal(false);
+  readonly userPage = signal(1);
+  readonly unidadePage = signal(1);
+  readonly empresaPage = signal(1);
+  readonly pageSize = signal(10);
+  readonly userSortField = signal<UserSortField>('nome');
+  readonly unidadeSortField = signal<UnidadeSortField>('empresa');
+  readonly empresaSortField = signal<EmpresaSortField>('numero');
+  readonly sortDirection = signal<'asc' | 'desc'>('asc');
 
-  readonly roles: Role[] = ['Admin', 'RH', 'TI', 'Diretoria', 'Compras', 'Gestor', 'Usuario'];
-  readonly departamentos = ['Administrativo', 'RH', 'TI', 'Financeiro', 'Compras', 'Operacional', 'Comercial'];
+  readonly roles = signal<Role[]>(['Admin', 'RH', 'TI', 'Diretoria', 'Compras', 'Controladoria', 'Qualidade Nissan', 'Gerente Geral de Pecas', 'Gerente de Pecas', 'Vendedor de Pecas', 'Gestor', 'Usuario']);
+  readonly departamentos = ['Administrativo', 'RH', 'TI', 'Financeiro', 'Controladoria', 'Compras', 'Qualidade Nissan', 'Pecas', 'Operacional', 'Comercial'];
 
   readonly totalAdmins = computed(() => this.users().filter((item) => item.role === 'Admin').length);
   readonly totalAtivos = computed(() => this.users().filter((item) => item.ativo).length);
+  readonly empresas = computed(() => this.empresasCadastro().slice().sort((a, b) => a.numero - b.numero || a.nome.localeCompare(b.nome)));
   readonly filtered = computed(() => {
     const term = this.normalize(this.search());
     if (!term) {
-      return this.users();
+      return this.sortItems(this.users(), this.userSortField());
     }
 
-    return this.users().filter((item) =>
+    return this.sortItems(this.users().filter((item) =>
       [item.nome, item.cpf, item.email, item.role, item.departamento, item.cargo, item.ativo ? 'ativo' : 'inativo']
         .some((value) => this.normalize(value).includes(term)),
-    );
+    ), this.userSortField());
   });
   readonly filteredUnidades = computed(() => {
     const term = this.normalize(this.unidadeSearch());
-    return this.unidades().filter((item) => !term || [item.nome, item.cnpj, item.endereco].some((value) => this.normalize(value).includes(term)));
+    return this.sortItems(this.unidades().filter((item) => !term || [item.empresaNumero, item.empresa, item.numeroRevenda, item.revenda, item.nome, item.cnpj, item.endereco].some((value) => this.normalize(value).includes(term))), this.unidadeSortField());
   });
+  readonly sortedEmpresas = computed(() => this.sortItems(this.empresas(), this.empresaSortField()));
+  readonly totalUserPages = computed(() => this.totalPages(this.filtered().length));
+  readonly totalUnidadePages = computed(() => this.totalPages(this.filteredUnidades().length));
+  readonly totalEmpresaPages = computed(() => this.totalPages(this.sortedEmpresas().length));
+  readonly pagedUsers = computed(() => this.pageItems(this.filtered(), this.userPage()));
+  readonly pagedUnidades = computed(() => this.pageItems(this.filteredUnidades(), this.unidadePage()));
+  readonly pagedEmpresas = computed(() => this.pageItems(this.sortedEmpresas(), this.empresaPage()));
 
   readonly form = this.fb.nonNullable.group({
     nome: ['', Validators.required],
@@ -74,6 +101,7 @@ export class UsuariosPage implements OnInit {
     role: ['Usuario', Validators.required],
     departamento: ['', Validators.required],
     cargo: ['', Validators.required],
+    empresaSelecionadaId: [0],
     unidadeId: [0],
     ativo: [true],
     dataNascimento: ['1990-01-01', Validators.required],
@@ -81,9 +109,16 @@ export class UsuariosPage implements OnInit {
   });
 
   readonly unidadeForm = this.fb.nonNullable.group({
-    nome: ['', Validators.required],
+    empresaId: [0, [Validators.required, Validators.min(1)]],
+    numeroRevenda: [0, [Validators.required, Validators.min(1)]],
+    revenda: ['', Validators.required],
     cnpj: ['', Validators.required],
     endereco: ['', Validators.required],
+  });
+
+  readonly empresaForm = this.fb.nonNullable.group({
+    numero: [0, [Validators.required, Validators.min(1)]],
+    nome: ['', Validators.required],
   });
 
   ngOnInit(): void {
@@ -92,6 +127,8 @@ export class UsuariosPage implements OnInit {
     }
 
     this.load();
+    this.loadPerfis();
+    this.loadEmpresas();
     this.loadUnidades();
   }
 
@@ -115,7 +152,21 @@ export class UsuariosPage implements OnInit {
   loadUnidades(): void {
     this.unidadesService.list().subscribe({
       next: (unidades) => this.unidades.set(unidades),
-      error: (error) => this.toastr.error(this.getErrorMessage('Nao foi possivel carregar as unidades.', error), 'Erro'),
+      error: (error) => this.toastr.error(this.getErrorMessage('Nao foi possivel carregar as empresas e revendas.', error), 'Erro'),
+    });
+  }
+
+  loadEmpresas(): void {
+    this.unidadesService.listEmpresas().subscribe({
+      next: (empresas) => this.empresasCadastro.set(empresas),
+      error: (error) => this.toastr.error(this.getErrorMessage('Nao foi possivel carregar as empresas.', error), 'Erro'),
+    });
+  }
+
+  loadPerfis(): void {
+    this.perfisService.list().subscribe({
+      next: (perfis) => this.roles.set(perfis.map((perfil) => perfil.nome)),
+      error: () => this.toastr.error('Nao foi possivel carregar os perfis.', 'Usuarios'),
     });
   }
 
@@ -129,6 +180,7 @@ export class UsuariosPage implements OnInit {
       role: 'Usuario',
       departamento: '',
       cargo: '',
+      empresaSelecionadaId: 0,
       unidadeId: 0,
       ativo: true,
       dataNascimento: '1990-01-01',
@@ -149,9 +201,10 @@ export class UsuariosPage implements OnInit {
       role: item.role,
       departamento: item.departamento,
       cargo: item.cargo,
+      empresaSelecionadaId: this.getEmpresaIdByUnidadeId(item.unidadeId ?? 0),
       unidadeId: item.unidadeId ?? 0,
       ativo: item.ativo,
-      dataNascimento: this.toDateInputValue(item.dataNascimento),
+      dataNascimento: toDateInputValue(item.dataNascimento, '1990-01-01'),
       senha: '',
     });
     this.form.controls.senha.clearValidators();
@@ -170,7 +223,7 @@ export class UsuariosPage implements OnInit {
   openCreateUnidade(): void {
     this.unidadeModalMode.set('create');
     this.selectedUnidade.set(null);
-    this.unidadeForm.reset({ nome: '', cnpj: '', endereco: '' });
+    this.unidadeForm.reset({ empresaId: 0, numeroRevenda: 0, revenda: '', cnpj: '', endereco: '' });
     this.unidadeModalOpen.set(true);
   }
 
@@ -178,7 +231,9 @@ export class UsuariosPage implements OnInit {
     this.unidadeModalMode.set('edit');
     this.selectedUnidade.set(item);
     this.unidadeForm.reset({
-      nome: item.nome,
+      empresaId: item.empresaId ?? 0,
+      numeroRevenda: item.numeroRevenda,
+      revenda: item.revenda,
       cnpj: item.cnpj,
       endereco: item.endereco,
     });
@@ -188,6 +243,26 @@ export class UsuariosPage implements OnInit {
   closeUnidadeModal(): void {
     if (!this.saving()) {
       this.unidadeModalOpen.set(false);
+    }
+  }
+
+  openCreateEmpresa(): void {
+    this.empresaModalMode.set('create');
+    this.selectedEmpresa.set(null);
+    this.empresaForm.reset({ numero: 0, nome: '' });
+    this.empresaModalOpen.set(true);
+  }
+
+  openEditEmpresa(item: Empresa): void {
+    this.empresaModalMode.set('edit');
+    this.selectedEmpresa.set(item);
+    this.empresaForm.reset({ numero: item.numero, nome: item.nome });
+    this.empresaModalOpen.set(true);
+  }
+
+  closeEmpresaModal(): void {
+    if (!this.saving()) {
+      this.empresaModalOpen.set(false);
     }
   }
 
@@ -270,7 +345,7 @@ export class UsuariosPage implements OnInit {
   submitUnidade(): void {
     if (this.unidadeForm.invalid || this.saving()) {
       this.unidadeForm.markAllAsTouched();
-      this.toastr.warning('Preencha os dados da unidade.', 'Unidades');
+      this.toastr.warning('Preencha empresa, numero da revenda, revenda, CNPJ e endereco.', 'Revendas');
       return;
     }
 
@@ -286,13 +361,102 @@ export class UsuariosPage implements OnInit {
         this.unidades.set(selected ? this.unidades().map((item) => item.id === saved.id ? saved : item) : [saved, ...this.unidades()]);
         this.saving.set(false);
         this.unidadeModalOpen.set(false);
-        this.toastr.success('Unidade salva com sucesso.', 'Unidades');
+        this.toastr.success('Revenda salva com sucesso.', 'Revendas');
       },
       error: (error) => {
         this.saving.set(false);
-        this.toastr.error(this.getErrorMessage('Nao foi possivel salvar a unidade.', error), 'Erro');
+        this.toastr.error(this.getErrorMessage('Nao foi possivel salvar a revenda.', error), 'Erro');
       },
     });
+  }
+
+  submitEmpresa(): void {
+    if (this.empresaForm.invalid || this.saving()) {
+      this.empresaForm.markAllAsTouched();
+      this.toastr.warning('Preencha o numero e o nome da empresa.', 'Empresas');
+      return;
+    }
+
+    this.saving.set(true);
+    const selected = this.selectedEmpresa();
+    const payload = this.empresaForm.getRawValue();
+    const request = selected
+      ? this.unidadesService.updateEmpresa(selected.id, payload)
+      : this.unidadesService.createEmpresa(payload);
+
+    request.subscribe({
+      next: (empresa) => {
+        this.empresasCadastro.set(
+          (selected
+            ? this.empresasCadastro().map((item) => item.id === empresa.id ? empresa : item)
+            : [...this.empresasCadastro(), empresa])
+            .sort((a, b) => a.numero - b.numero || a.nome.localeCompare(b.nome)),
+        );
+        this.saving.set(false);
+        this.empresaModalOpen.set(false);
+        this.loadUnidades();
+        this.toastr.success(selected ? 'Empresa atualizada com sucesso.' : 'Empresa criada com sucesso.', 'Empresas');
+      },
+      error: (error) => {
+        this.saving.set(false);
+        this.toastr.error(this.getErrorMessage('Nao foi possivel salvar a empresa.', error), 'Erro');
+      },
+    });
+  }
+
+  onEmpresaUsuarioChange(empresaId: number): void {
+    this.form.patchValue({ empresaSelecionadaId: Number(empresaId), unidadeId: 0 });
+  }
+
+  setUserSort(field: UserSortField): void {
+    this.userSortField.set(field);
+    this.userPage.set(1);
+  }
+
+  setUnidadeSort(field: UnidadeSortField): void {
+    this.unidadeSortField.set(field);
+    this.unidadePage.set(1);
+  }
+
+  setEmpresaSort(field: EmpresaSortField): void {
+    this.empresaSortField.set(field);
+    this.empresaPage.set(1);
+  }
+
+  toggleSortDirection(): void {
+    this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
+    this.userPage.set(1);
+    this.unidadePage.set(1);
+    this.empresaPage.set(1);
+  }
+
+  previousUserPage(): void {
+    this.userPage.set(Math.max(1, this.userPage() - 1));
+  }
+
+  nextUserPage(): void {
+    this.userPage.set(Math.min(this.totalUserPages(), this.userPage() + 1));
+  }
+
+  previousUnidadePage(): void {
+    this.unidadePage.set(Math.max(1, this.unidadePage() - 1));
+  }
+
+  nextUnidadePage(): void {
+    this.unidadePage.set(Math.min(this.totalUnidadePages(), this.unidadePage() + 1));
+  }
+
+  previousEmpresaPage(): void {
+    this.empresaPage.set(Math.max(1, this.empresaPage() - 1));
+  }
+
+  nextEmpresaPage(): void {
+    this.empresaPage.set(Math.min(this.totalEmpresaPages(), this.empresaPage() + 1));
+  }
+
+  revendasDoUsuario(): Unidade[] {
+    const empresaId = Number(this.form.controls.empresaSelecionadaId.value);
+    return this.unidades().filter((item) => item.empresaId === empresaId);
   }
 
   goHome(): void {
@@ -321,13 +485,8 @@ export class UsuariosPage implements OnInit {
     }
   }
 
-  private toDateInputValue(value: string): string {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return '1990-01-01';
-    }
-
-    return date.toISOString().slice(0, 10);
+  private getEmpresaIdByUnidadeId(unidadeId: number): number {
+    return this.unidades().find((item) => item.id === unidadeId)?.empresaId ?? 0;
   }
 
   private normalize(value: string | number | null | undefined): string {
@@ -336,6 +495,27 @@ export class UsuariosPage implements OnInit {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+  }
+
+  private sortItems<T>(items: T[], field: keyof T): T[] {
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    return items.slice().sort((a, b) => {
+      const aValue = a[field];
+      const bValue = b[field];
+      const result = typeof aValue === 'number' && typeof bValue === 'number'
+        ? aValue - bValue
+        : this.normalize(aValue as string | number | null | undefined).localeCompare(this.normalize(bValue as string | number | null | undefined));
+      return result * direction;
+    });
+  }
+
+  private totalPages(count: number): number {
+    return Math.max(1, Math.ceil(count / this.pageSize()));
+  }
+
+  private pageItems<T>(items: T[], page: number): T[] {
+    const safePage = Math.min(Math.max(page, 1), this.totalPages(items.length));
+    return items.slice((safePage - 1) * this.pageSize(), safePage * this.pageSize());
   }
 
   private getErrorMessage(fallback: string, error?: unknown): string {

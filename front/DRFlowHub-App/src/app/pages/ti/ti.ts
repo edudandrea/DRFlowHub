@@ -25,7 +25,10 @@ const ALLOWED_ATTACHMENT_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 const ALLOWED_ATTACHMENT_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx'];
+const RUSTDESK_SERVER = '192.168.1.224';
+const RUSTDESK_KEY = '0EEoPPZgEaSLlDamIVqua2oAgP0DTHsiPczrZz4WfiY=';
 type TiTab = 'pendentes' | 'meus' | 'todos' | 'concluidos';
+type TiSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'prioridade' | 'status' | 'dataAbertura';
 
 interface TicketMovementAlert {
   id: number;
@@ -72,6 +75,10 @@ export class TiPage implements OnInit, OnDestroy {
   readonly filterTerm = signal('');
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
+  readonly page = signal(1);
+  readonly pageSize = signal(10);
+  readonly sortField = signal<TiSortField>('id');
+  readonly sortDirection = signal<'asc' | 'desc'>('desc');
   readonly comunicacoes = signal<ChamadoTIComunicacao[]>([]);
   readonly movementAlerts = signal<TicketMovementAlert[]>([]);
   readonly loadingComunicacoes = signal(false);
@@ -81,7 +88,7 @@ export class TiPage implements OnInit, OnDestroy {
   readonly rating = signal(false);
   readonly createdTicketNumber = signal<number | null>(null);
   readonly user = computed(() => this.auth.user());
-  readonly canManage = computed(() => this.auth.hasAnyRole(['Admin', 'TI']));
+  readonly canManage = computed(() => this.auth.hasAccess('ti-admin'));
   readonly abertos = computed(() => this.chamados().filter((item) => item.status === 'Aberto').length);
   readonly pendentes = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && !item.responsavel?.trim()).length);
   readonly meusChamados = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && this.isMine(item)).length);
@@ -121,12 +128,10 @@ export class TiPage implements OnInit, OnDestroy {
       return matchesTerm && matchesFrom && matchesTo;
     });
 
-    if (isConcluidosTab && !term && !from && !to) {
-      return filtered.slice(0, 10);
-    }
-
-    return filtered;
+    return this.sortItems(filtered);
   });
+  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.filteredChamados().length / this.pageSize())));
+  readonly pagedChamados = computed(() => this.filteredChamados().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
   private selectedAttachment: File | null = null;
   private selectedAttachmentObjectUrl = '';
   private attachmentObjectUrl = '';
@@ -150,6 +155,13 @@ export class TiPage implements OnInit, OnDestroy {
     status: ['Aberto', Validators.required],
     responsavel: [''],
     acessoRemotoUrl: [''],
+    rustDeskId: [''],
+    rustDeskSenha: [''],
+    rustDeskServidor: [RUSTDESK_SERVER],
+    rustDeskKey: [RUSTDESK_KEY],
+    equipamentoNome: [''],
+    equipamentoIp: [''],
+    equipamentoSistemaOperacional: [''],
     observacoes: [''],
   });
 
@@ -164,6 +176,13 @@ export class TiPage implements OnInit, OnDestroy {
     status: ['', Validators.required],
     responsavel: [''],
     acessoRemotoUrl: [''],
+    rustDeskId: [''],
+    rustDeskSenha: [''],
+    rustDeskServidor: [''],
+    rustDeskKey: [''],
+    equipamentoNome: [''],
+    equipamentoIp: [''],
+    equipamentoSistemaOperacional: [''],
     observacoes: [''],
   });
 
@@ -191,6 +210,8 @@ export class TiPage implements OnInit, OnDestroy {
         solicitante: user.nome,
         unidade: this.getUserUnidadeName(),
         departamento: user.departamento,
+        equipamentoNome: this.getBrowserComputerName(),
+        equipamentoSistemaOperacional: this.getOperatingSystem(),
       });
     }
 
@@ -250,6 +271,7 @@ export class TiPage implements OnInit, OnDestroy {
 
   setTab(tab: TiTab): void {
     this.activeTab.set(tab);
+    this.page.set(1);
     this.clearAttachmentPreview();
     const first = this.filteredChamados()[0] ?? null;
     this.selected.set(null);
@@ -257,6 +279,24 @@ export class TiPage implements OnInit, OnDestroy {
     if (first) {
       this.select(first);
     }
+  }
+
+  setSort(field: TiSortField): void {
+    if (this.sortField() === field) {
+      this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortField.set(field);
+      this.sortDirection.set(field === 'id' || field === 'dataAbertura' ? 'desc' : 'asc');
+    }
+    this.page.set(1);
+  }
+
+  previousPage(): void {
+    this.page.set(Math.max(1, this.safePage() - 1));
+  }
+
+  nextPage(): void {
+    this.page.set(Math.min(this.totalPages(), this.safePage() + 1));
   }
 
   setFilter(value: string): void {
@@ -380,6 +420,13 @@ export class TiPage implements OnInit, OnDestroy {
           status: 'Aberto',
           responsavel: '',
           acessoRemotoUrl: '',
+          rustDeskId: '',
+          rustDeskSenha: '',
+          rustDeskServidor: RUSTDESK_SERVER,
+          rustDeskKey: RUSTDESK_KEY,
+          equipamentoNome: this.getBrowserComputerName(),
+          equipamentoIp: '',
+          equipamentoSistemaOperacional: this.getOperatingSystem(),
           observacoes: '',
         });
         this.selectedAttachment = null;
@@ -417,6 +464,13 @@ export class TiPage implements OnInit, OnDestroy {
       status: item.status,
       responsavel: item.responsavel,
       acessoRemotoUrl: item.acessoRemotoUrl,
+      rustDeskId: item.rustDeskId,
+      rustDeskSenha: item.rustDeskSenha,
+      rustDeskServidor: item.rustDeskServidor || RUSTDESK_SERVER,
+      rustDeskKey: item.rustDeskKey || RUSTDESK_KEY,
+      equipamentoNome: item.equipamentoNome,
+      equipamentoIp: item.equipamentoIp,
+      equipamentoSistemaOperacional: item.equipamentoSistemaOperacional,
       observacoes: item.observacoes,
     });
     this.closeForm.reset({ observacoesEncerramento: item.observacoesEncerramento || '' });
@@ -621,13 +675,81 @@ export class TiPage implements OnInit, OnDestroy {
     });
   }
 
-  openRemoteAccess(url: string): void {
-    if (!url) {
-      this.toastr.info('Informe o link ou codigo de acesso remoto no chamado.', 'Acesso remoto');
+  openRemoteAccess(url = this.adminForm.controls.acessoRemotoUrl.value): void {
+    const target = url.trim();
+    if (!target) {
+      this.toastr.info('Informe um link de acesso remoto no chamado.', 'Acesso remoto');
       return;
     }
 
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.open(target, '_blank', 'noopener,noreferrer');
+  }
+
+  openRustDeskAccess(): void {
+    const link = this.buildRustDeskLink();
+    if (!link) {
+      this.toastr.info('Este chamado ainda nao possui ID RustDesk do equipamento.', 'RustDesk');
+      return;
+    }
+
+    window.location.href = link;
+  }
+
+  copyRustDeskPassword(): void {
+    const password = this.adminForm.controls.rustDeskSenha.value.trim();
+    if (!password) {
+      this.toastr.info('Nenhuma senha RustDesk informada.', 'RustDesk');
+      return;
+    }
+
+    if (!navigator.clipboard) {
+      this.toastr.info('Copie a senha diretamente do campo RustDesk.', 'RustDesk');
+      return;
+    }
+
+    void navigator.clipboard.writeText(password).then(
+      () => this.toastr.success('Senha RustDesk copiada.', 'RustDesk'),
+      () => this.toastr.error('Nao foi possivel copiar a senha.', 'RustDesk'),
+    );
+  }
+
+  rustDeskLinkPreview(): string {
+    return this.buildRustDeskLink() || '';
+  }
+
+  private buildRustDeskLink(): string {
+    const rustDeskId = this.adminForm.controls.rustDeskId.value.trim();
+    if (!rustDeskId) {
+      return '';
+    }
+
+    const params = new URLSearchParams();
+    const server = this.adminForm.controls.rustDeskServidor.value.trim() || RUSTDESK_SERVER;
+    const key = this.adminForm.controls.rustDeskKey.value.trim() || RUSTDESK_KEY;
+    if (server) {
+      params.set('server', server);
+    }
+    if (key) {
+      params.set('key', key);
+    }
+
+    const query = params.toString();
+    return `rustdesk://${encodeURIComponent(rustDeskId)}${query ? `?${query}` : ''}`;
+  }
+
+  rustDeskServerLabel(): string {
+    return this.adminForm.controls.rustDeskServidor.value.trim() || RUSTDESK_SERVER;
+  }
+
+  equipmentSummary(item = this.selected()): string {
+    if (!item) {
+      return 'Equipamento nao identificado';
+    }
+
+    const name = item.equipamentoNome || 'Nome nao informado';
+    const ip = item.equipamentoIp || 'IP nao identificado';
+    const os = item.equipamentoSistemaOperacional || 'Sistema operacional nao identificado';
+    return `${name} - ${ip} - ${os}`;
   }
 
   attachmentFileName(path: string): string {
@@ -819,6 +941,23 @@ export class TiPage implements OnInit, OnDestroy {
       .trim();
   }
 
+  private safePage(): number {
+    return Math.min(Math.max(this.page(), 1), this.totalPages());
+  }
+
+  private sortItems(items: ChamadoTI[]): ChamadoTI[] {
+    const field = this.sortField();
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    return items.slice().sort((a, b) => {
+      const aValue = a[field];
+      const bValue = b[field];
+      const result = typeof aValue === 'number' && typeof bValue === 'number'
+        ? aValue - bValue
+        : this.normalize(aValue as string | number | null | undefined).localeCompare(this.normalize(bValue as string | number | null | undefined));
+      return result * direction;
+    });
+  }
+
   private getUserUnidadeName(): string {
     const user = this.user();
     if (!user) {
@@ -826,6 +965,42 @@ export class TiPage implements OnInit, OnDestroy {
     }
 
     return user.unidadeNome || this.unidades().find((unidade) => unidade.id === user.unidadeId)?.nome || '';
+  }
+
+  private getBrowserComputerName(): string {
+    return 'Nao informado pelo navegador';
+  }
+
+  private getOperatingSystem(): string {
+    if (!this.isBrowser) {
+      return '';
+    }
+
+    const userAgent = navigator.userAgent;
+    const navigatorWithData = navigator as Navigator & { userAgentData?: { platform?: string } };
+    const platform = navigatorWithData.userAgentData?.platform || navigator.platform || '';
+
+    if (/windows/i.test(userAgent) || /win/i.test(platform)) {
+      return 'Windows';
+    }
+
+    if (/android/i.test(userAgent)) {
+      return 'Android';
+    }
+
+    if (/iphone|ipad|ipod/i.test(userAgent)) {
+      return 'iOS';
+    }
+
+    if (/mac/i.test(platform)) {
+      return 'macOS';
+    }
+
+    if (/linux/i.test(platform)) {
+      return 'Linux';
+    }
+
+    return platform || 'Nao identificado';
   }
 
   private parseDateFilter(value: string, endOfDay: boolean): Date | null {
@@ -843,15 +1018,6 @@ export class TiPage implements OnInit, OnDestroy {
 
   goHome(): void {
     void this.router.navigate(['/hub']);
-  }
-
-  openEquipmentControl(): void {
-    if (!this.canManage()) {
-      this.toastr.warning('Controle de equipamentos disponivel somente para Admin e TI.', 'Acesso restrito');
-      return;
-    }
-
-    void this.router.navigate(['/ti/equipamentos']);
   }
 
   editProfile(): void {

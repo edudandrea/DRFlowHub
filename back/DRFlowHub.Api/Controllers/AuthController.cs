@@ -41,6 +41,13 @@ namespace DRFlowHub.Api.Controllers
             if (hasAnyUser && !UserHasRole("Admin") && !UserHasRole("TI"))
                 return Forbid();
 
+            if (!hasAnyUser)
+            {
+                dto.Role = "Admin";
+                dto.UnidadeId = null;
+                dto.Ativo = true;
+            }
+
             var currentUserId = GetCurrentUserId();
             var user = _service.CreateUser(dto, hasAnyUser ? currentUserId : null);
             return Ok(user);

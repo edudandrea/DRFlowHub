@@ -49,3 +49,4 @@ __screenshots__/
 # System
 .DS_Store
 Thumbs.db
+.fake

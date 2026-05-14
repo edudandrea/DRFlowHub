@@ -20,3 +20,14 @@ export const roleGuard = (roles: Role[]): CanActivateFn => () => {
 
   return auth.hasAnyRole(roles) || router.createUrlTree([auth.landingRoute()]);
 };
+
+export const accessGuard = (accesses: string[]): CanActivateFn => () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  if (!auth.isLoggedIn()) {
+    return router.createUrlTree(['/login']);
+  }
+
+  return auth.hasAnyAccess(accesses) || router.createUrlTree([auth.landingRoute()]);
+};

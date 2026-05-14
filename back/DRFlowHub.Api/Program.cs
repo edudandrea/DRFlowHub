@@ -100,6 +100,11 @@ builder.Services.AddScoped<ChamadosTIService>();
 builder.Services.AddScoped<EquipamentosTIService>();
 builder.Services.AddScoped<SolicitacoesCompraService>();
 builder.Services.AddScoped<UnidadesService>();
+builder.Services.AddScoped<CartaoPontoService>();
+builder.Services.AddScoped<ControladoriaService>();
+builder.Services.AddScoped<VeiculosService>();
+builder.Services.AddScoped<PecasBiService>();
+builder.Services.AddScoped<PerfisService>();
 builder.Services.AddScoped<AuthService>();
 
 var app = builder.Build();

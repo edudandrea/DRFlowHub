@@ -106,6 +106,35 @@
   background: color-mix(in srgb, var(--color-brand-blue) 46%, transparent);
 }
 
+.nav-group,
+.sub-nav {
+  display: grid;
+  gap: 7px;
+}
+
+.nav-group.has-children {
+  gap: 8px;
+}
+
+.sub-nav {
+  margin-left: 14px;
+  padding-left: 12px;
+  max-height: 0;
+  overflow: hidden;
+  border-left: 1px solid color-mix(in srgb, var(--color-brand-blue) 28%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: max-height 220ms ease, opacity 180ms ease, transform 220ms ease;
+}
+
+.sub-nav.expanded {
+  max-height: 260px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .app-side-nav button {
   display: grid;
   gap: 4px;
@@ -117,6 +146,11 @@
   color: var(--color-muted);
   text-align: left;
   cursor: pointer;
+}
+
+.sub-nav button {
+  min-height: 46px;
+  padding: 8px 10px;
 }
 
 :host-context([data-theme='light']) .app-side-nav button,
@@ -208,6 +242,15 @@
 
   .app-side-nav button {
     flex: 0 0 min(180px, 72vw);
+  }
+
+  .nav-group {
+    flex: 0 0 auto;
+    min-width: min(220px, 78vw);
+  }
+
+  .sub-nav {
+    margin-left: 0;
   }
 
   .app-route-content.with-sidebar {

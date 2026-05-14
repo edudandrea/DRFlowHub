@@ -1,0 +1,63 @@
+<main class="profile-shell">
+  <header>
+    <div>
+      <p>Cadastros</p>
+      <h1>Cadastro de perfil</h1>
+    </div>
+    <button type="button" (click)="novo()">Novo perfil</button>
+  </header>
+
+  <section class="profile-grid">
+    @for (perfil of perfis(); track perfil.id) {
+      <button class="profile-card" type="button" (click)="select(perfil)">
+        <strong>{{ perfil.nome }}</strong>
+        <span>{{ perfil.acessos.length }} acessos</span>
+        @if (perfil.padraoSistema) {
+          <small>Perfil padrao</small>
+        } @else {
+          <small>Perfil personalizado</small>
+        }
+      </button>
+    } @empty {
+      <p class="empty">Nenhum perfil cadastrado.</p>
+    }
+  </section>
+
+  @if (modalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-dialog" (click)="$event.stopPropagation()" (ngSubmit)="save()">
+        <header>
+          <div>
+            <p>Perfil</p>
+            <h2>{{ selected() ? 'Editar perfil' : 'Novo perfil' }}</h2>
+          </div>
+          <button class="icon-button" type="button" (click)="closeModal()">x</button>
+        </header>
+
+        <label>
+          Nome do perfil
+          <input [ngModel]="nome()" (ngModelChange)="nome.set($event)" name="nome" />
+        </label>
+
+        <div class="access-layout">
+          @for (grupo of acessosPorGrupo(); track grupo.grupo) {
+            <section class="access-group">
+              <h3>{{ grupo.grupo }}</h3>
+              @for (acesso of grupo.items; track acesso.chave) {
+                <label class="check-row">
+                  <input type="checkbox" [checked]="hasAcesso(acesso.chave)" (change)="toggleAcesso(acesso.chave, $any($event.target).checked)" />
+                  <span>{{ acesso.nome }}</span>
+                </label>
+              }
+            </section>
+          }
+        </div>
+
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeModal()">Cancelar</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar perfil' }}</button>
+        </div>
+      </form>
+    </section>
+  }
+</main>

@@ -1,0 +1,24 @@
+DRFlowHub deploy v7
+
+Alteracoes principais:
+- Reorganiza a tela de ICMS com filtros de consulta no topo, resultados abaixo a esquerda e manutencao/detalhes a direita.
+- Inclui OracleConnectionProduction apontando para o service name apollo.drsul.
+- Mantem Oracle:Environment em DVE; altere para Production/PROD no servidor quando quiser usar a conexao de producao.
+- Mantem reserva de veiculos no Oracle por UPDATE da coluna RESERVADO.
+
+Como usar:
+1. Extraia este pacote em uma pasta temporaria no servidor.
+2. Execute Install-DRFlowHub-GUI.exe como Administrador para usar a tela grafica.
+3. Informe a pasta de destino, por exemplo: C:\inetpub\drflowhub.
+4. Informe o Site IIS e o App Pool IIS. O padrao e DrFlowHub para ambos.
+5. Deixe marcada a opcao de parar o IIS antes da copia e reiniciar ao final.
+6. Se existir appsettings.json no destino, o instalador pergunta se deve preservar.
+
+Instalacao sem interface:
+- Execute Install-DRFlowHub.cmd como Administrador.
+- Exemplo:
+  Install-DRFlowHub.cmd -TargetPath C:\inetpub\drflowhub -SiteName DrFlowHub -AppPoolName DrFlowHub
+
+Banco de dados:
+- O PostgreSQL e externo; o pacote nao usa SQLite.
+- Revise appsettings.json no servidor antes de ativar producao.

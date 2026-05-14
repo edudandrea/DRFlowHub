@@ -71,7 +71,7 @@
   </section>
 
   @if (modalOpen()) {
-    <section class="modal-backdrop" role="presentation" (click)="closeModal()">
+    <section class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
       <form class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="equipamentos-modal-title" [formGroup]="form" (ngSubmit)="submit()" (click)="$event.stopPropagation()">
         <div class="section-heading modal-heading">
           <div>

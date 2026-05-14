@@ -4,7 +4,7 @@
       <img src="/drsul-logo.svg" alt="Grupo DRSUL" />
       <div>
         <p class="system-name">DR Flow Hub</p>
-        <h1>Painel de Administração do RH</h1>
+        <h1>Painel do RH</h1>
       </div>
     </button>
 
@@ -68,6 +68,17 @@
             Ate
             <input type="date" [value]="dateTo()" (input)="dateTo.set($any($event.target).value)" />
           </label>
+          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
+            <option value="id">Numero</option>
+            <option value="titulo">Titulo</option>
+            <option value="solicitante">Solicitante</option>
+            <option value="unidade">Unidade</option>
+            <option value="departamento">Departamento</option>
+            <option value="prioridade">Prioridade</option>
+            <option value="status">Status</option>
+            <option value="dataSolicitacao">Data</option>
+          </select>
+          <button class="secondary" type="button" (click)="setSort(sortField())">{{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}</button>
           <button class="secondary" type="button" (click)="clearDateFilters()">Limpar</button>
         </div>
       </div>
@@ -95,7 +106,7 @@
                 <td colspan="7">Nenhuma solicitações encontrada.</td>
               </tr>
             } @else {
-              @for (item of filtered(); track item.id) {
+              @for (item of paged(); track item.id) {
                 <tr [class.active]="selected()?.id === item.id" (click)="select(item)">
                   <td>{{ item.titulo }}</td>
                   <td>{{ item.solicitante }}</td>
@@ -110,6 +121,13 @@
           </tbody>
         </table>
       </div>
+      @if (filtered().length > pageSize()) {
+        <div class="filters">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+          <span>Pagina {{ page() }} de {{ totalPages() }}</span>
+          <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Proxima</button>
+        </div>
+      }
     </div>
 
     <aside class="birthday-panel">
@@ -142,7 +160,7 @@
   </section>
 
   @if (modalOpen()) {
-    <div class="modal-backdrop" role="presentation" (click)="closeModal()">
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
       <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <div>

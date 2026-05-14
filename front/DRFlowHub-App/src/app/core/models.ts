@@ -1,4 +1,4 @@
-export type Role = 'Admin' | 'RH' | 'TI' | 'Diretoria' | 'Compras' | 'Gestor' | 'Usuario';
+export type Role = string;
 
 export interface User {
   id: number;
@@ -8,25 +8,42 @@ export interface User {
   role: Role;
   departamento: string;
   cargo: string;
+  rustDeskId: string;
+  rustDeskHostname: string;
+  rustDeskSistemaOperacional: string;
   ativo: boolean;
   unidadeId?: number | null;
   unidadeNome: string;
   dataNascimento: string;
+  acessos: string[];
 }
 
-export type UserCreatePayload = Omit<User, 'id' | 'unidadeNome'> & { senha: string };
-export type UserUpdatePayload = Omit<User, 'id' | 'unidadeNome'> & { senha?: string };
+export type UserCreatePayload = Omit<User, 'id' | 'unidadeNome' | 'rustDeskId' | 'rustDeskHostname' | 'rustDeskSistemaOperacional' | 'acessos'> & { senha: string };
+export type UserUpdatePayload = Omit<User, 'id' | 'unidadeNome' | 'rustDeskId' | 'rustDeskHostname' | 'rustDeskSistemaOperacional' | 'acessos'> & { senha?: string };
 export type UserProfileUpdatePayload = Pick<User, 'nome' | 'cpf' | 'departamento' | 'cargo' | 'dataNascimento'>;
 
 export interface Unidade {
   id: number;
   nome: string;
+  empresaId?: number | null;
+  empresaNumero: number;
+  numeroRevenda: number;
+  empresa: string;
+  revenda: string;
   cnpj: string;
   endereco: string;
   dataCadastro: string;
 }
 
-export type UnidadePayload = Pick<Unidade, 'nome' | 'cnpj' | 'endereco'>;
+export interface Empresa {
+  id: number;
+  numero: number;
+  nome: string;
+  dataCadastro: string;
+}
+
+export type EmpresaPayload = Pick<Empresa, 'numero' | 'nome'>;
+export type UnidadePayload = Pick<Unidade, 'empresaId' | 'numeroRevenda' | 'revenda' | 'cnpj' | 'endereco'>;
 
 export interface LoginResponse {
   token: string;
@@ -81,6 +98,13 @@ export interface ChamadoTI {
   status: string;
   responsavel: string;
   acessoRemotoUrl: string;
+  rustDeskId: string;
+  rustDeskSenha: string;
+  rustDeskServidor: string;
+  rustDeskKey: string;
+  equipamentoNome: string;
+  equipamentoIp: string;
+  equipamentoSistemaOperacional: string;
   anexoImagemUrl: string;
   observacoes: string;
   observacoesEncerramento: string;
@@ -215,3 +239,70 @@ export type SolicitacaoCompraUpdatePayload = Omit<
   | 'aprovador'
   | 'userid'
 >;
+
+export interface GuiaIcms {
+  id: string;
+  documento: string;
+  empresa: string;
+  revenda: string;
+  numeroNota: string;
+  transacao: string;
+  cnpj: string;
+  competencia: string;
+  dataVencimento?: string | null;
+  dataPagamento?: string | null;
+  valor: number;
+  difal: number;
+  fcp: number;
+  uf: string;
+  status: 'Pago' | 'Pendente' | string;
+  observacoes: string;
+}
+
+export interface VeiculoEstoque {
+  empresa: number;
+  revenda: number;
+  chassi: string;
+  codigoVeiculo: string;
+  modelo: string;
+  descricaoModelo: string;
+  cor: string;
+  descricaoCor: string;
+  reservado: boolean;
+  origemReserva: string;
+  dataReserva?: string | null;
+}
+
+export interface CartaoPontoArquivo {
+  id: number;
+  nomeArquivo: string;
+  cnpjUnidade: string;
+  unidadeNome: string;
+  dataImportacao: string;
+  totalRegistros: number;
+  totalFuncionarios: number;
+}
+
+export interface CartaoPontoFuncionario {
+  nome: string;
+  cpf: string;
+  cnpjUnidade: string;
+  unidadeNome: string;
+  totalRegistros: number;
+  totalDias: number;
+  confirmadoPeloUsuario: boolean;
+  precisaAjuste: boolean;
+}
+
+export interface CartaoPontoRegistro {
+  id: number;
+  arquivoId: number;
+  funcionarioNome: string;
+  cpf: string;
+  data: string;
+  horarioOriginal: string;
+  horarioEditado: string;
+  sequencia: number;
+  confirmadoPeloUsuario: boolean;
+  precisaAjuste: boolean;
+}

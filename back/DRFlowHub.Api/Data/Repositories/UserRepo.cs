@@ -15,7 +15,6 @@ namespace DRFlowHub.Api.Data.Repositories
         public Users? GetByLogin(string email)
         {
             return _context.User
-                                .Include(u => u.Unidade)
                                 .FirstOrDefault(u => u.Email == email);
         }
 
