@@ -59,6 +59,7 @@ export interface PecasBiData {
   vendedores: PecaVendedor[];
   canais: PecaCanal[];
   clientes: PecaCliente[];
+  seguradoras: PecaCliente[];
   minhaMeta?: PecaMetaResumo | null;
 }
 

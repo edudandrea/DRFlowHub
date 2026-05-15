@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DRFlowHub")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cfd0337fce697ad93735884da6403886a4d0f4ad")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b08f810aca92c0ad44b35b624145e2c68d1b7c4d")]
 [assembly: System.Reflection.AssemblyProductAttribute("DRFlowHub")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DRFlowHub")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

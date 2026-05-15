@@ -707,6 +707,57 @@ button[type='submit']:not(.ghost):hover,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.report-panel { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-card-alt); }
+.report-panel > div:first-child { display: grid; gap: 4px; }
+.report-panel small { color: var(--color-muted); font-weight: 700; }
+.compact-report-filters { align-items: end; }
+.compact-report-filters label { min-width: 130px; }
+.report-button { min-width: 118px; height: 38px; }
+.ti-satisfaction-modal .drflow-modal-header span { display: block; margin-top: 6px; color: var(--color-muted); font-size: 14px; font-weight: 700; }
+.satisfaction-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.satisfaction-summary div { display: grid; gap: 5px; padding: 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-card-alt); }
+.satisfaction-summary span { color: var(--color-muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.satisfaction-summary strong { color: var(--color-text); overflow-wrap: anywhere; }
+.required-satisfaction-form { margin-top: 16px; border-color: #f59e0b; background: #fffbeb; }
+.rating-buttons-large button { width: 48px; height: 48px; font-size: 30px; }
+
+.bi-shell .composition-panel { overflow: hidden; }
+.bi-shell .margin-kpi { display: grid; gap: 4px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; background: linear-gradient(135deg, var(--color-card-alt), var(--color-brand-blue-soft)); }
+.bi-shell .margin-kpi strong { color: var(--color-brand-blue); font-size: 30px; }
+.bi-shell .margin-kpi span { color: var(--color-muted); font-weight: 800; }
+.bi-shell .mini-evolution { display: grid; grid-template-columns: repeat(auto-fit, minmax(42px, 1fr)); gap: 8px; min-height: 112px; align-items: end; }
+.bi-shell .mini-point { display: grid; gap: 8px; min-width: 0; text-align: center; }
+.bi-shell .mini-point span { min-height: 10px; border-radius: 8px 8px 3px 3px; background: linear-gradient(180deg, var(--color-brand-green-strong), var(--color-brand-blue)); box-shadow: 0 10px 20px color-mix(in srgb, var(--color-brand-blue) 16%, transparent); }
+.bi-shell .mini-point small { overflow: hidden; color: var(--color-muted); font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.bi-shell .channels-panel { align-self: stretch; }
+.bi-shell .client-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.bi-shell .client-card { display: flex; gap: 12px; align-items: center; padding: 14px; border: 1px solid var(--color-border); border-radius: 8px; background: linear-gradient(135deg, var(--color-card-alt), color-mix(in srgb, var(--color-brand-green-soft) 55%, var(--color-surface))); }
+.bi-shell .client-card em, .bi-shell .rank-chip { display: inline-grid; place-items: center; border-radius: 8px; background: var(--color-button-soft-bg); color: var(--color-button-soft-text); font-style: normal; font-weight: 900; }
+.bi-shell .client-card em { width: 38px; aspect-ratio: 1; flex: 0 0 auto; }
+.bi-shell .client-card div { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.bi-shell .client-card strong, .bi-shell .part-name { color: var(--color-text); }
+.bi-shell .client-card span { color: var(--color-muted); font-size: 13px; font-weight: 800; }
+.bi-shell .client-card p { height: 8px; overflow: hidden; border-radius: 999px; background: var(--color-surface); }
+.bi-shell .client-card p span { display: block; height: 100%; border-radius: inherit; background: var(--color-brand-green-strong); }
+.bi-shell .insurance-card { background: linear-gradient(135deg, var(--color-card-alt), color-mix(in srgb, var(--color-brand-blue-soft) 62%, var(--color-surface))); }
+.bi-shell .insurance-card p span { background: var(--color-brand-blue); }
+.bi-shell .empty-ranking { padding: 14px; border: 1px dashed var(--color-border); border-radius: 8px; color: var(--color-muted); font-weight: 800; }
+.bi-shell tbody tr { background: linear-gradient(90deg, color-mix(in srgb, var(--color-brand-blue-soft) 42%, transparent), transparent 42%); }
+.bi-shell tbody tr:nth-child(even) { background: linear-gradient(90deg, color-mix(in srgb, var(--color-brand-green-soft) 48%, transparent), transparent 46%); }
+.bi-shell tbody tr:hover { background: color-mix(in srgb, var(--color-brand-blue-soft) 72%, var(--color-surface)); }
+.bi-shell .rank-chip { width: 28px; height: 28px; margin-right: 10px; font-size: 12px; }
+.bi-shell .category-pill { display: inline-flex; max-width: 220px; padding: 5px 9px; overflow: hidden; border-radius: 999px; background: var(--color-brand-green-soft); color: var(--color-brand-green-strong); font-size: 12px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.bi-shell .money-cell { color: var(--color-brand-blue); }
+.bi-shell .donut-card { display: grid; justify-items: center; gap: 12px; }
+.bi-shell .donut svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 18px 28px rgba(15, 23, 42, 0.15)); transform: rotate(-90deg); }
+.bi-shell .donut-base, .bi-shell .donut-slice { fill: none; stroke-linecap: butt; }
+.bi-shell .donut-base { stroke: var(--color-card-alt); stroke-width: 34; }
+.bi-shell .donut-slice { stroke-width: 34; cursor: pointer; transition: stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease; }
+.bi-shell .donut-slice:hover, .bi-shell .donut-slice:focus { opacity: 0.96; stroke-width: 39; filter: brightness(1.08); outline: 0; }
+.bi-shell .donut-value { display: grid; justify-items: center; gap: 3px; min-width: 190px; padding: 10px 14px; border: 1px solid var(--color-border); border-radius: 8px; background: color-mix(in srgb, var(--color-surface) 88%, transparent); box-shadow: 0 14px 32px rgba(15, 23, 42, 0.13); }
+.bi-shell .donut-value strong { color: var(--color-text); font-size: 21px; line-height: 1.1; }
+.bi-shell .donut-value span { color: var(--color-muted); font-size: 11px; font-weight: 900; text-transform: uppercase; }
+
 @keyframes modal-enter {
   from {
     opacity: 0;
@@ -861,5 +912,9 @@ input[type='file']::file-selector-button:hover {
   .ti-shell .tabs button,
   .ti-shell .detail-tabs button {
     flex: 1 1 calc(50% - 8px);
+  }
+
+  .satisfaction-summary {
+    grid-template-columns: 1fr;
   }
 }

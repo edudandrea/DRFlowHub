@@ -36,7 +36,7 @@ export class PecasBiPage implements OnInit {
   readonly revendas = signal<Unidade[]>([]);
   readonly empresaNumero = signal<number | null>(null);
   readonly revendaNumero = signal<number | null>(null);
-  readonly dataInicio = signal(this.toDateInput(this.monthsAgo(5)));
+  readonly dataInicio = signal(this.toDateInput(this.monthsAgo(1)));
   readonly dataFim = signal(this.toDateInput(new Date()));
   readonly canal = signal('Todos');
   readonly metaModalSeller = signal<PecaVendedor | null>(null);
@@ -44,6 +44,7 @@ export class PecasBiPage implements OnInit {
   readonly metaDataInicioDraft = signal('');
   readonly metaDataFimDraft = signal('');
   readonly savingMeta = signal(false);
+  readonly hoveredChannel = signal<string | null>(null);
 
   readonly canais = computed(() => ['Todos', 'P21', 'P23', 'P41']);
   readonly vendas = computed(() => this.data()?.vendasMensais ?? []);
@@ -52,6 +53,7 @@ export class PecasBiPage implements OnInit {
   readonly vendedores = computed(() => this.data()?.vendedores ?? []);
   readonly canaisData = computed(() => this.data()?.canais ?? []);
   readonly clientes = computed(() => this.data()?.clientes ?? []);
+  readonly seguradoras = computed(() => this.data()?.seguradoras ?? []);
   readonly canViewSellerRanking = computed(() => this.data()?.podeVerRankingVendedores ?? false);
   readonly isGerenteEmpresaPecas = computed(() => this.user()?.role === 'Gerente de Pecas');
   readonly isGerenteGeralPecas = computed(() => this.user()?.role === 'Gerente Geral de Pecas');
@@ -84,8 +86,10 @@ export class PecasBiPage implements OnInit {
     return anterior ? ((atual - anterior) / anterior) * 100 : 0;
   });
   readonly maxMensal = computed(() => Math.max(...this.vendas().map((item) => item.faturamento), 1));
+  readonly maxMargemMensal = computed(() => Math.max(...this.vendas().map((item) => Math.max(item.margem, 0)), 1));
   readonly maxCategoria = computed(() => Math.max(...this.categorias().map((item) => item.faturamento), 1));
   readonly maxCanal = computed(() => Math.max(...this.canaisData().map((item) => item.faturamento), 1));
+  readonly canaisTotal = computed(() => this.canaisData().reduce((total, item) => total + item.faturamento, 0));
   readonly curvaA = computed(() => this.pecas().filter((_, index) => index < 2));
   readonly curvaB = computed(() => this.pecas().filter((_, index) => index >= 2 && index < 4));
   readonly curvaC = computed(() => this.pecas().filter((_, index) => index >= 4));
@@ -99,6 +103,7 @@ export class PecasBiPage implements OnInit {
     const meta = this.minhaMeta();
     return meta?.valorMeta ? (meta.valorVendido / meta.valorMeta) * 100 : 0;
   });
+  readonly metaProgressWidth = computed(() => this.progressWidth(this.metaPercentual()));
   readonly metaStatus = computed(() => {
     const percent = this.metaPercentual();
     if (percent >= 100) {
@@ -169,8 +174,55 @@ export class PecasBiPage implements OnInit {
     return Math.max(2, (value / max) * 100);
   }
 
+  percentOfTotal(value: number, total: number): number {
+    return total ? Math.max(0, (value / total) * 100) : 0;
+  }
+
+  donutGradient(): string {
+    const colors = ['var(--color-brand-blue)', 'var(--color-brand-green-strong)', '#f59e0b', '#8b5cf6', '#64748b'];
+    const total = this.canaisTotal();
+    if (!total) {
+      return 'conic-gradient(#e2e8f0 0 100%)';
+    }
+
+    let start = 0;
+    const segments = this.canaisData().map((item, index) => {
+      const end = start + (item.faturamento / total) * 100;
+      const segment = `${colors[index % colors.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+      start = end;
+      return segment;
+    });
+
+    return `conic-gradient(${segments.join(', ')})`;
+  }
+
+  channelColor(index: number): string {
+    return ['#2454d6', '#1fae6a', '#f59e0b', '#8b5cf6', '#64748b'][index % 5];
+  }
+
+  channelOffsetPercent(index: number): number {
+    const total = this.canaisTotal();
+    if (!total || index <= 0) {
+      return 0;
+    }
+
+    return this.canaisData()
+      .slice(0, index)
+      .reduce((sum, item) => sum + (item.faturamento / total) * 100, 0);
+  }
+
+  hoveredChannelValue(): number {
+    const channel = this.hoveredChannel();
+    return this.canaisData().find((item) => item.nome === channel)?.faturamento ?? this.canaisTotal();
+  }
+
+  hoveredChannelLabel(): string {
+    const channel = this.hoveredChannel();
+    return channel ? this.channelLabel(channel) : 'Total';
+  }
+
   formatMoney(value: number): string {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   }
 
   formatNumber(value: number): string {
@@ -181,11 +233,16 @@ export class PecasBiPage implements OnInit {
     return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
   }
 
+  clientListTotal(items: { faturamento: number }[]): number {
+    return items.reduce((total, item) => total + item.faturamento, 0);
+  }
+
   channelLabel(value: string): string {
     const labels: Record<string, string> = {
       P21: 'Venda de peças',
       P23: 'Venda de seguradora',
       P41: 'Mercado Livre',
+      
     };
 
     return labels[value] ?? value;
@@ -195,12 +252,20 @@ export class PecasBiPage implements OnInit {
     return seller.metaVendas ? (seller.faturamento / seller.metaVendas) * 100 : 0;
   }
 
+  sellerGoalProgressWidth(seller: PecaVendedor): number {
+    return this.progressWidth(this.sellerGoalPercent(seller));
+  }
+
   sellerGoalClass(seller: PecaVendedor): string {
     const percent = this.sellerGoalPercent(seller);
     if (percent >= 100) {
       return 'success';
     }
     return percent >= 80 ? 'warning' : 'danger';
+  }
+
+  private progressWidth(value: number): number {
+    return Math.max(0, Math.min(value, 100));
   }
 
   openMetaModal(seller: PecaVendedor): void {

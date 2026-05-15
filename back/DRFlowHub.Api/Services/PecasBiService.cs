@@ -17,7 +17,38 @@ namespace DRFlowHub.Api.Services
 
         // Ajuste os aliases caso o Oracle use nomes diferentes para margem, canal ou itens.
         private const string BaseCapaSql = @"
-            WITH IMPOSTOS_ITEM AS (
+            WITH VALORES_ITEM AS (
+                SELECT
+                    FMI.EMPRESA,
+                    FMI.REVENDA,
+                    FMI.NUMERO_NOTA_FISCAL,
+                    FMI.SERIE_NOTA_FISCAL,
+                    FMI.TIPO_TRANSACAO,
+                    FMI.CONTADOR,
+                    SUM(
+                        COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
+                        - COALESCE(FMI.VAL_DESCONTO, 0)
+                        + COALESCE(FMI.VAL_FRETE, 0)
+                    ) AS FATURAMENTO,
+                    SUM(
+                        COALESCE(FMI.VAL_ICMS, 0)
+                        + COALESCE(FMI.VAL_ICMS_RETIDO, 0)
+                        + COALESCE(FMI.VAL_IPI, 0)
+                        + COALESCE(FMI.VAL_PIS, 0)
+                        + COALESCE(FMI.VAL_COFINS, 0)
+                        + COALESCE(FMI.VAL_ICMS_PARTIL_UF_DEST, 0)
+                        + COALESCE(FMI.VAL_ICMS_COMB_POBREZA, 0)
+                        + COALESCE(FMI.VAL_FCP_ST, 0)
+                        + COALESCE(FMI.VAL_FCP_OUTROS, 0)
+                    ) AS IMPOSTOS
+                FROM FAT_MOVIMENTO_ITEM FMI
+                INNER JOIN PEC_ITEM_ESTOQUE PIE
+                  ON PIE.EMPRESA = FMI.EMPRESA
+                 AND PIE.ITEM_ESTOQUE = FMI.ITEM_ESTOQUE
+                WHERE PIE.TIPO_INDUSTRIALIZACAO IS NULL
+                GROUP BY FMI.EMPRESA, FMI.REVENDA, FMI.NUMERO_NOTA_FISCAL, FMI.SERIE_NOTA_FISCAL, FMI.TIPO_TRANSACAO, FMI.CONTADOR
+            ),
+            VENDEDOR_NOTA AS (
                 SELECT
                     EMPRESA,
                     REVENDA,
@@ -25,18 +56,8 @@ namespace DRFlowHub.Api.Services
                     SERIE_NOTA_FISCAL,
                     TIPO_TRANSACAO,
                     CONTADOR,
-                    SUM(
-                        COALESCE(VAL_ICMS, 0)
-                        + COALESCE(VAL_ICMS_RETIDO, 0)
-                        + COALESCE(VAL_IPI, 0)
-                        + COALESCE(VAL_PIS, 0)
-                        + COALESCE(VAL_COFINS, 0)
-                        + COALESCE(VAL_ICMS_PARTIL_UF_DEST, 0)
-                        + COALESCE(VAL_ICMS_COMB_POBREZA, 0)
-                        + COALESCE(VAL_FCP_ST, 0)
-                        + COALESCE(VAL_FCP_OUTROS, 0)
-                    ) AS IMPOSTOS
-                FROM FAT_MOVIMENTO_ITEM
+                    MIN(VENDEDOR) AS VENDEDOR
+                FROM FAT_NOTAS_VENDEDOR
                 GROUP BY EMPRESA, REVENDA, NUMERO_NOTA_FISCAL, SERIE_NOTA_FISCAL, TIPO_TRANSACAO, CONTADOR
             ),
             BASE AS (
@@ -51,36 +72,87 @@ namespace DRFlowHub.Api.Services
                     FNV.VENDEDOR,
                     COALESCE(FV.NOME, 'Vendedor ' || TO_CHAR(FNV.VENDEDOR)) AS NOME_VENDEDOR,
                     REGEXP_REPLACE(COALESCE(TO_CHAR(FV.CPF), ''), '[^0-9]', '') AS CPF_VENDEDOR,
-                    FMC.TIPO_TRANSACAO AS CANAL,
-                    COALESCE(FMC.TOT_NOTA_FISCAL, 0) AS FATURAMENTO,
-                    COALESCE(FMC.TOT_NOTA_FISCAL, 0) - COALESCE(IMP.IMPOSTOS, 0) AS MARGEM
+                    CASE
+                        WHEN FMC.TIPO_TRANSACAO = 'P07' THEN 'P21'
+                        WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
+                        WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P47'
+                        ELSE FMC.TIPO_TRANSACAO
+                    END AS CANAL,
+                    CASE
+                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                        ELSE 1
+                    END * COALESCE(VI.FATURAMENTO, 0) AS FATURAMENTO,
+                    CASE
+                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                        ELSE 1
+                    END * (COALESCE(VI.FATURAMENTO, 0) - COALESCE(VI.IMPOSTOS, 0)) AS MARGEM,
+                    CASE
+                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN 0
+                        ELSE 1
+                    END AS QTD_NOTAS
                 FROM FAT_MOVIMENTO_CAPA FMC
-                LEFT JOIN IMPOSTOS_ITEM IMP
-                  ON IMP.EMPRESA = FMC.EMPRESA
-                 AND IMP.REVENDA = FMC.REVENDA
-                 AND IMP.NUMERO_NOTA_FISCAL = FMC.NUMERO_NOTA_FISCAL
-                 AND IMP.SERIE_NOTA_FISCAL = FMC.SERIE_NOTA_FISCAL
-                 AND IMP.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
-                 AND IMP.CONTADOR = FMC.CONTADOR
-                LEFT JOIN FAT_NOTAS_VENDEDOR FNV
-                  ON FNV.EMPRESA = FMC.EMPRESA
-                 AND FNV.REVENDA = FMC.REVENDA
-                 AND FNV.NUMERO_NOTA_FISCAL = FMC.NUMERO_NOTA_FISCAL
-                 AND FNV.SERIE_NOTA_FISCAL = FMC.SERIE_NOTA_FISCAL
-                 AND FNV.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
-                 AND FNV.CONTADOR = FMC.CONTADOR
+                INNER JOIN VALORES_ITEM VI
+                  ON VI.EMPRESA = FMC.EMPRESA
+                 AND VI.REVENDA = FMC.REVENDA
+                 AND VI.NUMERO_NOTA_FISCAL = FMC.NUMERO_NOTA_FISCAL
+                 AND VI.SERIE_NOTA_FISCAL = FMC.SERIE_NOTA_FISCAL
+                 AND VI.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
+                 AND VI.CONTADOR = FMC.CONTADOR
+                INNER JOIN FAT_TIPO_TRANSACAO TT
+                  ON TT.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
+                LEFT JOIN FAT_MOVIMENTO_CAPA FMCORI
+                  ON FMCORI.EMPRESA = FMC.EMPRESA
+                 AND FMCORI.REVENDA = FMC.REVENDA
+                 AND FMCORI.FATOPERACAO = FMC.FATOPERACAO_ORIGINAL
+                LEFT JOIN VENDEDOR_NOTA FNV
+                  ON FNV.EMPRESA = COALESCE(FMCORI.EMPRESA, FMC.EMPRESA)
+                 AND FNV.REVENDA = COALESCE(FMCORI.REVENDA, FMC.REVENDA)
+                 AND FNV.NUMERO_NOTA_FISCAL = COALESCE(FMCORI.NUMERO_NOTA_FISCAL, FMC.NUMERO_NOTA_FISCAL)
+                 AND FNV.SERIE_NOTA_FISCAL = COALESCE(FMCORI.SERIE_NOTA_FISCAL, FMC.SERIE_NOTA_FISCAL)
+                 AND FNV.TIPO_TRANSACAO = COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
+                 AND FNV.CONTADOR = COALESCE(FMCORI.CONTADOR, FMC.CONTADOR)
                 LEFT JOIN FAT_VENDEDOR FV
-                  ON FV.EMPRESA = FMC.EMPRESA
+                  ON FV.EMPRESA = COALESCE(FMCORI.EMPRESA, FMC.EMPRESA)
+                 AND FV.REVENDA = COALESCE(FMCORI.REVENDA, FMC.REVENDA)
                  AND FV.VENDEDOR = FNV.VENDEDOR
-                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41')
+                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47', 'P07', 'P33', 'P77')
                   AND TO_CHAR(FMC.DEPARTAMENTO) = '3'
                   AND FMC.STATUS = 'F'
+                  AND (
+                      (FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47') AND TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO IN ('N', 'I'))
+                      OR FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77')
+                  )
                   AND COALESCE(FMC.NFE_SITUACAO, ' ') <> 'D'
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
-                  AND (:EMPRESA IS NULL OR TO_CHAR(FMC.EMPRESA) = :EMPRESA)
-                  AND (:REVENDA IS NULL OR TO_CHAR(FMC.REVENDA) = :REVENDA)
-                  AND (:CPF_VENDEDOR IS NULL OR REGEXP_REPLACE(COALESCE(TO_CHAR(FV.CPF), ''), '[^0-9]', '') = :CPF_VENDEDOR)
-                  AND (:CANAL IS NULL OR FMC.TIPO_TRANSACAO = :CANAL)
+                  AND (:EMPRESA IS NULL OR TO_CHAR(COALESCE(FMC.EMPRESA_ORIGEM, FMC.EMPRESA)) = :EMPRESA)
+                  AND (:REVENDA IS NULL OR TO_CHAR(COALESCE(FMC.REVENDA_ORIGEM, FMC.REVENDA)) = :REVENDA)
+                  AND (
+                      :CPF_VENDEDOR IS NULL
+                      OR EXISTS (
+                          SELECT 1
+                          FROM FAT_NOTAS_VENDEDOR FNVF
+                          INNER JOIN FAT_VENDEDOR FVF
+                             ON FVF.EMPRESA = FNVF.EMPRESA
+                            AND FVF.REVENDA = FNVF.REVENDA
+                            AND FVF.VENDEDOR = FNVF.VENDEDOR
+                          WHERE FNVF.EMPRESA = COALESCE(FMCORI.EMPRESA, FMC.EMPRESA)
+                            AND FNVF.REVENDA = COALESCE(FMCORI.REVENDA, FMC.REVENDA)
+                            AND FNVF.NUMERO_NOTA_FISCAL = COALESCE(FMCORI.NUMERO_NOTA_FISCAL, FMC.NUMERO_NOTA_FISCAL)
+                            AND FNVF.SERIE_NOTA_FISCAL = COALESCE(FMCORI.SERIE_NOTA_FISCAL, FMC.SERIE_NOTA_FISCAL)
+                            AND FNVF.TIPO_TRANSACAO = COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
+                            AND FNVF.CONTADOR = COALESCE(FMCORI.CONTADOR, FMC.CONTADOR)
+                            AND REGEXP_REPLACE(COALESCE(TO_CHAR(FVF.CPF), ''), '[^0-9]', '') = :CPF_VENDEDOR
+                      )
+                  )
+                  AND (
+                      :CANAL IS NULL
+                      OR CASE
+                            WHEN FMC.TIPO_TRANSACAO = 'P07' THEN 'P21'
+                            WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
+                            WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P47'
+                            ELSE FMC.TIPO_TRANSACAO
+                         END = :CANAL
+                  )
             )";
 
         private const string VendasMensaisSql = BaseCapaSql + @"
@@ -88,7 +160,7 @@ namespace DRFlowHub.Api.Services
                 TO_CHAR(TRUNC(DTA_ENTRADA_SAIDA, 'MM'), 'MM/YYYY') AS MES,
                 SUM(FATURAMENTO) AS FATURAMENTO,
                 SUM(MARGEM) AS MARGEM,
-                COUNT(*) AS QUANTIDADE
+                SUM(QTD_NOTAS) AS QUANTIDADE
             FROM BASE
             GROUP BY TRUNC(DTA_ENTRADA_SAIDA, 'MM')
             ORDER BY TRUNC(DTA_ENTRADA_SAIDA, 'MM')";
@@ -104,19 +176,19 @@ namespace DRFlowHub.Api.Services
             FROM BASE";
 
         private const string VendedoresSql = BaseCapaSql + @"
-            SELECT CPF_VENDEDOR, NOME_VENDEDOR, SUM(FATURAMENTO) AS FATURAMENTO, COUNT(*) AS PEDIDOS
+            SELECT CPF_VENDEDOR, NOME_VENDEDOR, SUM(FATURAMENTO) AS FATURAMENTO, SUM(QTD_NOTAS) AS PEDIDOS
             FROM BASE
             GROUP BY CPF_VENDEDOR, NOME_VENDEDOR
             ORDER BY FATURAMENTO DESC";
 
-        private const string TopClientesSql = BaseCapaSql + @"
+        private const string TopCompradoresSql = BaseCapaSql + @"
             SELECT *
             FROM (
                 SELECT
                     TO_CHAR(FMC.CLIENTE) AS CODIGO,
                     COALESCE(FCL.NOME, 'Cliente ' || TO_CHAR(FMC.CLIENTE)) AS NOME,
                     SUM(B.FATURAMENTO) AS FATURAMENTO,
-                    COUNT(*) AS NOTAS
+                    SUM(B.QTD_NOTAS) AS NOTAS
                 FROM BASE B
                 INNER JOIN FAT_MOVIMENTO_CAPA FMC
                   ON FMC.EMPRESA = B.EMPRESA
@@ -127,6 +199,31 @@ namespace DRFlowHub.Api.Services
                  AND FMC.CONTADOR = B.CONTADOR
                 LEFT JOIN FAT_CLIENTE FCL
                   ON FCL.CLIENTE = FMC.CLIENTE
+                WHERE B.CANAL IN ('P21', 'P41', 'P47')
+                GROUP BY FMC.CLIENTE, FCL.NOME
+                ORDER BY FATURAMENTO DESC
+            )
+            WHERE ROWNUM <= 10";
+
+        private const string TopSeguradorasSql = BaseCapaSql + @"
+            SELECT *
+            FROM (
+                SELECT
+                    TO_CHAR(FMC.CLIENTE) AS CODIGO,
+                    COALESCE(FCL.NOME, 'Seguradora ' || TO_CHAR(FMC.CLIENTE)) AS NOME,
+                    SUM(B.FATURAMENTO) AS FATURAMENTO,
+                    SUM(B.QTD_NOTAS) AS NOTAS
+                FROM BASE B
+                INNER JOIN FAT_MOVIMENTO_CAPA FMC
+                  ON FMC.EMPRESA = B.EMPRESA
+                 AND FMC.REVENDA = B.REVENDA
+                 AND FMC.NUMERO_NOTA_FISCAL = B.NUMERO_NOTA_FISCAL
+                 AND FMC.SERIE_NOTA_FISCAL = B.SERIE_NOTA_FISCAL
+                 AND FMC.TIPO_TRANSACAO = B.TIPO_TRANSACAO
+                 AND FMC.CONTADOR = B.CONTADOR
+                LEFT JOIN FAT_CLIENTE FCL
+                  ON FCL.CLIENTE = FMC.CLIENTE
+                WHERE B.CANAL = 'P23'
                 GROUP BY FMC.CLIENTE, FCL.NOME
                 ORDER BY FATURAMENTO DESC
             )
@@ -139,8 +236,22 @@ namespace DRFlowHub.Api.Services
                     TO_CHAR(FMI.ITEM_ESTOQUE) AS CODIGO,
                     COALESCE(PIE.DES_ITEM_ESTOQUE, 'Peca ' || TO_CHAR(FMI.ITEM_ESTOQUE)) AS NOME,
                     COALESCE(TO_CHAR(PIE.GRUPO), 'Pecas') AS CATEGORIA,
-                    SUM(COALESCE(FMI.QUANTIDADE, 0)) AS QUANTIDADE,
-                    SUM(COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)) AS FATURAMENTO,
+                    SUM(
+                        CASE
+                            WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                            ELSE 1
+                        END * COALESCE(FMI.QUANTIDADE, 0)
+                    ) AS QUANTIDADE,
+                    SUM(
+                        CASE
+                            WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                            ELSE 1
+                        END * (
+                            COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
+                            - COALESCE(FMI.VAL_DESCONTO, 0)
+                            + COALESCE(FMI.VAL_FRETE, 0)
+                        )
+                    ) AS FATURAMENTO,
                     0 AS MARGEM_PERCENTUAL
                 FROM FAT_MOVIMENTO_CAPA FMC
                 INNER JOIN FAT_MOVIMENTO_ITEM FMI
@@ -150,28 +261,54 @@ namespace DRFlowHub.Api.Services
                  AND FMI.SERIE_NOTA_FISCAL = FMC.SERIE_NOTA_FISCAL
                  AND FMI.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
                  AND FMI.CONTADOR = FMC.CONTADOR
-                LEFT JOIN FAT_NOTAS_VENDEDOR FNV
-                  ON FNV.EMPRESA = FMC.EMPRESA
-                 AND FNV.REVENDA = FMC.REVENDA
-                 AND FNV.NUMERO_NOTA_FISCAL = FMC.NUMERO_NOTA_FISCAL
-                 AND FNV.SERIE_NOTA_FISCAL = FMC.SERIE_NOTA_FISCAL
-                 AND FNV.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
-                 AND FNV.CONTADOR = FMC.CONTADOR
                 LEFT JOIN PEC_ITEM_ESTOQUE PIE
                   ON PIE.EMPRESA = FMI.EMPRESA
                  AND PIE.ITEM_ESTOQUE = FMI.ITEM_ESTOQUE
-                LEFT JOIN FAT_VENDEDOR FV
-                  ON FV.EMPRESA = FMC.EMPRESA
-                 AND FV.VENDEDOR = FNV.VENDEDOR
-                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41')
+                INNER JOIN FAT_TIPO_TRANSACAO TT
+                  ON TT.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
+                LEFT JOIN FAT_MOVIMENTO_CAPA FMCORI
+                  ON FMCORI.EMPRESA = FMC.EMPRESA
+                 AND FMCORI.REVENDA = FMC.REVENDA
+                 AND FMCORI.FATOPERACAO = FMC.FATOPERACAO_ORIGINAL
+                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47', 'P07', 'P33', 'P77')
                   AND TO_CHAR(FMC.DEPARTAMENTO) = '3'
                   AND FMC.STATUS = 'F'
+                  AND (
+                      (FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47') AND TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO IN ('N', 'I'))
+                      OR FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77')
+                  )
+                  AND PIE.TIPO_INDUSTRIALIZACAO IS NULL
                   AND COALESCE(FMC.NFE_SITUACAO, ' ') <> 'D'
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
-                  AND (:EMPRESA IS NULL OR TO_CHAR(FMC.EMPRESA) = :EMPRESA)
-                  AND (:REVENDA IS NULL OR TO_CHAR(FMC.REVENDA) = :REVENDA)
-                  AND (:CPF_VENDEDOR IS NULL OR REGEXP_REPLACE(COALESCE(TO_CHAR(FV.CPF), ''), '[^0-9]', '') = :CPF_VENDEDOR)
-                  AND (:CANAL IS NULL OR FMC.TIPO_TRANSACAO = :CANAL)
+                  AND (:EMPRESA IS NULL OR TO_CHAR(COALESCE(FMC.EMPRESA_ORIGEM, FMC.EMPRESA)) = :EMPRESA)
+                  AND (:REVENDA IS NULL OR TO_CHAR(COALESCE(FMC.REVENDA_ORIGEM, FMC.REVENDA)) = :REVENDA)
+                  AND (
+                      :CPF_VENDEDOR IS NULL
+                      OR EXISTS (
+                          SELECT 1
+                          FROM FAT_NOTAS_VENDEDOR FNVF
+                          INNER JOIN FAT_VENDEDOR FVF
+                             ON FVF.EMPRESA = FNVF.EMPRESA
+                            AND FVF.REVENDA = FNVF.REVENDA
+                            AND FVF.VENDEDOR = FNVF.VENDEDOR
+                          WHERE FNVF.EMPRESA = COALESCE(FMCORI.EMPRESA, FMC.EMPRESA)
+                            AND FNVF.REVENDA = COALESCE(FMCORI.REVENDA, FMC.REVENDA)
+                            AND FNVF.NUMERO_NOTA_FISCAL = COALESCE(FMCORI.NUMERO_NOTA_FISCAL, FMC.NUMERO_NOTA_FISCAL)
+                            AND FNVF.SERIE_NOTA_FISCAL = COALESCE(FMCORI.SERIE_NOTA_FISCAL, FMC.SERIE_NOTA_FISCAL)
+                            AND FNVF.TIPO_TRANSACAO = COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
+                            AND FNVF.CONTADOR = COALESCE(FMCORI.CONTADOR, FMC.CONTADOR)
+                            AND REGEXP_REPLACE(COALESCE(TO_CHAR(FVF.CPF), ''), '[^0-9]', '') = :CPF_VENDEDOR
+                      )
+                  )
+                  AND (
+                      :CANAL IS NULL
+                      OR CASE
+                            WHEN FMC.TIPO_TRANSACAO = 'P07' THEN 'P21'
+                            WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
+                            WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P47'
+                            ELSE FMC.TIPO_TRANSACAO
+                         END = :CANAL
+                  )
                 GROUP BY FMI.ITEM_ESTOQUE, PIE.DES_ITEM_ESTOQUE, PIE.GRUPO
                 ORDER BY FATURAMENTO DESC
             )
@@ -222,7 +359,10 @@ namespace DRFlowHub.Api.Services
                 ? await LoadVendedoresAsync(connection, dataInicio, dataFim, empresa, revenda, canal)
                 : new List<PecaVendedorDto>();
             var clientes = podeVerRankingVendedores
-                ? await LoadTopClientesAsync(connection, dataInicio, dataFim, empresa, revenda, cpfVendedor, canal)
+                ? await LoadTopClientesAsync(connection, TopCompradoresSql, dataInicio, dataFim, empresa, revenda, cpfVendedor)
+                : new List<PecaClienteDto>();
+            var seguradoras = podeVerRankingVendedores
+                ? await LoadTopClientesAsync(connection, TopSeguradorasSql, dataInicio, dataFim, empresa, revenda, cpfVendedor)
                 : new List<PecaClienteDto>();
             var pecas = await LoadTopPecasAsync(connection, dataInicio, dataFim, empresa, revenda, cpfVendedor, canal);
             await ApplyMetasAsync(vendedores);
@@ -236,6 +376,7 @@ namespace DRFlowHub.Api.Services
                 Canais = canais,
                 Vendedores = vendedores,
                 Clientes = clientes,
+                Seguradoras = seguradoras,
                 Pecas = pecas,
                 MinhaMeta = minhaMeta,
                 Categorias = new List<PecaCategoriaDto>()
@@ -374,10 +515,10 @@ namespace DRFlowHub.Api.Services
             return items;
         }
 
-        private static async Task<List<PecaClienteDto>> LoadTopClientesAsync(OracleConnection connection, DateTime dataInicio, DateTime dataFim, object empresa, object revenda, string? cpfVendedor, object canal)
+        private static async Task<List<PecaClienteDto>> LoadTopClientesAsync(OracleConnection connection, string sql, DateTime dataInicio, DateTime dataFim, object empresa, object revenda, string? cpfVendedor)
         {
             var items = new List<PecaClienteDto>();
-            await using var command = CreateCommand(connection, TopClientesSql, dataInicio, dataFim, empresa, revenda, cpfVendedor, canal);
+            await using var command = CreateCommand(connection, sql, dataInicio, dataFim, empresa, revenda, cpfVendedor, DBNull.Value);
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {

@@ -155,12 +155,6 @@ input {
   margin-block: 4px;
 }
 
-.celebration-icons {
-  display: inline-flex;
-  margin-right: 6px;
-  white-space: nowrap;
-}
-
 .goal-alert span {
   color: var(--color-muted);
   font-weight: 800;
@@ -180,6 +174,29 @@ input {
 
 .goal-alert.success {
   border-left-color: var(--color-brand-green-strong);
+}
+
+.goal-progress-card {
+  grid-column: span 2;
+}
+
+.goal-progress {
+  margin-top: 14px;
+}
+
+.goal-progress p,
+.seller-goal-progress p {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-card-alt);
+}
+
+.goal-progress span,
+.seller-goal-progress p span {
+  display: block;
+  height: 100%;
+  background: var(--color-brand-blue);
 }
 
 .metrics {
@@ -214,7 +231,7 @@ input {
 
 .bi-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(260px, 0.62fr) minmax(0, 1.38fr);
   gap: 18px;
   padding-block: 24px 36px;
 }
@@ -234,6 +251,13 @@ input {
 .seller-panel,
 .table-panel {
   grid-column: span 2;
+}
+
+.client-rankings {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
 }
 
 .column-chart {
@@ -302,8 +326,29 @@ input {
 
 .bar-row div {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
+}
+
+.bar-row strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bar-row span {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.bar-row i {
+  width: 10px;
+  aspect-ratio: 1;
+  border-radius: 999px;
 }
 
 .bar-row p {
@@ -322,17 +367,14 @@ input {
 
 .donut-layout {
   display: grid;
-  grid-template-columns: 150px 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
+  gap: 22px;
   align-items: center;
 }
 
 .donut {
-  width: 150px;
+  width: min(230px, 100%);
   aspect-ratio: 1;
-  border-radius: 50%;
-  background: conic-gradient(var(--color-brand-blue) 0 38%, var(--color-brand-green-strong) 38% 66%, #f59e0b 66% 84%, #94a3b8 84% 100%);
-  box-shadow: inset 0 0 0 34px var(--color-surface);
 }
 
 .seller-list article {
@@ -357,6 +399,27 @@ input {
 .seller-list div {
   min-width: 0;
   flex: 1;
+}
+
+.seller-goal-progress {
+  display: grid;
+  gap: 6px;
+  margin-block: 8px 6px;
+}
+
+.seller-list .seller-goal-progress div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.seller-goal-progress.success p span {
+  background: var(--color-brand-green-strong);
+}
+
+.seller-goal-progress.warning p span {
+  background: #f59e0b;
 }
 
 .seller-list em {
@@ -517,6 +580,7 @@ th {
   }
 
   .revenue-panel,
+  .client-rankings,
   .table-panel,
   .insights-panel {
     grid-column: span 2;
@@ -539,12 +603,14 @@ th {
 
   .metrics,
   .bi-grid,
+  .client-rankings,
   .abc-grid,
   .donut-layout {
     grid-template-columns: 1fr;
   }
 
   .revenue-panel,
+  .client-rankings,
   .table-panel,
   .insights-panel {
     grid-column: span 1;

@@ -75,6 +75,8 @@ export class TiPage implements OnInit, OnDestroy {
   readonly filterTerm = signal('');
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
+  readonly reportDateFrom = signal('');
+  readonly reportDateTo = signal('');
   readonly page = signal(1);
   readonly pageSize = signal(10);
   readonly sortField = signal<TiSortField>('id');
@@ -86,6 +88,7 @@ export class TiPage implements OnInit, OnDestroy {
   readonly closing = signal(false);
   readonly reopening = signal(false);
   readonly rating = signal(false);
+  readonly generatingReport = signal(false);
   readonly createdTicketNumber = signal<number | null>(null);
   readonly user = computed(() => this.auth.user());
   readonly canManage = computed(() => this.auth.hasAccess('ti-admin'));
@@ -137,6 +140,7 @@ export class TiPage implements OnInit, OnDestroy {
   private attachmentObjectUrl = '';
   private ticketModalRef?: BsModalRef;
   private createTicketModalRef?: BsModalRef;
+  private satisfactionModalRef?: BsModalRef;
   private communicationRefreshId: ReturnType<typeof setInterval> | null = null;
   private ticketMovementRefreshId: ReturnType<typeof setInterval> | null = null;
   private knownTicketMovements = new Map<number, string>();
@@ -333,12 +337,11 @@ export class TiPage implements OnInit, OnDestroy {
       : 'Mostrando todos os chamados concluidos.';
   }
 
-  focusPendingEvaluation(): void {
+  focusPendingEvaluation(template: TemplateRef<void>): void {
     this.filterTerm.set('');
     const pending = this.chamados().find((item) => this.canEvaluate(item));
     if (pending) {
-      this.select(pending);
-      this.toastr.info(`Abra o chamado #${pending.id} para avaliar o atendimento.`, 'Satisfacao');
+      this.openSatisfactionModal(pending, template);
     }
   }
 
@@ -477,7 +480,12 @@ export class TiPage implements OnInit, OnDestroy {
     this.satisfactionForm.reset({ nota: item.satisfacaoNota ?? 0, comentario: '' });
   }
 
-  openTicketModal(item: ChamadoTI, template: TemplateRef<void>): void {
+  openTicketModal(item: ChamadoTI, template: TemplateRef<void>, satisfactionTemplate?: TemplateRef<void>): void {
+    if (this.canEvaluate(item) && satisfactionTemplate) {
+      this.openSatisfactionModal(item, satisfactionTemplate);
+      return;
+    }
+
     this.select(item);
     this.startCommunicationRefresh();
     this.ticketModalRef = this.modalService.show(template, {
@@ -498,6 +506,21 @@ export class TiPage implements OnInit, OnDestroy {
     this.stopCommunicationRefresh();
     this.ticketModalRef?.hide();
     this.ticketModalRef = undefined;
+  }
+
+  openSatisfactionModal(item: ChamadoTI, template: TemplateRef<void>): void {
+    this.select(item);
+    this.stopCommunicationRefresh();
+    this.ticketModalRef?.hide();
+    this.ticketModalRef = undefined;
+    this.satisfactionModalRef?.hide();
+    this.satisfactionModalRef = this.modalService.show(template, {
+      animated: true,
+      backdrop: 'static',
+      class: 'modal-lg modal-dialog-centered drflow-modal-shell ti-satisfaction-modal-shell',
+      ignoreBackdropClick: true,
+      keyboard: false,
+    });
   }
 
   update(): void {
@@ -630,6 +653,8 @@ export class TiPage implements OnInit, OnDestroy {
         this.selected.set(updated);
         this.satisfactionForm.reset({ nota: 0, comentario: '' });
         this.rating.set(false);
+        this.satisfactionModalRef?.hide();
+        this.satisfactionModalRef = undefined;
         this.toastr.success('Obrigado pela avaliacao do atendimento.', 'Satisfacao');
       },
       error: (error) => {
@@ -637,6 +662,48 @@ export class TiPage implements OnInit, OnDestroy {
         this.toastr.error(this.getErrorMessage('Nao foi possivel registrar a avaliacao.', error), 'Erro');
       },
     });
+  }
+
+  satisfactionReportCount(): number {
+    return this.getSatisfactionReportItems().length;
+  }
+
+  satisfactionReportAverage(): string {
+    const items = this.getSatisfactionReportItems();
+    if (items.length === 0) {
+      return '0,0';
+    }
+
+    const average = items.reduce((sum, item) => sum + (item.satisfacaoNota ?? 0), 0) / items.length;
+    return average.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  generateSatisfactionPdf(): void {
+    if (!this.canManage() || this.generatingReport()) {
+      return;
+    }
+
+    const items = this.getSatisfactionReportItems();
+    if (items.length === 0) {
+      this.toastr.info('Nenhuma avaliacao encontrada no periodo informado.', 'Relatorio');
+      return;
+    }
+
+    this.generatingReport.set(true);
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) {
+      this.generatingReport.set(false);
+      this.toastr.error('Permita pop-ups para gerar o PDF do relatorio.', 'Relatorio');
+      return;
+    }
+
+    reportWindow.document.write(this.buildSatisfactionReportHtml(items));
+    reportWindow.document.close();
+    reportWindow.focus();
+    setTimeout(() => {
+      reportWindow.print();
+      this.generatingReport.set(false);
+    }, 300);
   }
 
   previewAttachment(item = this.selected()): void {
@@ -920,6 +987,104 @@ export class TiPage implements OnInit, OnDestroy {
     return fields.some((value) => this.normalize(value).includes(term));
   }
 
+  private getSatisfactionReportItems(): ChamadoTI[] {
+    const from = this.parseDateFilter(this.reportDateFrom(), false);
+    const to = this.parseDateFilter(this.reportDateTo(), true);
+
+    return this.chamados()
+      .filter((item) => !!item.satisfacaoNota && !!item.dataAvaliacao)
+      .filter((item) => {
+        const date = new Date(item.dataAvaliacao || '');
+        if (Number.isNaN(date.getTime())) {
+          return false;
+        }
+
+        return (!from || date >= from) && (!to || date <= to);
+      })
+      .sort((a, b) => new Date(b.dataAvaliacao || '').getTime() - new Date(a.dataAvaliacao || '').getTime());
+  }
+
+  private buildSatisfactionReportHtml(items: ChamadoTI[]): string {
+    const now = new Date();
+    const period = `${this.formatReportDate(this.reportDateFrom())} a ${this.formatReportDate(this.reportDateTo())}`;
+    const average = this.satisfactionReportAverage();
+    const excellent = items.filter((item) => (item.satisfacaoNota ?? 0) >= 4).length;
+    const critical = items.filter((item) => (item.satisfacaoNota ?? 0) <= 2).length;
+    const rows = items.map((item) => `
+      <tr>
+        <td>#${item.id}</td>
+        <td>
+          <strong>${this.escapeHtml(item.titulo)}</strong>
+          <small>${this.escapeHtml(item.solicitante)} - ${this.escapeHtml(item.unidade)}</small>
+        </td>
+        <td>${this.escapeHtml(item.responsavel || 'Sem responsavel')}</td>
+        <td class="center">${item.satisfacaoNota}</td>
+        <td>${this.formatDateTime(item.dataAvaliacao)}</td>
+        <td>${this.escapeHtml(item.satisfacaoComentario || '-')}</td>
+      </tr>
+    `).join('');
+
+    return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Relatorio de satisfacao - Chamados de TI</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172033; font-family: Arial, Helvetica, sans-serif; background: #ffffff; }
+    header { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 3px solid #1f5f8b; }
+    .brand p { margin: 0 0 4px; color: #1f5f8b; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 24px; }
+    .meta { color: #64748b; font-size: 12px; text-align: right; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+    .summary article { padding: 12px; border: 1px solid #d8e0ea; border-radius: 8px; background: #f8fafc; }
+    .summary span { display: block; color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .summary strong { display: block; margin-top: 6px; color: #1f5f8b; font-size: 22px; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th { padding: 9px 8px; background: #172033; color: #ffffff; text-align: left; }
+    td { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    td small { display: block; margin-top: 3px; color: #64748b; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .center { text-align: center; font-weight: 800; color: #b45309; }
+    footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #d8e0ea; color: #64748b; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <p>DR Flow Hub</p>
+      <h1>Relatorio de satisfacao dos chamados de TI</h1>
+    </div>
+    <div class="meta">
+      <div>Periodo: ${period}</div>
+      <div>Gerado em: ${this.formatDateTime(now.toISOString())}</div>
+    </div>
+  </header>
+  <section class="summary">
+    <article><span>Avaliacoes</span><strong>${items.length}</strong></article>
+    <article><span>Nota media</span><strong>${average}</strong></article>
+    <article><span>Notas 4 e 5</span><strong>${excellent}</strong></article>
+    <article><span>Notas 1 e 2</span><strong>${critical}</strong></article>
+  </section>
+  <table>
+    <thead>
+      <tr>
+        <th>Chamado</th>
+        <th>Atendimento</th>
+        <th>Responsavel</th>
+        <th>Nota</th>
+        <th>Avaliacao</th>
+        <th>Comentario</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <footer>Documento gerado pelo DR Flow Hub para acompanhamento interno da qualidade dos atendimentos.</footer>
+</body>
+</html>`;
+  }
+
   private getFilterDate(item: ChamadoTI, useClosingDate: boolean): Date {
     const date = new Date(useClosingDate ? item.dataEncerramento || item.dataAbertura : item.dataAbertura);
     return Number.isNaN(date.getTime()) ? new Date(0) : date;
@@ -1010,6 +1175,42 @@ export class TiPage implements OnInit, OnDestroy {
 
     const date = new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private formatReportDate(value: string): string {
+    if (!value) {
+      return 'todos os periodos';
+    }
+
+    return this.formatDateTime(`${value}T00:00:00`).slice(0, 10);
+  }
+
+  private formatDateTime(value: string | null | undefined): string {
+    if (!value) {
+      return '-';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '-';
+    }
+
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   logout(): void {

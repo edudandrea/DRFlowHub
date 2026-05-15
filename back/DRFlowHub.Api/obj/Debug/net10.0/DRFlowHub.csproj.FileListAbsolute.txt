@@ -1107,7 +1107,6 @@ D:\Dev\DRFlowHub\artifacts\verify-build\DRFlowHub.Api\DRFlowHub.deps.json
 D:\Dev\DRFlowHub\artifacts\verify-build\DRFlowHub.Api\DRFlowHub.runtimeconfig.json
 D:\Dev\DRFlowHub\artifacts\verify-build\DRFlowHub.Api\DRFlowHub.dll
 D:\Dev\DRFlowHub\artifacts\verify-build\DRFlowHub.Api\DRFlowHub.pdb
-D:\Dev\DRFlowHub\back\DRFlowHub.Api\bin\Debug\net10.0\DRFlowHub.exe
 D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\appsettings.Development.json
 D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\appsettings.json
 D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\DRFlowHub.staticwebassets.endpoints.json
@@ -1115,3 +1114,11 @@ D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\DRFlowHub.deps.json
 D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\DRFlowHub.runtimeconfig.json
 D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\DRFlowHub.dll
 D:\Dev\DRFlowHub\artifacts\api-build-verify-permissoes\DRFlowHub.pdb
+D:\Dev\DRFlowHub\back\drflowhub.api\bin\Debug\net10.0\DRFlowHub.exe
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\appsettings.Development.json
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\appsettings.json
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\DRFlowHub.staticwebassets.endpoints.json
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\DRFlowHub.deps.json
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\DRFlowHub.runtimeconfig.json
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\DRFlowHub.dll
+D:\Dev\DRFlowHub\artifacts\pecas-bi-build\DRFlowHub.pdb

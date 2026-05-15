@@ -110,12 +110,33 @@
         <p class="notice">Chamado #{{ createdTicketNumber() }} criado com sucesso.</p>
       }
       @if (!canManage() && avaliacoesPendentes() > 0) {
-        <button class="satisfaction-alert" type="button" (click)="focusPendingEvaluation()">
+        <button class="satisfaction-alert" type="button" (click)="focusPendingEvaluation(satisfactionModalTemplate)">
           Voce tem {{ avaliacoesPendentes() }} chamado(s) encerrado(s) para avaliar
         </button>
       }
 
       @if (canManage()) {
+        <section class="report-panel">
+          <div>
+            <strong>Relatorio de satisfacao</strong>
+            <small>{{ satisfactionReportCount() }} avaliacoes no periodo - media {{ satisfactionReportAverage() }}</small>
+          </div>
+          <div class="date-filters compact-report-filters">
+            <label>
+              De
+              <input type="date" [value]="reportDateFrom()" (input)="reportDateFrom.set($any($event.target).value)" />
+            </label>
+            <label>
+              Ate
+              <input type="date" [value]="reportDateTo()" (input)="reportDateTo.set($any($event.target).value)" />
+            </label>
+            <button class="secondary" type="button" (click)="reportDateFrom.set(''); reportDateTo.set('')">Limpar</button>
+            <button class="primary report-button" type="button" (click)="generateSatisfactionPdf()" [disabled]="generatingReport()">
+              {{ generatingReport() ? 'Gerando...' : 'Salvar PDF' }}
+            </button>
+          </div>
+        </section>
+
         <div class="tabs" role="tablist" aria-label="Filtros de chamados de TI">
           <button type="button" [class.active]="activeTab() === 'pendentes'" (click)="setTab('pendentes')">
             Pendentes
@@ -155,7 +176,7 @@
           <p class="empty">Nenhum chamado encontrado.</p>
         } @else {
           @for (item of pagedChamados(); track item.id) {
-            <article class="request-card" [class.active]="selected()?.id === item.id" (click)="openTicketModal(item, ticketModalTemplate)">
+            <article class="request-card" [class.active]="selected()?.id === item.id" (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate)">
               @if (item.reaberto) {
                 <span class="reopen-alert">Reaberto</span>
               }
@@ -322,6 +343,66 @@
 
             <button class="primary" type="submit" [disabled]="saving()">
               {{ saving() ? 'Abrindo...' : 'Abrir chamado' }}
+            </button>
+          </form>
+        </div>
+      </div>
+    </ng-template>
+
+    <ng-template #satisfactionModalTemplate>
+      <div class="modal-content drflow-modal-content ti-satisfaction-modal">
+        <div class="modal-header drflow-modal-header">
+          <div>
+            <p class="system-name">Pesquisa obrigatoria</p>
+            <h2>Avalie o chamado #{{ selected()?.id }}</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+        </div>
+
+        <div class="modal-body drflow-modal-body">
+          <section class="satisfaction-summary">
+            <div>
+              <span>Status</span>
+              <strong>{{ selected()?.status }}</strong>
+            </div>
+            <div>
+              <span>Encerrado em</span>
+              <strong>{{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</strong>
+            </div>
+            <div>
+              <span>Responsavel</span>
+              <strong>{{ selected()?.responsavel || 'TI' }}</strong>
+            </div>
+          </section>
+
+          @if (selected()?.observacoesEncerramento) {
+            <section class="closure-notes">
+              <strong>Solucao registrada</strong>
+              <p>{{ selected()?.observacoesEncerramento }}</p>
+            </section>
+          }
+
+          <form class="satisfaction-form required-satisfaction-form" [formGroup]="satisfactionForm" (ngSubmit)="submitSatisfaction()">
+            <strong>Como voce avalia este atendimento?</strong>
+            <div class="rating-buttons rating-buttons-large" role="radiogroup" aria-label="Nota de satisfacao">
+              @for (star of [1, 2, 3, 4, 5]; track star) {
+                <button
+                  type="button"
+                  [class.active]="star <= satisfactionForm.controls.nota.value"
+                  [attr.aria-label]="star === 1 ? '1 estrela, muito insatisfeito' : star + ' estrelas'"
+                  (click)="setRating(star)"
+                >
+                  &#9733;
+                </button>
+              }
+            </div>
+            <small>Escolha uma nota de 1 a 5 para concluir a avaliacao.</small>
+            <label>
+              Comentario
+              <textarea formControlName="comentario" rows="4" placeholder="Conte rapidamente como foi o atendimento"></textarea>
+            </label>
+            <button class="primary" type="submit" [disabled]="rating()">
+              {{ rating() ? 'Enviando...' : 'Enviar avaliacao' }}
             </button>
           </form>
         </div>

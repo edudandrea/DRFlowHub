@@ -19,6 +19,7 @@ namespace DRFlowHub.Api.Dtos.PecasBi
         public List<PecaVendedorDto> Vendedores { get; set; } = new();
         public List<PecaCanalDto> Canais { get; set; } = new();
         public List<PecaClienteDto> Clientes { get; set; } = new();
+        public List<PecaClienteDto> Seguradoras { get; set; } = new();
         public PecaMetaResumoDto? MinhaMeta { get; set; }
     }
 
