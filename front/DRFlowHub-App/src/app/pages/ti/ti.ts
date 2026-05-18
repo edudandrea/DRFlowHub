@@ -752,11 +752,19 @@ export class TiPage implements OnInit, OnDestroy {
     window.open(target, '_blank', 'noopener,noreferrer');
   }
 
-  openRustDeskAccess(): void {
-    const link = this.buildRustDeskLink();
+  openRustDeskAccess(item = this.selected()): void {
+    const link = this.buildRustDeskLink(item);
     if (!link) {
       this.toastr.info('Este chamado ainda nao possui ID RustDesk do equipamento.', 'RustDesk');
       return;
+    }
+
+    const password = item?.rustDeskSenha?.trim() || this.adminForm.controls.rustDeskSenha.value.trim();
+    if (password && navigator.clipboard) {
+      void navigator.clipboard.writeText(password).then(
+        () => this.toastr.success('Senha RustDesk copiada para a area de transferencia.', 'RustDesk'),
+        () => undefined,
+      );
     }
 
     window.location.href = link;
@@ -781,18 +789,18 @@ export class TiPage implements OnInit, OnDestroy {
   }
 
   rustDeskLinkPreview(): string {
-    return this.buildRustDeskLink() || '';
+    return this.buildRustDeskLink(this.selected()) || '';
   }
 
-  private buildRustDeskLink(): string {
-    const rustDeskId = this.adminForm.controls.rustDeskId.value.trim();
+  private buildRustDeskLink(item: ChamadoTI | null = this.selected()): string {
+    const rustDeskId = item?.rustDeskId?.trim() || this.adminForm.controls.rustDeskId.value.trim();
     if (!rustDeskId) {
       return '';
     }
 
     const params = new URLSearchParams();
-    const server = this.adminForm.controls.rustDeskServidor.value.trim() || RUSTDESK_SERVER;
-    const key = this.adminForm.controls.rustDeskKey.value.trim() || RUSTDESK_KEY;
+    const server = item?.rustDeskServidor?.trim() || this.adminForm.controls.rustDeskServidor.value.trim() || RUSTDESK_SERVER;
+    const key = item?.rustDeskKey?.trim() || this.adminForm.controls.rustDeskKey.value.trim() || RUSTDESK_KEY;
     if (server) {
       params.set('server', server);
     }

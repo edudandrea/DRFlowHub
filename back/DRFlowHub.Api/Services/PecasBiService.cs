@@ -27,9 +27,14 @@ namespace DRFlowHub.Api.Services
                     FMI.CONTADOR,
                     SUM(
                         COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
-                        - COALESCE(FMI.VAL_DESCONTO, 0)
+                        - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
                         + COALESCE(FMI.VAL_FRETE, 0)
                     ) AS FATURAMENTO,
+                    SUM(
+                        COALESCE(FMI.VAL_ICMS, 0)
+                        + COALESCE(FMI.VAL_PIS, 0)
+                        + COALESCE(FMI.VAL_COFINS, 0)
+                    ) AS TRIBUTOS_RENTABILIDADE,
                     SUM(
                         COALESCE(FMI.VAL_ICMS, 0)
                         + COALESCE(FMI.VAL_ICMS_RETIDO, 0)
@@ -40,7 +45,8 @@ namespace DRFlowHub.Api.Services
                         + COALESCE(FMI.VAL_ICMS_COMB_POBREZA, 0)
                         + COALESCE(FMI.VAL_FCP_ST, 0)
                         + COALESCE(FMI.VAL_FCP_OUTROS, 0)
-                    ) AS IMPOSTOS
+                    ) AS IMPOSTOS,
+                    SUM(COALESCE(PIE.CUSTO_MEDIO, 0) * COALESCE(FMI.QUANTIDADE, 0)) AS CUSTO_MEDIO
                 FROM FAT_MOVIMENTO_ITEM FMI
                 INNER JOIN PEC_ITEM_ESTOQUE PIE
                   ON PIE.EMPRESA = FMI.EMPRESA
@@ -75,7 +81,7 @@ namespace DRFlowHub.Api.Services
                     CASE
                         WHEN FMC.TIPO_TRANSACAO = 'P07' THEN 'P21'
                         WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
-                        WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P47'
+                        WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P41'
                         ELSE FMC.TIPO_TRANSACAO
                     END AS CANAL,
                     CASE
@@ -86,6 +92,14 @@ namespace DRFlowHub.Api.Services
                         WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
                         ELSE 1
                     END * (COALESCE(VI.FATURAMENTO, 0) - COALESCE(VI.IMPOSTOS, 0)) AS MARGEM,
+                    CASE
+                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                        ELSE 1
+                    END * COALESCE(VI.CUSTO_MEDIO, 0) AS CUSTO_MEDIO,
+                    CASE
+                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                        ELSE 1
+                    END * COALESCE(VI.TRIBUTOS_RENTABILIDADE, 0) AS TRIBUTOS_RENTABILIDADE,
                     CASE
                         WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN 0
                         ELSE 1
@@ -115,17 +129,17 @@ namespace DRFlowHub.Api.Services
                   ON FV.EMPRESA = COALESCE(FMCORI.EMPRESA, FMC.EMPRESA)
                  AND FV.REVENDA = COALESCE(FMCORI.REVENDA, FMC.REVENDA)
                  AND FV.VENDEDOR = FNV.VENDEDOR
-                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47', 'P07', 'P33', 'P77')
+                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P07', 'P33', 'P77')
                   AND TO_CHAR(FMC.DEPARTAMENTO) = '3'
                   AND FMC.STATUS = 'F'
                   AND (
-                      (FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47') AND TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO IN ('N', 'I'))
+                      (FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41') AND TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO IN ('N', 'I'))
                       OR FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77')
                   )
                   AND COALESCE(FMC.NFE_SITUACAO, ' ') <> 'D'
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
-                  AND (:EMPRESA IS NULL OR TO_CHAR(COALESCE(FMC.EMPRESA_ORIGEM, FMC.EMPRESA)) = :EMPRESA)
-                  AND (:REVENDA IS NULL OR TO_CHAR(COALESCE(FMC.REVENDA_ORIGEM, FMC.REVENDA)) = :REVENDA)
+                  AND (:EMPRESA IS NULL OR TO_CHAR(FMC.EMPRESA) = :EMPRESA)
+                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(FMC.REVENDA) || ',') > 0)
                   AND (
                       :CPF_VENDEDOR IS NULL
                       OR EXISTS (
@@ -149,7 +163,7 @@ namespace DRFlowHub.Api.Services
                       OR CASE
                             WHEN FMC.TIPO_TRANSACAO = 'P07' THEN 'P21'
                             WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
-                            WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P47'
+                            WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P41'
                             ELSE FMC.TIPO_TRANSACAO
                          END = :CANAL
                   )
@@ -160,6 +174,10 @@ namespace DRFlowHub.Api.Services
                 TO_CHAR(TRUNC(DTA_ENTRADA_SAIDA, 'MM'), 'MM/YYYY') AS MES,
                 SUM(FATURAMENTO) AS FATURAMENTO,
                 SUM(MARGEM) AS MARGEM,
+                CASE
+                    WHEN SUM(FATURAMENTO) = 0 THEN 0
+                    ELSE ((SUM(FATURAMENTO) - (SUM(CUSTO_MEDIO) + SUM(TRIBUTOS_RENTABILIDADE))) / SUM(FATURAMENTO)) * 100
+                END AS RENTABILIDADE_PERCENTUAL,
                 SUM(QTD_NOTAS) AS QUANTIDADE
             FROM BASE
             GROUP BY TRUNC(DTA_ENTRADA_SAIDA, 'MM')
@@ -199,7 +217,7 @@ namespace DRFlowHub.Api.Services
                  AND FMC.CONTADOR = B.CONTADOR
                 LEFT JOIN FAT_CLIENTE FCL
                   ON FCL.CLIENTE = FMC.CLIENTE
-                WHERE B.CANAL IN ('P21', 'P41', 'P47')
+                WHERE B.CANAL IN ('P21', 'P41')
                 GROUP BY FMC.CLIENTE, FCL.NOME
                 ORDER BY FATURAMENTO DESC
             )
@@ -248,11 +266,58 @@ namespace DRFlowHub.Api.Services
                             ELSE 1
                         END * (
                             COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
-                            - COALESCE(FMI.VAL_DESCONTO, 0)
+                            - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
                             + COALESCE(FMI.VAL_FRETE, 0)
                         )
                     ) AS FATURAMENTO,
-                    0 AS MARGEM_PERCENTUAL
+                    0 AS MARGEM_PERCENTUAL,
+                    CASE
+                        WHEN SUM(
+                            CASE
+                                WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                                ELSE 1
+                            END * (
+                                COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
+                                - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
+                                + COALESCE(FMI.VAL_FRETE, 0)
+                            )
+                        ) = 0 THEN 0
+                        ELSE (
+                            (
+                                SUM(
+                                    CASE
+                                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                                        ELSE 1
+                                    END * (
+                                        COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
+                                        - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
+                                        + COALESCE(FMI.VAL_FRETE, 0)
+                                    )
+                                )
+                                - SUM(
+                                    CASE
+                                        WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                                        ELSE 1
+                                    END * (
+                                        (COALESCE(PIE.CUSTO_MEDIO, 0) * COALESCE(FMI.QUANTIDADE, 0))
+                                        + COALESCE(FMI.VAL_ICMS, 0)
+                                        + COALESCE(FMI.VAL_PIS, 0)
+                                        + COALESCE(FMI.VAL_COFINS, 0)
+                                    )
+                                )
+                            )
+                            / SUM(
+                                CASE
+                                    WHEN FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77') THEN -1
+                                    ELSE 1
+                                END * (
+                                    COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
+                                    - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
+                                    + COALESCE(FMI.VAL_FRETE, 0)
+                                )
+                            )
+                        ) * 100
+                    END AS RENTABILIDADE_PERCENTUAL
                 FROM FAT_MOVIMENTO_CAPA FMC
                 INNER JOIN FAT_MOVIMENTO_ITEM FMI
                   ON FMI.EMPRESA = FMC.EMPRESA
@@ -270,18 +335,18 @@ namespace DRFlowHub.Api.Services
                   ON FMCORI.EMPRESA = FMC.EMPRESA
                  AND FMCORI.REVENDA = FMC.REVENDA
                  AND FMCORI.FATOPERACAO = FMC.FATOPERACAO_ORIGINAL
-                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47', 'P07', 'P33', 'P77')
+                WHERE FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P07', 'P33', 'P77')
                   AND TO_CHAR(FMC.DEPARTAMENTO) = '3'
                   AND FMC.STATUS = 'F'
                   AND (
-                      (FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41', 'P47') AND TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO IN ('N', 'I'))
+                      (FMC.TIPO_TRANSACAO IN ('P21', 'P23', 'P41') AND TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO IN ('N', 'I'))
                       OR FMC.TIPO_TRANSACAO IN ('P07', 'P33', 'P77')
                   )
                   AND PIE.TIPO_INDUSTRIALIZACAO IS NULL
                   AND COALESCE(FMC.NFE_SITUACAO, ' ') <> 'D'
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
-                  AND (:EMPRESA IS NULL OR TO_CHAR(COALESCE(FMC.EMPRESA_ORIGEM, FMC.EMPRESA)) = :EMPRESA)
-                  AND (:REVENDA IS NULL OR TO_CHAR(COALESCE(FMC.REVENDA_ORIGEM, FMC.REVENDA)) = :REVENDA)
+                  AND (:EMPRESA IS NULL OR TO_CHAR(FMC.EMPRESA) = :EMPRESA)
+                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(FMC.REVENDA) || ',') > 0)
                   AND (
                       :CPF_VENDEDOR IS NULL
                       OR EXISTS (
@@ -305,7 +370,7 @@ namespace DRFlowHub.Api.Services
                       OR CASE
                             WHEN FMC.TIPO_TRANSACAO = 'P07' THEN 'P21'
                             WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
-                            WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P47'
+                            WHEN FMC.TIPO_TRANSACAO = 'P77' THEN 'P41'
                             ELSE FMC.TIPO_TRANSACAO
                          END = :CANAL
                   )
@@ -336,12 +401,7 @@ namespace DRFlowHub.Api.Services
             var revenda = NormalizeFilter(filter.Revenda);
             var canal = NormalizeFilter(filter.Canal);
 
-            if (RoleScope.IsVendedorPecas(role))
-            {
-                empresa = DBNull.Value;
-                revenda = DBNull.Value;
-            }
-            else if (RoleScope.IsGerentePecas(role))
+            if (RoleScope.IsGerentePecas(role))
             {
                 if (!accessScope.EmpresaNumero.HasValue || accessScope.EmpresaNumero.Value <= 0)
                     throw new UnauthorizedAccessException("Empresa do gerente de pecas nao configurada no cadastro do usuario.");
@@ -471,6 +531,7 @@ namespace DRFlowHub.Api.Services
                     Mes = GetString(reader, "MES"),
                     Faturamento = GetDecimal(reader, "FATURAMENTO"),
                     Margem = GetDecimal(reader, "MARGEM"),
+                    RentabilidadePercentual = GetDecimal(reader, "RENTABILIDADE_PERCENTUAL"),
                     Quantidade = GetInt(reader, "QUANTIDADE")
                 });
             }
@@ -609,6 +670,7 @@ namespace DRFlowHub.Api.Services
                     Quantidade = GetInt(reader, "QUANTIDADE"),
                     Faturamento = GetDecimal(reader, "FATURAMENTO"),
                     MargemPercentual = GetDecimal(reader, "MARGEM_PERCENTUAL"),
+                    RentabilidadePercentual = GetDecimal(reader, "RENTABILIDADE_PERCENTUAL"),
                     GiroDias = 0
                 });
             }

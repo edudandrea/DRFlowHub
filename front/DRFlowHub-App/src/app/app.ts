@@ -21,6 +21,8 @@ interface ShellLink {
   children?: ShellLink[];
 }
 
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base' });
+
 const SPINNER_BACKDROP_BY_ROLE: Record<Role, string> = {
   Admin: 'rgba(8, 20, 55, 0.76)',
   RH: 'rgba(104, 38, 132, 0.72)',
@@ -108,7 +110,7 @@ export class App {
       ],
     },
   ];
-  readonly visibleShellLinks = computed(() => this.shellLinks.filter((link) => this.canShowParentLink(link)));
+  readonly visibleShellLinks = computed(() => this.sortShellLinks(this.shellLinks.filter((link) => this.canShowParentLink(link))));
 
   constructor() {
     this.router.events
@@ -149,7 +151,7 @@ export class App {
   }
 
   visibleChildren(link: ShellLink): ShellLink[] {
-    return link.children?.filter((child) => this.canShowChildLink(child)) ?? [];
+    return this.sortShellLinks(link.children?.filter((child) => this.canShowChildLink(child)) ?? [], false);
   }
 
   hasActiveChild(link: ShellLink): boolean {
@@ -203,5 +205,16 @@ export class App {
     }
 
     return link.roles && !this.auth.hasAnyRole(link.roles) ? (link.userRoute ?? link.route) : link.route;
+  }
+
+  private sortShellLinks(links: ShellLink[], keepDashboardFirst = true): ShellLink[] {
+    const sorted = links.slice().sort((a, b) => collator.compare(a.label, b.label));
+
+    if (!keepDashboardFirst) {
+      return sorted;
+    }
+
+    const dashboard = sorted.find((link) => link.label === 'Dashboard');
+    return dashboard ? [dashboard, ...sorted.filter((link) => link !== dashboard)] : sorted;
   }
 }

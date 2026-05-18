@@ -1,4 +1,4 @@
-import { DatePipe, isPlatformBrowser } from '@angular/common';
+import { isPlatformBrowser } from '@angular/common';
 import { Component, HostListener, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -20,9 +20,24 @@ type UserSortField = 'nome' | 'email' | 'role' | 'departamento' | 'cargo' | 'uni
 type UnidadeSortField = 'empresa' | 'empresaNumero' | 'revenda' | 'numeroRevenda' | 'cnpj';
 type EmpresaSortField = 'nome' | 'numero';
 
+interface UserRevendaGroup {
+  key: string;
+  label: string;
+  users: User[];
+  totalAtivos: number;
+}
+
+interface UserEmpresaGroup {
+  key: string;
+  label: string;
+  totalUsuarios: number;
+  totalAtivos: number;
+  revendas: UserRevendaGroup[];
+}
+
 @Component({
   selector: 'app-usuarios',
-  imports: [ReactiveFormsModule, DatePipe],
+  imports: [ReactiveFormsModule],
   templateUrl: './usuarios.html',
   styleUrl: './usuarios.scss',
 })
@@ -78,7 +93,7 @@ export class UsuariosPage implements OnInit {
     }
 
     return this.sortItems(this.users().filter((item) =>
-      [item.nome, item.cpf, item.email, item.role, item.departamento, item.cargo, item.ativo ? 'ativo' : 'inativo']
+      [item.nome, item.cpf, item.email, item.role, item.departamento, item.cargo, item.unidadeNome, item.ativo ? 'ativo' : 'inativo']
         .some((value) => this.normalize(value).includes(term)),
     ), this.userSortField());
   });
@@ -87,6 +102,7 @@ export class UsuariosPage implements OnInit {
     return this.sortItems(this.unidades().filter((item) => !term || [item.empresaNumero, item.empresa, item.numeroRevenda, item.revenda, item.nome, item.cnpj, item.endereco].some((value) => this.normalize(value).includes(term))), this.unidadeSortField());
   });
   readonly sortedEmpresas = computed(() => this.sortItems(this.empresas(), this.empresaSortField()));
+  readonly userTree = computed(() => this.buildUserTree(this.filtered()));
   readonly totalUserPages = computed(() => this.totalPages(this.filtered().length));
   readonly totalUnidadePages = computed(() => this.totalPages(this.filteredUnidades().length));
   readonly totalEmpresaPages = computed(() => this.totalPages(this.sortedEmpresas().length));
@@ -487,6 +503,66 @@ export class UsuariosPage implements OnInit {
 
   private getEmpresaIdByUnidadeId(unidadeId: number): number {
     return this.unidades().find((item) => item.id === unidadeId)?.empresaId ?? 0;
+  }
+
+  private buildUserTree(users: User[]): UserEmpresaGroup[] {
+    const empresas = new Map<string, UserEmpresaGroup>();
+
+    users.forEach((user) => {
+      const unidade = this.unidades().find((item) => item.id === user.unidadeId);
+      const empresaKey = unidade?.empresaId ? `empresa-${unidade.empresaId}` : 'empresa-sem-vinculo';
+      const empresaLabel = unidade ? `${unidade.empresaNumero} - ${unidade.empresa}` : 'Sem empresa vinculada';
+      const revendaKey = unidade?.id ? `revenda-${unidade.id}` : 'revenda-sem-vinculo';
+      const revendaLabel = unidade ? `${unidade.numeroRevenda} - ${unidade.revenda}` : (user.unidadeNome || 'Sem revenda vinculada');
+      const empresa = empresas.get(empresaKey) ?? {
+        key: empresaKey,
+        label: empresaLabel,
+        totalUsuarios: 0,
+        totalAtivos: 0,
+        revendas: [],
+      };
+      let revenda = empresa.revendas.find((item) => item.key === revendaKey);
+
+      if (!revenda) {
+        revenda = { key: revendaKey, label: revendaLabel, users: [], totalAtivos: 0 };
+        empresa.revendas.push(revenda);
+      }
+
+      revenda.users.push(user);
+      revenda.totalAtivos += user.ativo ? 1 : 0;
+      empresa.totalUsuarios += 1;
+      empresa.totalAtivos += user.ativo ? 1 : 0;
+      empresas.set(empresaKey, empresa);
+    });
+
+    return Array.from(empresas.values())
+      .map((empresa) => ({
+        ...empresa,
+        revendas: empresa.revendas
+          .map((revenda) => ({
+            ...revenda,
+            users: this.sortTreeItems(revenda.users, (user) => user.nome),
+          }))
+          .sort((a, b) => this.compareTreeLabels(a.label, b.label)),
+      }))
+      .sort((a, b) => this.compareTreeLabels(a.label, b.label));
+  }
+
+  private sortTreeItems<T>(items: T[], labelSelector: (item: T) => string): T[] {
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    return items.slice().sort((a, b) => this.normalize(labelSelector(a)).localeCompare(this.normalize(labelSelector(b))) * direction);
+  }
+
+  private compareTreeLabels(a: string, b: string): number {
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
+    const aEmpty = a.startsWith('Sem ');
+    const bEmpty = b.startsWith('Sem ');
+
+    if (aEmpty !== bEmpty) {
+      return aEmpty ? 1 : -1;
+    }
+
+    return this.normalize(a).localeCompare(this.normalize(b)) * direction;
   }
 
   private normalize(value: string | number | null | undefined): string {

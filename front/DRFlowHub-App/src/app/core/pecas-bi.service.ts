@@ -8,6 +8,7 @@ export interface PecaVendaMensal {
   mes: string;
   faturamento: number;
   margem: number;
+  rentabilidadePercentual: number;
   quantidade: number;
 }
 
@@ -24,6 +25,7 @@ export interface PecaRanking {
   quantidade: number;
   faturamento: number;
   margemPercentual: number;
+  rentabilidadePercentual: number;
   giroDias: number;
 }
 
@@ -82,7 +84,7 @@ export interface PecaVendedorMetaPayload {
 export class PecasBiService {
   constructor(private readonly http: HttpClient) {}
 
-  load(filter: { dataInicio?: string; dataFim?: string; empresa?: number | null; revenda?: number | null; canal?: string } = {}): Observable<PecasBiData> {
+  load(filter: { dataInicio?: string; dataFim?: string; empresa?: number | null; revenda?: number | number[] | null; canal?: string } = {}): Observable<PecasBiData> {
     const params: Record<string, string> = {};
     if (filter.dataInicio) {
       params['dataInicio'] = filter.dataInicio;
@@ -93,7 +95,9 @@ export class PecasBiService {
     if (filter.empresa) {
       params['empresa'] = String(filter.empresa);
     }
-    if (filter.revenda) {
+    if (Array.isArray(filter.revenda) && filter.revenda.length) {
+      params['revenda'] = filter.revenda.join(',');
+    } else if (!Array.isArray(filter.revenda) && filter.revenda) {
       params['revenda'] = String(filter.revenda);
     }
     if (filter.canal && filter.canal !== 'Todos') {

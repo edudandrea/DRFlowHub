@@ -87,14 +87,22 @@ h2 {
 }
 
 .filters {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 16px;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 18px;
   padding-block: 24px;
 }
 
 .filters > div {
-  flex: 1 1 420px;
+  text-align: center;
+}
+
+.filter-row,
+.date-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
 }
 
 .filters span,
@@ -102,7 +110,6 @@ h2 {
 .panel header span,
 .bar-row span,
 .seller-list p,
-.insights,
 td {
   color: var(--color-muted);
 }
@@ -121,6 +128,12 @@ label {
   font-weight: 800;
 }
 
+.filter-field {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
 select,
 input {
   height: 40px;
@@ -133,10 +146,57 @@ input {
 }
 
 .secondary {
-  min-height: 40px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 18px;
   background: var(--color-button-soft-bg);
   color: var(--color-button-soft-text);
+}
+
+.filters .secondary {
+  align-self: end;
+  background: var(--color-button-bg);
+  color: var(--color-button-text);
+}
+
+.picker-trigger {
+  height: 40px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-field);
+  color: var(--color-text);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-menu {
+  position: absolute;
+  top: 100%;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  width: min(340px, 92vw);
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.picker-menu button {
+  border: 0;
+  background: transparent;
+  color: var(--color-brand-blue);
+  text-align: left;
+}
+
+.picker-menu label {
+  display: flex;
+  gap: 8px;
 }
 
 .goal-alert {
@@ -149,31 +209,6 @@ input {
   border-radius: 8px;
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
-}
-
-.goal-alert h2 {
-  margin-block: 4px;
-}
-
-.goal-alert span {
-  color: var(--color-muted);
-  font-weight: 800;
-}
-
-.goal-alert strong {
-  font-size: clamp(24px, 3vw, 38px);
-}
-
-.goal-alert.danger {
-  border-left-color: #dc2626;
-}
-
-.goal-alert.warning {
-  border-left-color: #f59e0b;
-}
-
-.goal-alert.success {
-  border-left-color: var(--color-brand-green-strong);
 }
 
 .goal-progress-card {
@@ -201,7 +236,7 @@ input {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit,minmax(170px,1fr));
   gap: 16px;
 }
 
@@ -226,7 +261,7 @@ input {
 
 .metrics strong {
   color: var(--color-brand-blue);
-  font-size: clamp(24px, 2.7vw, 34px);
+  font-size: clamp(20px,2.2vw,30px);
 }
 
 .bi-grid {
@@ -312,9 +347,7 @@ input {
 }
 
 .bar-list,
-.seller-list,
-.insights,
-.abc-grid {
+.seller-list {
   display: grid;
   gap: 12px;
 }
@@ -412,14 +445,6 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.seller-goal-progress.success p span {
-  background: var(--color-brand-green-strong);
-}
-
-.seller-goal-progress.warning p span {
-  background: #f59e0b;
 }
 
 .seller-list em {
@@ -547,42 +572,15 @@ th {
   text-transform: uppercase;
 }
 
-.abc-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.abc-grid section {
-  padding: 14px;
-  border-radius: 8px;
-  background: var(--color-card-alt);
-}
-
-.abc-grid strong {
-  color: var(--color-brand-blue);
-}
-
-.insights {
-  margin-top: 14px;
-}
-
-.insights p {
-  padding: 12px;
-  border-left: 4px solid var(--color-brand-green-strong);
-  border-radius: 8px;
-  background: var(--color-card-alt);
-}
-
 @media (max-width: 1180px) {
   .metrics,
-  .bi-grid,
-  .abc-grid {
+  .bi-grid {
     grid-template-columns: 1fr 1fr;
   }
 
   .revenue-panel,
   .client-rankings,
-  .table-panel,
-  .insights-panel {
+  .table-panel {
     grid-column: span 2;
   }
 }
@@ -604,15 +602,13 @@ th {
   .metrics,
   .bi-grid,
   .client-rankings,
-  .abc-grid,
   .donut-layout {
     grid-template-columns: 1fr;
   }
 
   .revenue-panel,
   .client-rankings,
-  .table-panel,
-  .insights-panel {
+  .table-panel {
     grid-column: span 1;
   }
 

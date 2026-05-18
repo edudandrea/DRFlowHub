@@ -36,43 +36,55 @@
       <p class="system-name">Setor Peças</p>
       <h2>Visão executiva de performance, margem, giro e canais.</h2>
     </div>
-    <label>
-      Empresa
-      <select [ngModel]="empresaNumero()" (ngModelChange)="setEmpresa($event)" [disabled]="!canUseEmpresaRevendaFilters() || isGerenteEmpresaPecas()">
-        <option [ngValue]="null">Todas</option>
-        @for (empresa of empresasDisponiveis(); track empresa.id) {
-          <option [ngValue]="empresa.numero">{{ empresa.numero }} - {{ empresa.nome }}</option>
+    <div class="filter-row">
+      <label>
+        Empresa
+        <select [ngModel]="empresaNumero()" (ngModelChange)="setEmpresa($event)" [disabled]="isGerenteEmpresaPecas() || isVendedorPecas()">
+          <option [ngValue]="null">Todas</option>
+          @for (empresa of empresasDisponiveis(); track empresa.id) {
+            <option [ngValue]="empresa.numero">{{ empresa.numero }} - {{ empresa.nome }}</option>
+          }
+        </select>
+      </label>
+      <div class="filter-field revenda-picker">
+        <span>Revenda</span>
+        <button class="picker-trigger" type="button" (click)="revendaPickerOpen.set(!revendaPickerOpen())" [disabled]="!empresaNumero()">
+          {{ revendasSelecionadasLabel() }}
+        </button>
+        @if (revendaPickerOpen()) {
+          <div class="picker-menu">
+            <button type="button" (click)="clearRevendas()">Todas as revendas</button>
+            @for (revenda of revendasDaEmpresa(); track revenda.id) {
+              <label>
+                <input type="checkbox" [checked]="isRevendaSelected(revenda.numeroRevenda)" (change)="toggleRevenda(revenda.numeroRevenda)" />
+                {{ revenda.numeroRevenda }} - {{ revenda.revenda }}
+              </label>
+            }
+          </div>
         }
-      </select>
-    </label>
-    <label>
-      Revenda
-      <select [ngModel]="revendaNumero()" (ngModelChange)="setRevenda($event)" [disabled]="!canUseEmpresaRevendaFilters() || !empresaNumero()">
-        <option [ngValue]="null">Todas</option>
-        @for (revenda of revendasDaEmpresa(); track revenda.id) {
-          <option [ngValue]="revenda.numeroRevenda">{{ revenda.numeroRevenda }} - {{ revenda.revenda }}</option>
-        }
-      </select>
-    </label>
-    <label>
-      Data inicial
-      <input type="date" [ngModel]="dataInicio()" (ngModelChange)="dataInicio.set($event)" />
-    </label>
-    <label>
-      Data final
-      <input type="date" [ngModel]="dataFim()" (ngModelChange)="dataFim.set($event)" />
-    </label>
-    <label>
-      Canal
-      <select [value]="canal()" (change)="canal.set($any($event.target).value)">
-        @for (item of canais(); track item) {
-          <option [value]="item">{{ item === 'Todos' ? 'Todos' : channelLabel(item) }}</option>
-        }
-      </select>
-    </label>
-    <button class="secondary" type="button" (click)="load()" [disabled]="loading()">
-      {{ loading() ? 'Atualizando...' : 'Atualizar' }}
-    </button>
+      </div>
+      <label>
+        Canal
+        <select [value]="canal()" (change)="canal.set($any($event.target).value)">
+          @for (item of canais(); track item) {
+            <option [value]="item">{{ item === 'Todos' ? 'Todos' : channelLabel(item) }}</option>
+          }
+        </select>
+      </label>
+      <button class="secondary" type="button" (click)="load()" [disabled]="loading()">
+        {{ loading() ? 'Atualizando...' : 'Atualizar' }}
+      </button>
+    </div>
+    <div class="date-row">
+      <label>
+        Data inicial
+        <input type="date" [ngModel]="dataInicio()" (ngModelChange)="dataInicio.set($event)" />
+      </label>
+      <label>
+        Data final
+        <input type="date" [ngModel]="dataFim()" (ngModelChange)="dataFim.set($event)" />
+      </label>
+    </div>
   </section>
 
   @if (false && isVendedorPecas() && minhaMeta() && minhaMeta()!.valorMeta > 0) {
@@ -107,6 +119,11 @@
       <p>{{ formatPercent(margemPercentual()) }} sobre vendas</p>
     </article>
     <article>
+      <span>Rentabilidade</span>
+      <strong>{{ formatPercent(rentabilidadePercentual()) }}</strong>
+      <p>Venda - custo medio e tributos</p>
+    </article>
+    <article>
       <span>Notas emitidas</span>
       <strong>{{ formatNumber(quantidadeTotal()) }}</strong>
       <p>Notas no período selecionado</p>
@@ -120,11 +137,11 @@
 
   <section class="bi-grid">
     @if (isVendedorPecas() && minhaMeta() && minhaMeta()!.valorMeta > 0) {
-      <section class="goal-alert goal-progress-card" [class.success]="metaStatus() === 'success'" [class.warning]="metaStatus() === 'warning'" [class.danger]="metaStatus() === 'danger'">
+      <section class="goal-alert goal-progress-card" [style.border-left-color]="metaColor()" [style.background]="metaBackground()">
         <div>
           <p class="system-name">Meta de vendas</p>
           @if (metaStatus() === 'success') {
-            <h2>ParabÃ©ns, meta conquistada!</h2>
+            <h2>Meta atingida! Parabéns pelo show de vendas!</h2>
           } @else {
             <h2>Acompanhamento da sua meta</h2>
           }
@@ -134,8 +151,9 @@
               no periodo de {{ minhaMeta()!.dataInicio | date: 'dd/MM/yyyy' }} a {{ minhaMeta()!.dataFim | date: 'dd/MM/yyyy' }}
             }
           </span>
+          <p class="goal-message">{{ metaMessage() }}</p>
           <div class="goal-progress">
-            <p><span [style.width.%]="metaProgressWidth()"></span></p>
+            <p><span [style.width.%]="metaProgressWidth()" [style.background]="metaColor()"></span></p>
           </div>
         </div>
         <strong>{{ formatPercent(metaPercentual()) }}</strong>
@@ -146,7 +164,7 @@
       <header>
         <div>
           <p class="system-name">Faturamento mensal</p>
-          <h2>Evolucao de vendas e margem</h2>
+          <h2>Evolução de vendas e margem</h2>
         </div>
         <span>Atualizado {{ data()?.atualizadoEm | date: 'dd/MM/yyyy HH:mm' }}</span>
       </header>
@@ -168,7 +186,7 @@
       <header>
         <div>
           <p class="system-name">Margem</p>
-          <h2>Composicção do período</h2>
+          <h2>Composição do período</h2>
         </div>
       </header>
       <div class="margin-kpi">
@@ -255,7 +273,7 @@
                       <small>{{ formatPercent(sellerGoalPercent(seller)) }}</small>
                       <small>{{ formatMoney(seller.faturamento) }} / {{ formatMoney(seller.metaVendas) }}</small>
                     </div>
-                    <p><span [style.width.%]="sellerGoalProgressWidth(seller)"></span></p>
+                    <p><span [style.width.%]="sellerGoalProgressWidth(seller)" [style.background]="sellerGoalColor(seller)"></span></p>
                   </div>
                 }
                 <p>{{ seller.pedidos }} pedidos - conversão {{ formatPercent(seller.conversaoPercentual) }}</p>
@@ -277,7 +295,7 @@
             <div>
               <p class="system-name">Clientes</p>
               <h2>Top 10 compradores</h2>
-              <span>Notas P21, P41 e P47</span>
+              <span>Notas P21 e P41</span>
             </div>
           </header>
           <div class="client-grid">
@@ -327,7 +345,16 @@
         <div>
           <p class="system-name">Produtos</p>
           <h2>Top pecas por faturamento</h2>
+          <span>Ordenado por {{ pecaSortLabel() }}</span>
         </div>
+        <label class="sort-field">
+          Ordenar por
+          <select [ngModel]="pecaSortField()" (ngModelChange)="pecaSortField.set($event)">
+            <option value="faturamento">Valor do item</option>
+            <option value="quantidade">Quantidade</option>
+            <option value="nome">Nome do item</option>
+          </select>
+        </label>
       </header>
       <div class="table-scroll">
         <table>
@@ -339,10 +366,11 @@
               <th>Qtd</th>
               <th>Faturamento</th>
               <th>Margem</th>
+              <th>Rentabilidade</th>
             </tr>
           </thead>
           <tbody>
-            @for (item of pecas(); track item.codigo; let index = $index) {
+            @for (item of pecasOrdenadas(); track item.codigo; let index = $index) {
               <tr>
                 <td><span class="rank-chip">{{ index + 1 }}</span>{{ item.codigo }}</td>
                 <td><strong class="part-name">{{ item.nome }}</strong></td>
@@ -350,6 +378,7 @@
                 <td><strong>{{ item.quantidade }}</strong></td>
                 <td><strong class="money-cell">{{ formatMoney(item.faturamento) }}</strong></td>
                 <td>{{ formatPercent(item.margemPercentual) }}</td>
+                <td>{{ formatPercent(item.rentabilidadePercentual) }}</td>
               </tr>
             }
           </tbody>

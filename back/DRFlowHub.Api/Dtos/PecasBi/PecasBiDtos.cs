@@ -28,6 +28,7 @@ namespace DRFlowHub.Api.Dtos.PecasBi
         public string Mes { get; set; } = string.Empty;
         public decimal Faturamento { get; set; }
         public decimal Margem { get; set; }
+        public decimal RentabilidadePercentual { get; set; }
         public int Quantidade { get; set; }
     }
 
@@ -46,6 +47,7 @@ namespace DRFlowHub.Api.Dtos.PecasBi
         public int Quantidade { get; set; }
         public decimal Faturamento { get; set; }
         public decimal MargemPercentual { get; set; }
+        public decimal RentabilidadePercentual { get; set; }
         public int GiroDias { get; set; }
     }
 

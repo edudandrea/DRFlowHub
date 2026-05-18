@@ -35,7 +35,7 @@ export class PecasBiPage implements OnInit {
   readonly empresas = signal<Empresa[]>([]);
   readonly revendas = signal<Unidade[]>([]);
   readonly empresaNumero = signal<number | null>(null);
-  readonly revendaNumero = signal<number | null>(null);
+  readonly revendasSelecionadas = signal<number[]>([]);
   readonly dataInicio = signal(this.toDateInput(this.monthsAgo(1)));
   readonly dataFim = signal(this.toDateInput(new Date()));
   readonly canal = signal('Todos');
@@ -45,13 +45,15 @@ export class PecasBiPage implements OnInit {
   readonly metaDataFimDraft = signal('');
   readonly savingMeta = signal(false);
   readonly hoveredChannel = signal<string | null>(null);
+  readonly revendaPickerOpen = signal(false);
+  readonly pecaSortField = signal<'nome' | 'quantidade' | 'faturamento'>('faturamento');
 
   readonly canais = computed(() => ['Todos', 'P21', 'P23', 'P41']);
   readonly vendas = computed(() => this.data()?.vendasMensais ?? []);
   readonly categorias = computed(() => this.data()?.categorias ?? []);
   readonly pecas = computed(() => this.data()?.pecas ?? []);
   readonly vendedores = computed(() => this.data()?.vendedores ?? []);
-  readonly canaisData = computed(() => this.data()?.canais ?? []);
+  readonly canaisData = computed(() => (this.data()?.canais ?? []).filter((item) => item.nome?.trim().toUpperCase() !== 'P47'));
   readonly clientes = computed(() => this.data()?.clientes ?? []);
   readonly seguradoras = computed(() => this.data()?.seguradoras ?? []);
   readonly canViewSellerRanking = computed(() => this.data()?.podeVerRankingVendedores ?? false);
@@ -59,10 +61,10 @@ export class PecasBiPage implements OnInit {
   readonly isGerenteGeralPecas = computed(() => this.user()?.role === 'Gerente Geral de Pecas');
   readonly isVendedorPecas = computed(() => this.user()?.role === 'Vendedor de Pecas');
   readonly userEmpresaNumero = computed(() => this.revendas().find((revenda) => revenda.id === this.user()?.unidadeId)?.empresaNumero ?? null);
-  readonly canUseEmpresaRevendaFilters = computed(() => !this.isVendedorPecas());
+  readonly canUseEmpresaRevendaFilters = computed(() => true);
   readonly empresasDisponiveis = computed(() => {
     const empresaNumero = this.userEmpresaNumero();
-    if (this.isGerenteEmpresaPecas()) {
+    if (this.isGerenteEmpresaPecas() || this.isVendedorPecas()) {
       return this.empresas().filter((empresa) => empresa.numero === empresaNumero);
     }
 
@@ -74,11 +76,31 @@ export class PecasBiPage implements OnInit {
       .filter((revenda) => !empresa || revenda.empresaNumero === empresa)
       .sort((a, b) => a.numeroRevenda - b.numeroRevenda || a.revenda.localeCompare(b.revenda));
   });
+  readonly revendasSelecionadasLabel = computed(() => {
+    const selected = this.revendasSelecionadas();
+    if (!selected.length) {
+      return 'Todas as revendas';
+    }
+
+    return selected
+      .slice()
+      .sort((a, b) => a - b)
+      .map((numero) => `${numero}`)
+      .join(', ');
+  });
   readonly faturamentoTotal = computed(() => this.vendas().reduce((total, item) => total + item.faturamento, 0));
   readonly margemTotal = computed(() => this.vendas().reduce((total, item) => total + item.margem, 0));
   readonly quantidadeTotal = computed(() => this.vendas().reduce((total, item) => total + item.quantidade, 0));
   readonly ticketMedio = computed(() => this.quantidadeTotal() ? this.faturamentoTotal() / this.quantidadeTotal() : 0);
   readonly margemPercentual = computed(() => this.faturamentoTotal() ? (this.margemTotal() / this.faturamentoTotal()) * 100 : 0);
+  readonly rentabilidadePercentual = computed(() => {
+    const faturamento = this.faturamentoTotal();
+    if (!faturamento) {
+      return 0;
+    }
+
+    return this.vendas().reduce((total, item) => total + (item.rentabilidadePercentual * item.faturamento), 0) / faturamento;
+  });
   readonly crescimento = computed(() => {
     const vendas = this.vendas();
     const atual = vendas.at(-1)?.faturamento ?? 0;
@@ -109,7 +131,29 @@ export class PecasBiPage implements OnInit {
     if (percent >= 100) {
       return 'success';
     }
-    return percent >= 80 ? 'warning' : 'danger';
+    return percent < 70 ? 'danger' : 'warning';
+  });
+  readonly metaMessage = computed(() => {
+    const status = this.metaStatus();
+    if (status === 'success') {
+      return 'Meta atingida! Excelente venda, parabens pelo resultado. Continue nesse ritmo!';
+    }
+
+    if (status === 'warning') {
+      return 'Voce esta perto da meta. Falta pouco para fechar o periodo com chave de ouro.';
+    }
+
+    return 'A meta ainda precisa de atencao. Foque nas oportunidades abertas e acompanhe sua evolucao.';
+  });
+  readonly pecasOrdenadas = computed(() => {
+    const field = this.pecaSortField();
+    return this.pecas().slice().sort((a, b) => {
+      if (field === 'nome') {
+        return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+      }
+
+      return (b[field] ?? 0) - (a[field] ?? 0);
+    });
   });
 
   ngOnInit(): void {
@@ -146,7 +190,7 @@ export class PecasBiPage implements OnInit {
       dataInicio: this.dataInicio(),
       dataFim: this.dataFim(),
       empresa: this.empresaNumero(),
-      revenda: this.revendaNumero(),
+      revenda: this.revendasSelecionadas(),
       canal: this.canal(),
     }).subscribe({
       next: (data) => {
@@ -241,8 +285,7 @@ export class PecasBiPage implements OnInit {
     const labels: Record<string, string> = {
       P21: 'Venda de peças',
       P23: 'Venda de seguradora',
-      P41: 'Mercado Livre',
-      
+      P41: 'Mercado Livre',      
     };
 
     return labels[value] ?? value;
@@ -261,7 +304,37 @@ export class PecasBiPage implements OnInit {
     if (percent >= 100) {
       return 'success';
     }
-    return percent >= 80 ? 'warning' : 'danger';
+    return percent < 70 ? 'danger' : 'warning';
+  }
+
+  metaColor(): string {
+    return this.statusColor(this.metaStatus());
+  }
+
+  metaBackground(): string {
+    return this.metaStatus() === 'success' ? 'var(--color-brand-green-soft)' : 'var(--color-surface)';
+  }
+
+  sellerGoalColor(seller: PecaVendedor): string {
+    return this.statusColor(this.sellerGoalClass(seller));
+  }
+
+  pecaSortLabel(): string {
+    const labels: Record<'nome' | 'quantidade' | 'faturamento', string> = {
+      nome: 'Nome do item',
+      quantidade: 'Quantidade',
+      faturamento: 'Valor do item',
+    };
+
+    return labels[this.pecaSortField()];
+  }
+
+  private statusColor(status: string): string {
+    if (status === 'success') {
+      return 'var(--color-brand-green-strong)';
+    }
+
+    return status === 'warning' ? '#f59e0b' : '#dc2626';
   }
 
   private progressWidth(value: number): number {
@@ -341,28 +414,55 @@ export class PecasBiPage implements OnInit {
 
     const numero = Number(value);
     this.empresaNumero.set(Number.isFinite(numero) && numero > 0 ? numero : null);
-    this.revendaNumero.set(null);
+    this.revendasSelecionadas.set([]);
   }
 
-  setRevenda(value: string | number | null): void {
+  setRevendas(values: unknown): void {
     if (!this.canUseEmpresaRevendaFilters()) {
       return;
     }
 
-    const numero = Number(value);
-    this.revendaNumero.set(Number.isFinite(numero) && numero > 0 ? numero : null);
+    const selected = Array.isArray(values) ? values : [values];
+    const revendas = selected
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    this.revendasSelecionadas.set([...new Set(revendas)]);
+  }
+
+  toggleRevenda(numero: number): void {
+    if (!this.canUseEmpresaRevendaFilters()) {
+      return;
+    }
+
+    const selected = new Set(this.revendasSelecionadas());
+    if (selected.has(numero)) {
+      selected.delete(numero);
+    } else {
+      selected.add(numero);
+    }
+
+    this.revendasSelecionadas.set([...selected].sort((a, b) => a - b));
+  }
+
+  isRevendaSelected(numero: number): boolean {
+    return this.revendasSelecionadas().includes(numero);
+  }
+
+  clearRevendas(): void {
+    this.revendasSelecionadas.set([]);
   }
 
   private applyUserScopeDefaults(): void {
     if (this.isVendedorPecas()) {
-      this.empresaNumero.set(null);
-      this.revendaNumero.set(null);
+      this.empresaNumero.set(this.userEmpresaNumero());
+      this.revendasSelecionadas.set([]);
       return;
     }
 
     if (this.isGerenteEmpresaPecas()) {
       this.empresaNumero.set(this.userEmpresaNumero());
-      this.revendaNumero.set(null);
+      this.revendasSelecionadas.set([]);
     }
   }
 
@@ -413,6 +513,9 @@ export class PecasBiPage implements OnInit {
     const target = event.target as HTMLElement | null;
     if (!target?.closest('.profile-area')) {
       this.profileMenuOpen.set(false);
+    }
+    if (!target?.closest('.revenda-picker')) {
+      this.revendaPickerOpen.set(false);
     }
   }
 }
