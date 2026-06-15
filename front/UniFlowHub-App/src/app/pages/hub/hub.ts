@@ -8,17 +8,33 @@ import { AuthService } from '../../core/auth.service';
 import { AutoRefreshControlComponent } from '../../core/auto-refresh-control.component';
 import { ChamadosTIService } from '../../core/chamados-ti.service';
 import { ComprasService } from '../../core/compras.service';
-import { ChamadoTI, SolicitacaoCompra, SolicitacaoRH, User } from '../../core/models';
+import { EquipamentosTIService } from '../../core/equipamentos-ti.service';
+import { ChamadoTI, EquipamentoTI, SolicitacaoCompra, SolicitacaoRH, User } from '../../core/models';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { SolicitacoesService } from '../../core/solicitacoes.service';
 import { ThemeService } from '../../core/theme.service';
 
 type DashboardArea = 'admin' | 'rh' | 'ti' | 'compras' | 'controladoria' | 'financeiro' | 'padrao';
 const USEFUL_LINKS_KEY = 'uniflowhub.usefulLinks';
+const MONITORING_STORAGE_KEY = 'uniflowhub.ti.monitoramento';
+
+type MonitorStatus = 'online' | 'offline' | 'testando' | 'pendente';
+
+interface MonitorItem {
+  id: number;
+  nome: string;
+  tipo: string;
+  alvo: string;
+  intervaloSegundos: number;
+  status: MonitorStatus;
+  ultimaConsulta?: string;
+  tempoRespostaMs?: number;
+  erro?: string;
+}
 
 interface MetricCard {
   label: string;
-  value: number;
+  value: number | string;
   detail: string;
   tone: 'neutral' | 'attention' | 'danger' | 'success';
 }
@@ -83,6 +99,7 @@ export class HubPage implements OnInit {
   private readonly profileFlow = inject(ProfileFlowService);
   private readonly rhService = inject(SolicitacoesService);
   private readonly tiService = inject(ChamadosTIService);
+  private readonly equipamentosService = inject(EquipamentosTIService);
   private readonly comprasService = inject(ComprasService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
@@ -93,6 +110,8 @@ export class HubPage implements OnInit {
   readonly atualizadoEm = signal<Date | null>(null);
   readonly rhItems = signal<SolicitacaoRH[]>([]);
   readonly tiItems = signal<ChamadoTI[]>([]);
+  readonly equipamentosTi = signal<EquipamentoTI[]>([]);
+  readonly monitoramentoTi = signal<MonitorItem[]>([]);
   readonly comprasItems = signal<SolicitacaoCompra[]>([]);
   readonly users = signal<User[]>([]);
   readonly forecast = signal<ForecastDay[]>([]);
@@ -266,11 +285,12 @@ export class HubPage implements OnInit {
     if (area === 'ti') {
       const items = this.tiScope();
       return [
-        this.metric('Abertos', items.filter((item) => this.isOpenStatus(item.status)).length, 'Chamados ativos', 'attention'),
-        this.metric('Reabertos', items.filter((item) => item.reaberto || this.isReopened(item.status)).length, 'Voltaram para suporte', 'danger'),
-        this.metric('Alta prioridade', items.filter((item) => this.isOpenStatus(item.status) && this.isHighPriority(item.prioridade)).length, 'Incidentes relevantes abertos', 'danger'),
-        this.metric('Sem responsável', items.filter((item) => !item.responsavel?.trim()).length, 'Aguardando atribuição', 'neutral'),
-        this.metric('Concluídos atendente', items.filter((item) => this.isCompletedTi(item) && this.isAssignedToCurrentUser(item)).length, 'Finalizados por você', 'success'),
+        this.metric('Chamados abertos', items.filter((item) => this.isOpenStatus(item.status)).length, 'Chamados ativos no setor', 'attention'),
+        this.metric('Chamados por setor', this.tiDepartmentCount(items), this.tiDepartmentSummary(items), 'neutral'),
+        this.metric('SLA cumprido', items.filter((item) => this.isTiSlaMet(item)).length, 'Fechados dentro do prazo', 'success'),
+        this.metric('SLA vencido', items.filter((item) => this.isTiSlaExpired(item)).length, 'Fora do prazo por prioridade', 'danger'),
+        this.metric('Equipamentos por unidade', this.equipamentosTi().length, this.equipmentUnitSummary(), 'neutral'),
+        this.metric('Disponibilidade dos links', this.linkAvailability(items), this.linkAvailabilityDetail(), 'success'),
       ];
     }
 
@@ -377,20 +397,24 @@ export class HubPage implements OnInit {
     this.loadDashboard();
     this.loadForecast();
     this.loadUsefulLinks();
+    this.loadMonitoringLinks();
   }
 
   loadDashboard(): void {
+    this.loadMonitoringLinks();
     this.loading.set(true);
     void this.spinner.show();
     forkJoin({
       rh: this.rhService.list().pipe(catchError(() => of([] as SolicitacaoRH[]))),
       ti: this.tiService.list().pipe(catchError(() => of([] as ChamadoTI[]))),
+      equipamentos: this.equipamentosService.list().pipe(catchError(() => of([] as EquipamentoTI[]))),
       compras: this.comprasService.list().pipe(catchError(() => of([] as SolicitacaoCompra[]))),
       users: this.auth.listUsers().pipe(catchError(() => of([] as User[]))),
     }).subscribe({
-      next: ({ rh, ti, compras, users }) => {
+      next: ({ rh, ti, equipamentos, compras, users }) => {
         this.rhItems.set(rh);
         this.tiItems.set(ti);
+        this.equipamentosTi.set(equipamentos);
         this.comprasItems.set(compras);
         this.users.set(users);
         this.atualizadoEm.set(new Date());
@@ -503,7 +527,7 @@ export class HubPage implements OnInit {
     }
   }
 
-  private metric(label: string, value: number, detail: string, tone: MetricCard['tone']): MetricCard {
+  private metric(label: string, value: number | string, detail: string, tone: MetricCard['tone']): MetricCard {
     return { label, value, detail, tone };
   }
 
@@ -550,6 +574,15 @@ export class HubPage implements OnInit {
       this.usefulLinks.set([...this.usefulLinks(), ...customLinks.filter((link) => link.label && link.url)]);
     } catch {
       localStorage.removeItem(USEFUL_LINKS_KEY);
+    }
+  }
+
+  private loadMonitoringLinks(): void {
+    try {
+      const raw = localStorage.getItem(MONITORING_STORAGE_KEY);
+      this.monitoramentoTi.set(raw ? JSON.parse(raw) as MonitorItem[] : []);
+    } catch {
+      this.monitoramentoTi.set([]);
     }
   }
 
@@ -814,6 +847,92 @@ export class HubPage implements OnInit {
 
   private isCompletedTi(item: ChamadoTI): boolean {
     return !!item.dataEncerramento || this.normalize(item.status) === 'concluido';
+  }
+
+  private tiDepartmentCount(items: ChamadoTI[]): number {
+    return new Set(items.map((item) => item.departamento?.trim()).filter(Boolean)).size;
+  }
+
+  private tiDepartmentSummary(items: ChamadoTI[]): string {
+    const grouped = items.reduce<Record<string, number>>((acc, item) => {
+      const key = item.departamento?.trim() || 'Sem setor';
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(grouped)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([setor, total]) => `${setor}: ${total}`)
+      .join(' | ') || 'Sem dados';
+  }
+
+  private equipmentUnitSummary(): string {
+    const grouped = this.equipamentosTi().reduce<Record<string, number>>((acc, item) => {
+      const key = item.destino?.trim() || item.origem?.trim() || 'Sem unidade';
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(grouped)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([unidade, total]) => `${unidade}: ${total}`)
+      .join(' | ') || 'Sem equipamentos';
+  }
+
+  private linkAvailability(_items: ChamadoTI[]): string {
+    const links = this.monitoramentoTi();
+    if (links.length === 0) {
+      return '0%';
+    }
+
+    const online = links.filter((item) => item.status === 'online').length;
+    const availability = (online / links.length) * 100;
+
+    return `${availability.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  }
+
+  private linkAvailabilityDetail(): string {
+    const links = this.monitoramentoTi();
+    if (links.length === 0) {
+      return 'Nenhum link cadastrado no monitoramento';
+    }
+
+    const online = links.filter((item) => item.status === 'online').length;
+    const offline = links.filter((item) => item.status === 'offline').length;
+    return `${online} online | ${offline} offline | ${links.length} cadastrados`;
+  }
+
+  private getTiSlaLimitHours(item: ChamadoTI): number {
+    const priority = this.normalize(item.prioridade);
+    if (priority.includes('alta')) {
+      return 8;
+    }
+
+    if (priority.includes('baixa')) {
+      return 72;
+    }
+
+    return 24;
+  }
+
+  private getTiSlaElapsedHours(item: ChamadoTI): number {
+    const start = new Date(item.dataAbertura).getTime();
+    const end = item.dataEncerramento ? new Date(item.dataEncerramento).getTime() : Date.now();
+    if (Number.isNaN(start) || Number.isNaN(end)) {
+      return 0;
+    }
+
+    return Math.max(0, (end - start) / 36e5);
+  }
+
+  private isTiSlaMet(item: ChamadoTI): boolean {
+    return this.isCompletedTi(item) && this.getTiSlaElapsedHours(item) <= this.getTiSlaLimitHours(item);
+  }
+
+  private isTiSlaExpired(item: ChamadoTI): boolean {
+    return !this.isTiSlaMet(item) && this.getTiSlaElapsedHours(item) > this.getTiSlaLimitHours(item);
   }
 
   private isAssignedToCurrentUser(item: ChamadoTI): boolean {

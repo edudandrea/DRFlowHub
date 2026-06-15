@@ -40,24 +40,32 @@
   </header>
 
   <section class="metrics">
-    <article>
-      <span>Total</span>
-      <strong>{{ chamados().length }}</strong>
+    <article class="attention">
+      <span>Chamados abertos</span>
+      <strong>{{ abertos() }}</strong>
     </article>
-    <article>
-      <span>Pendentes</span>
-      <strong>{{ pendentes() }}</strong>
+    <article class="neutral">
+      <span>Chamados por setor</span>
+      <strong class="metric-text">{{ chamadosPorSetor() }}</strong>
     </article>
-    <article>
-      <span>Meus</span>
-      <strong>{{ canManage() ? meusChamados() : chamados().length }}</strong>
+    <article class="success">
+      <span>SLA cumprido</span>
+      <strong>{{ slaCumprido() }}</strong>
     </article>
-    <article>
-      <span>{{ canManage() ? 'Concluidos' : 'A avaliar' }}</span>
-      <strong>{{ canManage() ? concluidos() : avaliacoesPendentes() }}</strong>
+    <article class="danger">
+      <span>SLA vencido</span>
+      <strong>{{ slaVencido() }}</strong>
+    </article>
+    <article class="neutral">
+      <span>Equipamentos por unidade</span>
+      <strong class="metric-text">{{ equipamentosPorUnidade() }}</strong>
+    </article>
+    <article class="success">
+      <span>Disponibilidade dos links</span>
+      <strong>{{ disponibilidadeLinks() }}</strong>
     </article>
     @if (canManage()) {
-      <article class="response-metric">
+      <article class="response-metric success">
         <span>Chamado respondido</span>
         <strong>{{ chamadosRespondidos() }}</strong>
       </article>
@@ -401,7 +409,21 @@
 
             <label>
               Título
-              <input formControlName="titulo" placeholder="Ex: Sem acesso ao sistema" />
+              <span class="assistant-title-field">
+                <input formControlName="titulo" placeholder="Ex: Sem acesso ao sistema" />
+                @if (showAssistantButton()) {
+                  <button
+                    class="assistant-trigger"
+                    type="button"
+                    aria-label="Abrir TI Assistant"
+                    title="TI Assistant"
+                    (click)="openTiAssistant()"
+                  >
+                    <span class="assistant-trigger-icon">AI</span>
+                    <span class="assistant-trigger-label">T.I Assistant</span>
+                  </button>
+                }
+              </span>
             </label>
 
             <div class="grid two">
@@ -1108,4 +1130,47 @@
       </div>
     </ng-template>
   </section>
+
+  @if (assistantOpen()) {
+    <section class="assistant-backdrop" role="dialog" aria-modal="true" aria-label="TI Assistant" (click)="$event.stopPropagation()">
+      <div class="assistant-panel" (click)="$event.stopPropagation()">
+        <header>
+          <div>
+            <p class="system-name">TI Assistant</p>
+            <h2>Assistente de abertura</h2>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar TI Assistant" (click)="closeTiAssistant()">x</button>
+        </header>
+
+        <div class="assistant-chat">
+          @for (message of assistantMessages(); track $index) {
+            <article class="assistant-message" [class.user]="message.role === 'user'">
+              <p>{{ message.text }}</p>
+              @if (message.articleId) {
+                <small>Referencia da base #{{ message.articleId }}</small>
+              }
+            </article>
+          }
+          @if (assistantSearching()) {
+            <article class="assistant-message thinking">
+              <p>Consultando T.I Assistant...</p>
+            </article>
+          }
+        </div>
+
+        <div class="assistant-composer">
+          <input
+            type="text"
+            [value]="assistantQuestion()"
+            (input)="assistantQuestion.set($any($event.target).value)"
+            (keydown.enter)="$event.preventDefault(); sendAssistantQuestion()"
+            placeholder="Pergunte algo sobre o problema"
+          />
+          <button class="primary" type="button" [disabled]="assistantSearching()" (click)="sendAssistantQuestion()">
+            {{ assistantSearching() ? 'Buscando...' : 'Enviar' }}
+          </button>
+        </div>
+      </div>
+    </section>
+  }
 </main>

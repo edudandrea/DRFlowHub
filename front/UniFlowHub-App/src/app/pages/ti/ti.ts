@@ -10,9 +10,13 @@ import { BsModalRef, BsModalService } from 'ngx-bootstrap/modal';
 import { ActivatedRoute, Router } from '@angular/router';
 import type { HubConnection } from '@microsoft/signalr';
 import { AuthService } from '../../core/auth.service';
+import { BaseConhecimentoTIService } from '../../core/base-conhecimento-ti.service';
+import { EquipamentosTIService } from '../../core/equipamentos-ti.service';
+import { BaseConhecimentoTI, EquipamentoTI } from '../../core/models';
 import { ChamadosTIService } from '../../core/chamados-ti.service';
 import { ChamadoTI, ChamadoTIComunicação, ChamadoTIPayload, Unidade, User } from '../../core/models';
 import { ThemeService } from '../../core/theme.service';
+import { TiAssistantService } from '../../core/ti-assistant.service';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { UnidadesService } from '../../core/unidades.service';
 
@@ -26,8 +30,22 @@ const ALLOWED_ATTACHMENT_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 const ALLOWED_ATTACHMENT_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx'];
+const MONITORING_STORAGE_KEY = 'uniflowhub.ti.monitoramento';
 type TiTab = 'pendentes' | 'meus' | 'todos' | 'concluidos';
 type TiSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'prioridade' | 'status' | 'dataAbertura';
+type MonitorStatus = 'online' | 'offline' | 'testando' | 'pendente';
+
+interface MonitorItem {
+  id: number;
+  nome: string;
+  tipo: string;
+  alvo: string;
+  intervaloSegundos: number;
+  status: MonitorStatus;
+  ultimaConsulta?: string;
+  tempoRespostaMs?: number;
+  erro?: string;
+}
 
 interface TicketMovementAlert {
   id: number;
@@ -46,6 +64,9 @@ export class TiPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly service = inject(ChamadosTIService);
+  private readonly baseConhecimentoService = inject(BaseConhecimentoTIService);
+  private readonly equipamentosService = inject(EquipamentosTIService);
+  private readonly tiAssistantService = inject(TiAssistantService);
   private readonly unidadesService = inject(UnidadesService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly modalService = inject(BsModalService);
@@ -58,6 +79,9 @@ export class TiPage implements OnInit, OnDestroy {
 
   readonly theme = inject(ThemeService);
   readonly chamados = signal<ChamadoTI[]>([]);
+  readonly conhecimentos = signal<BaseConhecimentoTI[]>([]);
+  readonly equipamentos = signal<EquipamentoTI[]>([]);
+  readonly monitoramentoLinks = signal<MonitorItem[]>([]);
   readonly unidades = signal<Unidade[]>([]);
   readonly responsaveis = signal<User[]>([]);
   readonly selected = signal<ChamadoTI | null>(null);
@@ -90,6 +114,10 @@ export class TiPage implements OnInit, OnDestroy {
   readonly reopening = signal(false);
   readonly rating = signal(false);
   readonly generatingReport = signal(false);
+  readonly assistantOpen = signal(false);
+  readonly assistantQuestion = signal('');
+  readonly assistantSearching = signal(false);
+  readonly assistantMessages = signal<{ role: 'assistant' | 'user'; text: string; articleId?: number }[]>([]);
   readonly createdTicketNumber = signal<number | null>(null);
   readonly user = computed(() => this.auth.user());
   readonly canManage = computed(() => this.auth.hasAccess('ti-admin'));
@@ -99,6 +127,41 @@ export class TiPage implements OnInit, OnDestroy {
   readonly concluidos = computed(() => this.chamados().filter((item) => this.isConcluido(item)).length);
   readonly avaliacoesPendentes = computed(() => this.chamados().filter((item) => this.canEvaluate(item)).length);
   readonly chamadosRespondidos = computed(() => this.movementAlerts().length);
+  readonly chamadosPorSetor = computed(() => {
+    const grouped = this.chamados().reduce<Record<string, number>>((acc, item) => {
+      const key = item.departamento?.trim() || 'Sem setor';
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(grouped)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([setor, total]) => `${setor}: ${total}`)
+      .join(' | ') || 'Sem dados';
+  });
+  readonly slaCumprido = computed(() => this.chamados().filter((item) => this.isSlaMet(item)).length);
+  readonly slaVencido = computed(() => this.chamados().filter((item) => this.isSlaExpired(item)).length);
+  readonly equipamentosPorUnidade = computed(() => {
+    const grouped = this.equipamentos().reduce<Record<string, number>>((acc, item) => {
+      const key = item.destino?.trim() || item.origem?.trim() || 'Sem unidade';
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    const first = Object.entries(grouped).sort((a, b) => b[1] - a[1])[0];
+    return first ? `${first[0]}: ${first[1]}` : 'Sem equipamentos';
+  });
+  readonly disponibilidadeLinks = computed(() => {
+    const links = this.monitoramentoLinks();
+    if (links.length === 0) {
+      return '0%';
+    }
+
+    const online = links.filter((item) => item.status === 'online').length;
+    const disponibilidade = (online / links.length) * 100;
+    return `${disponibilidade.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  });
   readonly filteredChamados = computed(() => {
     let items = this.chamados();
 
@@ -220,6 +283,9 @@ export class TiPage implements OnInit, OnDestroy {
     }
 
     this.loadUnidades();
+    this.loadMonitoringLinks();
+    this.loadConhecimentos();
+    this.loadEquipamentos();
     this.load();
     if (this.canManage()) {
       this.loadResponsaveis();
@@ -273,6 +339,110 @@ export class TiPage implements OnInit, OnDestroy {
       next: (users) => this.responsaveis.set(users),
       error: () => this.toastr.error('Não foi possível carregar os responsáveis.', 'Erro'),
     });
+  }
+
+  loadConhecimentos(): void {
+    this.baseConhecimentoService.list().subscribe({
+      next: (items) => this.conhecimentos.set(items),
+      error: () => this.toastr.error('Nao foi possivel carregar a base de conhecimento de TI.', 'TI Assistant'),
+    });
+  }
+
+  loadEquipamentos(): void {
+    this.equipamentosService.list().subscribe({
+      next: (items) => this.equipamentos.set(items),
+      error: () => this.toastr.error('Nao foi possivel carregar os equipamentos de TI.', 'TI'),
+    });
+  }
+
+  loadMonitoringLinks(): void {
+    try {
+      const raw = localStorage.getItem(MONITORING_STORAGE_KEY);
+      this.monitoramentoLinks.set(raw ? JSON.parse(raw) as MonitorItem[] : []);
+    } catch {
+      this.monitoramentoLinks.set([]);
+    }
+  }
+
+  openTiAssistant(): void {
+    const title = this.form.controls.titulo.value.trim();
+    if (!title) {
+      return;
+    }
+
+    const matches = this.findKnowledgeMatches(title);
+    const messages: { role: 'assistant' | 'user'; text: string; articleId?: number }[] = [
+      {
+        role: 'assistant' as const,
+        text: `Analisei o titulo "${title}" e consultei a base de conhecimento antes da abertura do chamado.`,
+      },
+    ];
+
+    if (matches.length > 0) {
+      messages.push({
+        role: 'assistant' as const,
+        text: `Encontrei ${matches.length} artigo(s) parecido(s). Melhor sugestao: ${matches[0].titulo}. ${matches[0].descricao}`,
+        articleId: matches[0].id,
+      });
+    } else {
+      messages.push({
+        role: 'assistant' as const,
+        text: this.buildAssistantGuidance(title),
+      });
+    }
+
+    this.assistantMessages.set(messages);
+    this.assistantQuestion.set('');
+    this.assistantOpen.set(true);
+  }
+
+  closeTiAssistant(): void {
+    this.assistantOpen.set(false);
+  }
+
+  sendAssistantQuestion(): void {
+    const question = this.assistantQuestion().trim();
+    if (!question || this.assistantSearching()) {
+      return;
+    }
+
+    this.assistantSearching.set(true);
+    this.assistantMessages.set([
+      ...this.assistantMessages(),
+      { role: 'user', text: question },
+    ]);
+    this.assistantQuestion.set('');
+
+    this.tiAssistantService.searchGlobal(this.form.controls.titulo.value, question, this.buildAssistantLocalContext(question)).subscribe({
+      next: (response) => {
+        const text = response.configured && response.answer?.trim()
+          ? response.answer.trim()
+          : this.buildAssistantFallbackAnswer(question);
+        this.assistantMessages.set([
+          ...this.assistantMessages(),
+          { role: 'assistant', text },
+        ]);
+        this.assistantSearching.set(false);
+      },
+      error: () => {
+        this.assistantMessages.set([
+          ...this.assistantMessages(),
+          { role: 'assistant', text: this.buildAssistantFallbackAnswer(question) },
+        ]);
+        this.assistantSearching.set(false);
+      },
+    });
+  }
+
+  private buildAssistantFallbackAnswer(question: string): string {
+    const matches = this.findKnowledgeMatches(`${this.form.controls.titulo.value} ${question}`);
+    return matches.length > 0
+      ? `Achei uma referencia na base: ${matches[0].titulo}. ${matches[0].descricao}`
+      : this.buildAssistantGuidance(question);
+  }
+
+  showAssistantButton(): boolean {
+    return this.form.controls.titulo.value.trim().length >= 3;
   }
 
   setTab(tab: TiTab): void {
@@ -672,6 +842,7 @@ export class TiPage implements OnInit, OnDestroy {
         this.closeForm.patchValue({ observacoesEncerramento: updated.observacoesEncerramento });
         this.closing.set(false);
         this.toastr.success('Chamado encerrado com data e hora atuais.', 'TI');
+        this.suggestKnowledgeBaseCreation(updated);
       },
       error: (error) => {
         this.closing.set(false);
@@ -1290,6 +1461,135 @@ export class TiPage implements OnInit, OnDestroy {
   <footer>Documento gerado pelo UniFlowHub para acompanhamento interno da qualidade dos atendimentos.</footer>
 </body>
 </html>`;
+  }
+
+  private buildAssistantGuidance(text: string): string {
+    const normalized = this.normalize(text);
+    if (normalized.includes('senha') || normalized.includes('acesso')) {
+      return 'Sugestao inicial: confirme usuario, sistema afetado, mensagem de erro e se o acesso falha em outro navegador. Se for senha, tente redefinicao pelo fluxo padrao antes de abrir como incidente.';
+    }
+
+    if (normalized.includes('internet') || normalized.includes('rede') || normalized.includes('link') || normalized.includes('wifi')) {
+      return 'Sugestao inicial: verifique se outros usuarios da unidade tambem foram afetados, teste cabo/Wi-Fi, reinicie a conexao e informe a unidade para checagem do link.';
+    }
+
+    if (normalized.includes('impressora') || normalized.includes('scanner')) {
+      return 'Sugestao inicial: confirme se a impressora esta ligada, com papel/toner, se aparece offline e qual documento ficou preso na fila.';
+    }
+
+    if (normalized.includes('computador') || normalized.includes('notebook') || normalized.includes('lento')) {
+      return 'Sugestao inicial: reinicie o equipamento, feche programas pesados e informe desde quando ocorre. Inclua prints ou anexo se houver mensagem de erro.';
+    }
+
+    return 'Ainda nao encontrei um artigo igual. Descreva impacto, sistema afetado, horario de inicio, unidade e qualquer mensagem de erro para acelerar o atendimento.';
+  }
+
+  private buildAssistantLocalContext(text: string): string {
+    const matches = this.findKnowledgeMatches(`${this.form.controls.titulo.value} ${text}`);
+    if (matches.length === 0) {
+      return 'Nenhum artigo local semelhante encontrado na base de conhecimento.';
+    }
+
+    return matches
+      .map((item) => `Artigo #${item.id}: ${item.titulo}. Categoria: ${item.categoria}. Tags: ${item.tags}. Resumo: ${item.descricao}`)
+      .join('\n');
+  }
+
+  private findKnowledgeMatches(text: string): BaseConhecimentoTI[] {
+    const terms = this.normalize(text)
+      .split(/\s+/)
+      .filter((term) => term.length >= 4);
+
+    if (terms.length === 0) {
+      return [];
+    }
+
+    return this.conhecimentos()
+      .map((item) => ({
+        item,
+        score: terms.filter((term) => this.normalize(`${item.titulo} ${item.categoria} ${item.descricao} ${item.tags}`).includes(term)).length,
+      }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ item }) => item)
+      .slice(0, 3);
+  }
+
+  private suggestKnowledgeBaseCreation(item: ChamadoTI): void {
+    if (!this.canManage() || !item.observacoesEncerramento?.trim()) {
+      return;
+    }
+
+    const duplicate = this.findDuplicateKnowledge(item);
+    if (duplicate) {
+      this.toastr.info(`A IA encontrou artigo parecido na base: ${duplicate.titulo}. Novo cadastro bloqueado.`, 'TI Assistant');
+      return;
+    }
+
+    const confirmed = window.confirm(`TI Assistant: deseja incluir a solucao do chamado #${item.id} na base de conhecimento?`);
+    if (!confirmed) {
+      return;
+    }
+
+    this.baseConhecimentoService.create({
+      titulo: `Chamado #${item.id} - ${item.titulo}`,
+      categoria: item.categoria || 'Chamados',
+      descricao: item.observacoesEncerramento,
+      tags: `chamado-${item.id}, ${item.departamento}, ${item.unidade}, ${item.categoria}`,
+    }).subscribe({
+      next: (created) => {
+        this.conhecimentos.set([created, ...this.conhecimentos()]);
+        this.toastr.success(`Base de conhecimento criada a partir do chamado #${item.id}.`, 'TI Assistant');
+      },
+      error: (error) => this.toastr.error(this.getErrorMessage('Nao foi possivel criar a base de conhecimento.', error), 'TI Assistant'),
+    });
+  }
+
+  private findDuplicateKnowledge(item: ChamadoTI): BaseConhecimentoTI | null {
+    const ticketTag = `chamado-${item.id}`;
+    const normalizedTitle = this.normalize(item.titulo);
+    const solutionTerms = this.normalize(item.observacoesEncerramento)
+      .split(/\s+/)
+      .filter((term) => term.length >= 5);
+
+    return this.conhecimentos().find((article) => {
+      const articleText = this.normalize(`${article.titulo} ${article.descricao} ${article.tags}`);
+      const sameTicket = articleText.includes(ticketTag);
+      const sameTitle = normalizedTitle.length >= 8 && articleText.includes(normalizedTitle);
+      const sharedSolutionTerms = solutionTerms.filter((term) => articleText.includes(term)).length;
+      return sameTicket || sameTitle || sharedSolutionTerms >= 5;
+    }) ?? null;
+  }
+
+  private getSlaLimitHours(item: ChamadoTI): number {
+    const priority = this.normalize(item.prioridade);
+    if (priority.includes('alta')) {
+      return 8;
+    }
+
+    if (priority.includes('baixa')) {
+      return 72;
+    }
+
+    return 24;
+  }
+
+  private getSlaElapsedHours(item: ChamadoTI): number {
+    const start = new Date(item.dataAbertura).getTime();
+    const end = item.dataEncerramento ? new Date(item.dataEncerramento).getTime() : Date.now();
+    if (Number.isNaN(start) || Number.isNaN(end)) {
+      return 0;
+    }
+
+    return Math.max(0, (end - start) / 36e5);
+  }
+
+  private isSlaMet(item: ChamadoTI): boolean {
+    return this.isConcluido(item) && this.getSlaElapsedHours(item) <= this.getSlaLimitHours(item);
+  }
+
+  private isSlaExpired(item: ChamadoTI): boolean {
+    return !this.isSlaMet(item) && this.getSlaElapsedHours(item) > this.getSlaLimitHours(item);
   }
 
   private getFilterDate(item: ChamadoTI, useClosingDate: boolean): Date {
