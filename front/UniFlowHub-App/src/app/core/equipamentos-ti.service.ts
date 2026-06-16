@@ -19,7 +19,13 @@ export class EquipamentosTIService {
 
   create(payload: EquipamentoTIPayload, documento?: File | null): Observable<EquipamentoTI> {
     const formData = new FormData();
-    Object.entries(payload).forEach(([key, value]) => formData.append(key, value == null ? '' : String(value)));
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value == null || (key === 'dataPrevistaRetorno' && value === '')) {
+        return;
+      }
+
+      formData.append(key, String(value));
+    });
     if (documento) {
       formData.append('documento', documento);
     }
@@ -28,10 +34,23 @@ export class EquipamentosTIService {
   }
 
   update(id: number, payload: EquipamentoTIPayload): Observable<EquipamentoTI> {
-    return this.http.put<SaveResponse>(`${API_URL}/equipamentosti/${id}`, payload).pipe(map((response) => response.equipamento));
+    return this.http
+      .put<SaveResponse>(`${API_URL}/equipamentosti/${id}`, this.normalizePayload(payload))
+      .pipe(map((response) => response.equipamento));
+  }
+
+  delete(id: number, motivo: string): Observable<void> {
+    return this.http.delete<void>(`${API_URL}/equipamentosti/${id}`, { body: { motivo } });
   }
 
   downloadDocument(id: number): Observable<Blob> {
     return this.http.get(`${API_URL}/equipamentosti/${id}/documento`, { responseType: 'blob' });
+  }
+
+  private normalizePayload(payload: EquipamentoTIPayload): EquipamentoTIPayload {
+    return {
+      ...payload,
+      dataPrevistaRetorno: payload.dataPrevistaRetorno || null,
+    } as EquipamentoTIPayload;
   }
 }

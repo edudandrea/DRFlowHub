@@ -40,34 +40,84 @@
   </header>
 
   <section class="metrics">
-    <article class="attention">
+    <article
+      class="metric-card attention"
+      [class.active]="metricFilter() === 'abertos'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('abertos')"
+      (keydown.enter)="setMetricFilter('abertos')"
+    >
       <span>Chamados abertos</span>
       <strong>{{ abertos() }}</strong>
+      <small [class]="metricTrendClass('abertos')">{{ metricTrend('abertos') }}</small>
     </article>
-    <article class="neutral">
+    <article
+      class="metric-card warning"
+      [class.active]="metricFilter() === 'em-atendimento'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('em-atendimento')"
+      (keydown.enter)="setMetricFilter('em-atendimento')"
+    >
+      <span>Em atendimento</span>
+      <strong>{{ emAtendimento() }}</strong>
+      <small [class]="metricTrendClass('em-atendimento')">{{ metricTrend('em-atendimento') }}</small>
+    </article>
+    <article class="metric-card neutral">
       <span>Chamados por setor</span>
       <strong class="metric-text">{{ chamadosPorSetor() }}</strong>
     </article>
-    <article class="success">
+    <article
+      class="metric-card success"
+      [class.active]="metricFilter() === 'sla-cumprido'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('sla-cumprido')"
+      (keydown.enter)="setMetricFilter('sla-cumprido')"
+    >
       <span>SLA cumprido</span>
       <strong>{{ slaCumprido() }}</strong>
+      <small [class]="metricTrendClass('sla-cumprido')">{{ metricTrend('sla-cumprido') }}</small>
     </article>
-    <article class="danger">
+    <article
+      class="metric-card danger"
+      [class.active]="metricFilter() === 'sla-vencido'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('sla-vencido')"
+      (keydown.enter)="setMetricFilter('sla-vencido')"
+    >
       <span>SLA vencido</span>
       <strong>{{ slaVencido() }}</strong>
+      <small [class]="metricTrendClass('sla-vencido')">{{ metricTrend('sla-vencido') }}</small>
     </article>
-    <article class="neutral">
+    <article class="metric-card neutral">
       <span>Equipamentos por unidade</span>
       <strong class="metric-text">{{ equipamentosPorUnidade() }}</strong>
     </article>
-    <article class="success">
+    <article
+      class="metric-card success"
+      role="button"
+      tabindex="0"
+      (click)="openMonitoring()"
+      (keydown.enter)="openMonitoring()"
+    >
       <span>Disponibilidade dos links</span>
       <strong>{{ disponibilidadeLinks() }}</strong>
     </article>
     @if (canManage()) {
-      <article class="response-metric success">
+      <article
+        class="metric-card response-metric answered"
+        [class.active]="metricFilter() === 'respondidos'"
+        role="button"
+        tabindex="0"
+        (click)="setMetricFilter('respondidos')"
+        (keydown.enter)="setMetricFilter('respondidos')"
+      >
         <span>Chamado respondido</span>
         <strong>{{ chamadosRespondidos() }}</strong>
+        <small [class]="metricTrendClass('respondidos')">{{ metricTrend('respondidos') }}</small>
       </article>
     }
   </section>
@@ -126,7 +176,7 @@
             [class.active]="activeTab() === 'concluidos'"
             (click)="setTab('concluidos')"
           >
-            Concluidos
+            Concluídos
           </button>
         </div>
       }
@@ -168,10 +218,10 @@
 
       <div class="date-filters queue-filter-grid">
         <label>
-          Responsavel
+          Responsável
           <select [value]="responsibleFilter()" (change)="setResponsibleFilter($any($event.target).value)">
             <option value="">Todos</option>
-            <option value="Sem responsavel">Sem responsavel</option>
+            <option value="Sem responsavel">Sem responsável</option>
             @for (responsavel of responsavelOptions(); track responsavel) {
               <option [value]="responsavel">{{ responsavel }}</option>
             }
@@ -256,7 +306,7 @@
             [class.active]="activeTab() === 'concluidos'"
             (click)="setTab('concluidos')"
           >
-            Concluidos
+            Concluídos
           </button>
         </div>
       }
@@ -281,70 +331,104 @@
         </div>
       }
 
-      <div class="request-list">
+      <div class="ticket-board">
         @if (loading()) {
           <p class="empty">Carregando...</p>
         } @else if (filteredChamados().length === 0) {
           <p class="empty">Nenhum chamado encontrado.</p>
         } @else {
-          @for (item of pagedChamados(); track item.id) {
-            <article
-              class="request-card"
-              [class.active]="selected()?.id === item.id"
-              (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate)"
-            >
-              @if (item.reaberto) {
-                <span class="reopen-alert">Reaberto</span>
-              }
-              <div>
-                <h3>#{{ item.id }} - {{ item.titulo }}</h3>
-                <p>{{ item.categoria }} - {{ item.departamento }}</p>
-              </div>
-              @if (item.responsavel) {
-                <small>Responsável: {{ item.responsavel }}</small>
+          @for (column of ticketColumns(); track column.key) {
+            <section class="ticket-column">
+              <header>
+                <strong>{{ column.title }}</strong>
+                <small>{{ column.subtitle }}</small>
+              </header>
+              @if (column.items.length === 0) {
+                <p class="column-empty">Sem chamados</p>
               } @else {
-                <small>Sem responsável</small>
+                @for (item of column.items; track item.id) {
+                  <article
+                    class="request-card ticket-card"
+                    [class.active]="selected()?.id === item.id"
+                    [class.sla-expired]="slaClass(item) === 'expired'"
+                    (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate)"
+                  >
+                    <div class="ticket-card-header">
+                      <div>
+                        <h3>#{{ item.id }} - {{ item.titulo }}</h3>
+                        <p>{{ item.categoria }} - {{ item.departamento }}</p>
+                      </div>
+                      <span class="status">{{ item.status }}</span>
+                    </div>
+                    <div class="ticket-badges">
+                      <span
+                        class="priority-badge"
+                        [class.low]="priorityClass(item) === 'low'"
+                        [class.medium]="priorityClass(item) === 'medium'"
+                        [class.high]="priorityClass(item) === 'high'"
+                        [class.critical]="priorityClass(item) === 'critical'"
+                      >
+                        Prioridade {{ priorityLabel(item) }}
+                      </span>
+                      @if (item.reaberto) {
+                        <span class="reopen-alert">Reaberto</span>
+                      }
+                      @if (canEvaluate(item)) {
+                        <span class="evaluation-badge">Aguardando avaliação</span>
+                      }
+                    </div>
+                    <div class="ticket-meta">
+                      <span>{{ item.solicitante }}</span>
+                      <span>{{ openedAgo(item) }}</span>
+                      <span>{{ item.responsavel || 'Sem responsavel' }}</span>
+                    </div>
+                    <div
+                      class="sla-widget"
+                      [class.ok]="slaClass(item) === 'ok'"
+                      [class.warning]="slaClass(item) === 'warning'"
+                      [class.expired]="slaClass(item) === 'expired'"
+                      [class.met]="slaClass(item) === 'met'"
+                    >
+                      <div>
+                        <span>{{ slaRemainingText(item) }}</span>
+                        <strong>{{ slaPercent(item) }}%</strong>
+                      </div>
+                      <div class="sla-track">
+                        <span [style.width.%]="slaPercent(item)"></span>
+                      </div>
+                    </div>
+                    <div class="ticket-actions">
+                      <button
+                        class="secondary"
+                        type="button"
+                        (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate); $event.stopPropagation()"
+                      >
+                        Acessar
+                      </button>
+                      @if (item.anexoImagemUrl) {
+                        <button
+                          class="secondary"
+                          type="button"
+                          (click)="previewAttachment(item); $event.stopPropagation()"
+                        >
+                          Ver anexo
+                        </button>
+                      }
+                      @if (canManage()) {
+                        <button
+                          class="secondary remote-card-action"
+                          type="button"
+                          [disabled]="!item.equipamentoIp || !hasResponsible(item)"
+                          (click)="openRemoteAccess(item); $event.stopPropagation()"
+                        >
+                          Acesso remoto
+                        </button>
+                      }
+                    </div>
+                  </article>
+                }
               }
-              <span class="status">{{ item.status }}</span>
-              <small>Criado em {{ item.dataAbertura | date: 'dd/MM/yyyy HH:mm' }}</small>
-              @if (item.dataPrimeiroEncerramento) {
-                <small
-                  >Primeiro fechamento em
-                  {{ item.dataPrimeiroEncerramento | date: 'dd/MM/yyyy HH:mm' }}</small
-                >
-              }
-              @if (item.dataReabertura) {
-                <small>Reaberto em {{ item.dataReabertura | date: 'dd/MM/yyyy HH:mm' }}</small>
-              }
-              @if (item.dataEncerramento) {
-                <small
-                  >{{ item.dataPrimeiroEncerramento ? 'Novo fechamento em' : 'Encerrado em' }}
-                  {{ item.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</small
-                >
-              }
-              @if (canEvaluate(item)) {
-                <span class="evaluation-badge">Aguardando avaliação</span>
-              }
-              @if (item.anexoImagemUrl) {
-                <button
-                  class="secondary"
-                  type="button"
-                  (click)="previewAttachment(item); $event.stopPropagation()"
-                >
-                  Ver anexo
-                </button>
-              }
-              @if (canManage()) {
-                <button
-                  class="secondary remote-card-action"
-                  type="button"
-                  [disabled]="!item.equipamentoIp || !hasResponsible(item)"
-                  (click)="openRemoteAccess(item); $event.stopPropagation()"
-                >
-                  Acesso remoto
-                </button>
-              }
-            </article>
+            </section>
           }
         }
       </div>
@@ -477,7 +561,7 @@
                 >Sistema operacional:
                 {{ form.controls.equipamentoSistemaOperacional.value || 'Não identificado' }}</span
               >
-              <small>O IP sera registrado automaticamente ao enviar o chamado.</small>
+              <small>O IP será registrado automaticamente ao enviar o chamado.</small>
             </section>
 
             <label>
@@ -510,7 +594,7 @@
                   <iframe [src]="selectedFilePreviewUrl()" title="pré-visualização do PDF"></iframe>
                 } @else {
                   <p class="empty">
-                    Documentos DOC e DOCX Não possuem pré-visualização no navegador, mas serao
+                    Documentos DOC e DOCX Não possuem pré-visualização no navegador, mas serão
                     enviados normalmente.
                   </p>
                 }
@@ -529,7 +613,7 @@
       <div class="modal-content uniflow-modal-content ti-satisfaction-modal">
         <div class="modal-header uniflow-modal-header">
           <div>
-            <p class="system-name">Pesquisa obrigatoria</p>
+            <p class="system-name">Pesquisa obrigatória</p>
             <h2>Avalie o chamado #{{ selected()?.id }}</h2>
             <span>{{ selected()?.titulo }}</span>
           </div>
@@ -546,7 +630,7 @@
               <strong>{{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</strong>
             </div>
             <div>
-              <span>Responsavel</span>
+              <span>Responsável</span>
               <strong>{{ selected()?.responsavel || 'TI' }}</strong>
             </div>
           </section>
@@ -563,7 +647,7 @@
             [formGroup]="satisfactionForm"
             (ngSubmit)="submitSatisfaction()"
           >
-            <strong>Como voce avalia este atendimento?</strong>
+            <strong>Como você avalia este atendimento?</strong>
             <div
               class="rating-buttons rating-buttons-large"
               role="radiogroup"
@@ -584,7 +668,7 @@
             </div>
             <small>Escolha uma nota de 1 a 5 para concluir a avaliação.</small>
             <label>
-              Comentario
+              Comentário
               <textarea
                 formControlName="comentario"
                 rows="4"
@@ -714,7 +798,7 @@
                       <label>
                         Responsável
                         <select formControlName="responsavel">
-                          <option value="">Sem responsável</option>
+                          <option value="">Sem responsavel</option>
                           @for (responsavel of responsaveis(); track responsavel.id) {
                             <option [value]="responsavel.nome">{{ responsavel.nome }}</option>
                           }
@@ -823,6 +907,16 @@
                       }
                     </div>
 
+                    <section class="ticket-timeline">
+                      <strong>Timeline do chamado</strong>
+                      @for (event of ticketTimeline(selected()); track event.time + event.label) {
+                        <div>
+                          <time>{{ event.time }}</time>
+                          <span>{{ event.label }}</span>
+                        </div>
+                      }
+                    </section>
+
                     @if (selected()?.observacoesEncerramento) {
                       <section class="closure-notes">
                         <strong>Observações de encerramento</strong>
@@ -839,7 +933,7 @@
                         <p class="stars readonly-stars">
                           @for (star of [1, 2, 3, 4, 5]; track star) {
                             <span [class.filled]="star <= (selected()?.satisfacaoNota ?? 0)"
-                              >â˜…</span
+                              >★</span
                             >
                           }
                         </p>
@@ -900,7 +994,7 @@
                           <textarea
                             formControlName="observacoesEncerramento"
                             rows="3"
-                            placeholder="Descreva a solucao aplicada antes de encerrar"
+                            placeholder="Descreva a solução aplicada antes de encerrar"
                           ></textarea>
                         </label>
                         <button
@@ -919,7 +1013,7 @@
                     <strong>#{{ selected()?.id }} - {{ selected()?.titulo }}</strong>
                     <span>Status: {{ selected()?.status }}</span>
                     <span>Prioridade: {{ selected()?.prioridade }}</span>
-                    <span>Responsável: {{ selected()?.responsavel || 'Sem responsável' }}</span>
+                    <span>Responsável: {{ selected()?.responsavel || 'Sem responsavel' }}</span>
                     <span>Criado em {{ selected()?.dataAbertura | date: 'dd/MM/yyyy HH:mm' }}</span>
                     @if (selected()?.dataPrimeiroEncerramento) {
                       <span
@@ -951,19 +1045,28 @@
                       <div class="ticket-dates equipment-meta">
                         <span>
                           <strong>Computador</strong>
-                          {{ selected()?.equipamentoNome || 'Nao informado pelo navegador' }}
+                          {{ selected()?.equipamentoNome || 'Não informado pelo navegador' }}
                         </span>
                         <span>
                           <strong>IP capturado</strong>
-                          {{ selected()?.equipamentoIp || 'Nao identificado' }}
+                          {{ selected()?.equipamentoIp || 'Não identificado' }}
                         </span>
                         <span>
                           <strong>Sistema operacional</strong>
-                          {{ selected()?.equipamentoSistemaOperacional || 'Nao identificado' }}
+                          {{ selected()?.equipamentoSistemaOperacional || 'Não identificado' }}
                         </span>
                       </div>
                     </section>
                     <p>{{ selected()?.descricao }}</p>
+                    <section class="ticket-timeline">
+                      <strong>Timeline do chamado</strong>
+                      @for (event of ticketTimeline(selected()); track event.time + event.label) {
+                        <div>
+                          <time>{{ event.time }}</time>
+                          <span>{{ event.label }}</span>
+                        </div>
+                      }
+                    </section>
                     @if (selected()?.observacoes) {
                       <span>Observações: {{ selected()?.observacoes }}</span>
                     }
@@ -991,7 +1094,7 @@
                           ></iframe>
                         } @else {
                           <p class="empty">
-                            Este documento Não possui pre-visualizacao no navegador. Use a opção
+                            Este documento Não possui pré-visualização no navegador. Use a opção
                             baixar anexo.
                           </p>
                         }
@@ -1018,13 +1121,13 @@
                               "
                               (click)="setRating(star)"
                             >
-                              â˜…
+                              ★
                             </button>
                           }
                         </div>
                         <small>1 muito insatisfeito, 5 super satisfeito</small>
                         <label>
-                          Comentario
+                          Comentário
                           <textarea
                             formControlName="comentario"
                             rows="3"
@@ -1087,7 +1190,7 @@
 
                   @if (
                     selected()?.dataEncerramento ||
-                    selected()?.status === 'Concluido' ||
+                    selected()?.status === 'Concluído' ||
                     selected()?.status === 'Cancelado'
                   ) {
                     <p class="notice">
@@ -1095,7 +1198,7 @@
                     </p>
                   } @else if (!hasResponsible()) {
                     <p class="notice">
-                      Defina um responsável pelo chamado para liberar o chat.
+                      Defina um responsavel pelo chamado para liberar o chat.
                     </p>
                   } @else {
                     <form class="message-form" [formGroup]="messageForm" (ngSubmit)="sendMessage()">
@@ -1174,3 +1277,5 @@
     </section>
   }
 </main>
+
+

@@ -79,6 +79,7 @@ export class AuthService {
     return !!user && (
       user.role === 'Admin'
       || (user.role === 'TI' && access === 'veiculos-repasses')
+      || this.defaultAccesses(user).includes(access)
       || (user.acessos ?? []).includes(access)
     );
   }
@@ -101,9 +102,42 @@ export class AuthService {
 
   private isTiUser(): boolean {
     const user = this.user();
-    const role = this.normalize(user?.role);
+    return !!user && this.isTiUserValue(user);
+  }
+
+  private isTiUserValue(user: User): boolean {
+    const role = this.normalize(user.role);
     const department = this.normalize(user?.departamento);
-    return role === 'ti' || department.includes('ti') || department.includes('tecnologia');
+    const perfis = (user.perfis ?? []).map((perfil) => this.normalize(perfil));
+    return role === 'ti'
+      || this.isTiText(role)
+      || this.isTiText(department)
+      || perfis.some((perfil) => perfil === 'ti' || this.isTiText(perfil));
+  }
+
+  private isRhUserValue(user: User): boolean {
+    const role = this.normalize(user.role);
+    const department = this.normalize(user.departamento);
+    const perfis = (user.perfis ?? []).map((perfil) => this.normalize(perfil));
+    return role === 'rh'
+      || department.includes('rh')
+      || department.includes('recursos humanos')
+      || perfis.some((perfil) => perfil === 'rh' || perfil.includes('recursos humanos'));
+  }
+
+  private defaultAccesses(user: User): string[] {
+    const accesses = new Set(['ti', 'rh', 'compras']);
+    if (this.isTiUserValue(user)) {
+      ['ti-admin', 'usuarios', 'empresas-revendas', 'perfis'].forEach((access) => accesses.add(access));
+    }
+    if (this.isRhUserValue(user)) {
+      accesses.add('rh-admin');
+    }
+    return Array.from(accesses);
+  }
+
+  private isTiText(value: string): boolean {
+    return value.includes('ti') || value.includes('t.i') || value.includes('tecnologia');
   }
 
   private setSession(response: LoginResponse): void {

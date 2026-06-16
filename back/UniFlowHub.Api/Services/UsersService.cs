@@ -27,6 +27,7 @@ namespace UniFlowHub.Api.Services
                 Cpf = u.Cpf,
                 Email = u.Email,
                 Role = u.Role,
+                Perfis = u.Perfis.Select(p => p.Perfil).ToList(),
                 Departamento = u.Departamento,
                 Cargo = u.Cargo,
                 Ativo = u.Ativo,
@@ -36,34 +37,35 @@ namespace UniFlowHub.Api.Services
             }).ToList();
         }
 
-        public List<UserResponseDto> List(string role, string email)
+        public List<UserResponseDto> List(string role, string email, IEnumerable<string>? acessos = null)
         {
-            IQueryable<Users> user = _repo.Query().Include(u => u.Unidade);
+            IQueryable<Users> user = _repo.Query().Include(u => u.Unidade).Include(u => u.Perfis);
 
-            if (RoleScope.IsAdmin(role) || RoleScope.IsTI(role))
+            if (CanManageUsers(role, acessos))
                 return MapUsers(user);
 
             user = user.Where(u => u.Email == email);
             return MapUsers(user);
         }
 
-        public List<UserResponseDto> ListAdministradores(string role)
+        public List<UserResponseDto> ListAdministradores(string role, IEnumerable<string>? acessos = null)
         {
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsTI(role))
+            if (!CanManageUsers(role, acessos))
                 throw new UnauthorizedAccessException("Voce nao pode listar administradores.");
 
             return MapUsers(_repo.Query()
                 .Include(u => u.Unidade)
+                .Include(u => u.Perfis)
                 .Where(u => u.Role == "Admin" || u.Role == "TI")
                 .OrderBy(u => u.Nome));
         }
 
-        public UserResponseDto Update(int id, UserUpdateDto dto, string role)
+        public UserResponseDto Update(int id, UserUpdateDto dto, string role, IEnumerable<string>? currentUserAcessos = null)
         {
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsTI(role))
+            if (!CanManageUsers(role, currentUserAcessos))
                 throw new UnauthorizedAccessException("Voce nao pode editar usuarios.");
 
-            var user = _repo.Query().Include(u => u.Unidade).FirstOrDefault(u => u.Id == id);
+            var user = _repo.Query().Include(u => u.Unidade).Include(u => u.Perfis).FirstOrDefault(u => u.Id == id);
             if (user is null)
                 throw new KeyNotFoundException("Usuario nao encontrado.");
 
@@ -78,7 +80,8 @@ namespace UniFlowHub.Api.Services
                 throw new InvalidOperationException("Email e obrigatorio.");
 
             dto.Role = AuthService.NormalizeRole(dto.Role);
-            EnsureConfiguredRole(dto.Role);
+            var perfis = AuthService.NormalizePerfilList(dto.Role, dto.Perfis);
+            EnsureConfiguredRoles(perfis);
             dto.UnidadeId = NormalizeUnidadeId(dto.UnidadeId);
 
             AuthService.ValidateUnidadeForRole(dto.Role, dto.UnidadeId);
@@ -96,6 +99,7 @@ namespace UniFlowHub.Api.Services
             user.Ativo = dto.Ativo;
             user.UnidadeId = dto.UnidadeId;
             user.DataNascimento = dto.DataNascimento;
+            SaveUserPerfis(user, perfis);
 
             if (!string.IsNullOrWhiteSpace(dto.Senha))
             {
@@ -108,7 +112,7 @@ namespace UniFlowHub.Api.Services
             _repo.Update(user);
             _repo.Save();
 
-            return MapUsers(_repo.Query().Include(u => u.Unidade).Where(u => u.Id == id)).Single();
+            return MapUsers(_repo.Query().Include(u => u.Unidade).Include(u => u.Perfis).Where(u => u.Id == id)).Single();
         }
 
         private void EnsureConfiguredRole(string role)
@@ -118,6 +122,28 @@ namespace UniFlowHub.Api.Services
 
             if (!_context.PerfilSistema.Any(p => p.Nome == role))
                 throw new InvalidOperationException("Perfil invalido.");
+        }
+
+        private void EnsureConfiguredRoles(IEnumerable<string> perfis)
+        {
+            var configured = _context.PerfilSistema.Select(p => p.Nome).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!perfis.Any() || perfis.Any(perfil => !configured.Contains(perfil)))
+                throw new InvalidOperationException("Perfil invalido.");
+        }
+
+        private static bool CanManageUsers(string role, IEnumerable<string>? acessos)
+        {
+            return RoleScope.IsAdmin(role)
+                || RoleScope.IsTI(role)
+                || (acessos?.Contains("usuarios", StringComparer.OrdinalIgnoreCase) ?? false);
+        }
+
+        private void SaveUserPerfis(Users user, List<string> perfis)
+        {
+            _context.UserPerfil.RemoveRange(user.Perfis);
+            user.Perfis.Clear();
+            foreach (var perfil in perfis)
+                user.Perfis.Add(new UserPerfil { Perfil = perfil });
         }
 
         private static int? NormalizeUnidadeId(int? unidadeId)

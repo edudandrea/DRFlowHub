@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, OnDestroy, OnInit, TemplateRef, ViewChild, computed, inject, signal } from '@angular/core';
+﻿import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, OnInit, TemplateRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { DatePipe, isPlatformBrowser } from '@angular/common';
 import { PLATFORM_ID } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
@@ -34,6 +34,19 @@ const MONITORING_STORAGE_KEY = 'uniflowhub.ti.monitoramento';
 type TiTab = 'pendentes' | 'meus' | 'todos' | 'concluidos';
 type TiSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'prioridade' | 'status' | 'dataAbertura';
 type MonitorStatus = 'online' | 'offline' | 'testando' | 'pendente';
+type MetricFilter = 'none' | 'abertos' | 'sla-cumprido' | 'sla-vencido' | 'em-atendimento' | 'respondidos';
+
+interface TicketColumn {
+  key: string;
+  title: string;
+  subtitle: string;
+  items: ChamadoTI[];
+}
+
+interface TicketTimelineEvent {
+  time: string;
+  label: string;
+}
 
 interface MonitorItem {
   id: number;
@@ -60,7 +73,7 @@ interface TicketMovementAlert {
   templateUrl: './ti.html',
   styleUrl: './ti.scss',
 })
-export class TiPage implements OnInit, OnDestroy {
+export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly service = inject(ChamadosTIService);
@@ -98,6 +111,7 @@ export class TiPage implements OnInit, OnDestroy {
   readonly detailTab = signal<'detalhes' | 'comunicacao'>('detalhes');
   readonly filterTerm = signal('');
   readonly responsibleFilter = signal('');
+  readonly metricFilter = signal<MetricFilter>('none');
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
   readonly reportDateFrom = signal('');
@@ -122,6 +136,7 @@ export class TiPage implements OnInit, OnDestroy {
   readonly user = computed(() => this.auth.user());
   readonly canManage = computed(() => this.auth.hasAccess('ti-admin'));
   readonly abertos = computed(() => this.chamados().filter((item) => item.status === 'Aberto').length);
+  readonly emAtendimento = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && !!item.responsavel?.trim()).length);
   readonly pendentes = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && !item.responsavel?.trim()).length);
   readonly meusChamados = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && this.isMine(item)).length);
   readonly concluidos = computed(() => this.chamados().filter((item) => this.isConcluido(item)).length);
@@ -181,6 +196,8 @@ export class TiPage implements OnInit, OnDestroy {
       }
     }
 
+    items = this.applyMetricFilter(items);
+
     const term = this.normalize(this.filterTerm());
     const responsible = this.normalize(this.responsibleFilter());
     const from = this.parseDateFilter(this.dateFrom(), false);
@@ -199,6 +216,36 @@ export class TiPage implements OnInit, OnDestroy {
 
     return this.sortItems(filtered);
   });
+  readonly ticketColumns = computed<TicketColumn[]>(() => {
+    const items = this.filteredChamados().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize());
+    const columns = [
+      {
+        key: 'abertos',
+        title: 'Abertos',
+        items: items.filter((item) => !this.isConcluido(item) && this.normalize(item.status).includes('aberto')),
+      },
+      {
+        key: 'andamento',
+        title: 'Em andamento',
+        items: items.filter((item) => !this.isConcluido(item) && !this.isAwaitingUser(item) && !this.normalize(item.status).includes('aberto')),
+      },
+      {
+        key: 'aguardando',
+        title: 'Aguardando usuario',
+        items: items.filter((item) => !this.isConcluido(item) && this.isAwaitingUser(item)),
+      },
+      {
+        key: 'concluidos',
+        title: 'Concluídos',
+        items: items.filter((item) => this.isConcluido(item)),
+      },
+    ];
+
+    return columns.map((column) => ({
+      ...column,
+      subtitle: `${column.items.length} chamado(s)`,
+    }));
+  });
   readonly totalPages = computed(() => Math.max(1, Math.ceil(this.filteredChamados().length / this.pageSize())));
   readonly pagedChamados = computed(() => this.filteredChamados().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
   private selectedAttachment: File | null = null;
@@ -216,6 +263,7 @@ export class TiPage implements OnInit, OnDestroy {
 
   @ViewChild('anexoInput') private anexoInput?: ElementRef<HTMLInputElement>;
   @ViewChild('ticketModalTemplate') private ticketModalTemplate?: TemplateRef<void>;
+  @ViewChild('createTicketModalTemplate') private createTicketModalTemplate?: TemplateRef<void>;
 
   readonly form = this.fb.nonNullable.group({
     titulo: ['', Validators.required],
@@ -293,6 +341,14 @@ export class TiPage implements OnInit, OnDestroy {
     }
   }
 
+  ngAfterViewInit(): void {
+    if (!this.isBrowser) {
+      return;
+    }
+
+    setTimeout(() => this.openQrRequestedTicket());
+  }
+
   ngOnDestroy(): void {
     this.stopCommunicationRefresh();
     this.stopTicketMovementRefresh();
@@ -344,14 +400,14 @@ export class TiPage implements OnInit, OnDestroy {
   loadConhecimentos(): void {
     this.baseConhecimentoService.list().subscribe({
       next: (items) => this.conhecimentos.set(items),
-      error: () => this.toastr.error('Nao foi possivel carregar a base de conhecimento de TI.', 'TI Assistant'),
+      error: () => this.toastr.error('Não foi possível carregar a base de conhecimento de TI.', 'TI Assistant'),
     });
   }
 
   loadEquipamentos(): void {
     this.equipamentosService.list().subscribe({
       next: (items) => this.equipamentos.set(items),
-      error: () => this.toastr.error('Nao foi possivel carregar os equipamentos de TI.', 'TI'),
+      error: () => this.toastr.error('Não foi possível carregar os equipamentos de TI.', 'TI'),
     });
   }
 
@@ -447,6 +503,7 @@ export class TiPage implements OnInit, OnDestroy {
 
   setTab(tab: TiTab): void {
     this.activeTab.set(tab);
+    this.metricFilter.set('none');
     this.page.set(1);
     this.clearAttachmentPreview();
     const first = this.filteredChamados()[0] ?? null;
@@ -489,6 +546,7 @@ export class TiPage implements OnInit, OnDestroy {
   clearQueueFilters(): void {
     this.filterTerm.set('');
     this.responsibleFilter.set('');
+    this.metricFilter.set('none');
     this.dateFrom.set('');
     this.dateTo.set('');
     this.page.set(1);
@@ -512,6 +570,140 @@ export class TiPage implements OnInit, OnDestroy {
     this.dateTo.set('');
     this.page.set(1);
     this.syncSelectionWithFilters();
+  }
+
+  setMetricFilter(filter: MetricFilter): void {
+    const nextFilter = this.metricFilter() === filter ? 'none' : filter;
+    this.metricFilter.set(nextFilter);
+    if (nextFilter === 'sla-cumprido') {
+      this.activeTab.set('concluidos');
+    } else if (nextFilter !== 'none') {
+      this.activeTab.set('todos');
+    }
+    this.page.set(1);
+    this.syncSelectionWithFilters();
+  }
+
+  metricTrend(filter: MetricFilter): string {
+    if (filter === 'none') {
+      return '';
+    }
+
+    const now = Date.now();
+    const week = 7 * 24 * 60 * 60 * 1000;
+    const current = this.countMetricInRange(filter, now - week, now);
+    const previous = this.countMetricInRange(filter, now - week * 2, now - week);
+    const change = previous === 0 ? (current > 0 ? 100 : 0) : Math.round(((current - previous) / previous) * 100);
+    const direction = change >= 0 ? 'subiu' : 'caiu';
+    return `${direction} ${Math.abs(change)}% esta semana`;
+  }
+
+  metricTrendClass(filter: MetricFilter): string {
+    if (filter === 'none') {
+      return 'neutral';
+    }
+
+    const now = Date.now();
+    const week = 7 * 24 * 60 * 60 * 1000;
+    const current = this.countMetricInRange(filter, now - week, now);
+    const previous = this.countMetricInRange(filter, now - week * 2, now - week);
+    return current >= previous ? 'up' : 'down';
+  }
+
+  priorityClass(item: ChamadoTI | null | undefined): string {
+    const priority = this.normalize(item?.prioridade);
+    if (priority.includes('critica')) {
+      return 'critical';
+    }
+    if (priority.includes('alta')) {
+      return 'high';
+    }
+    if (priority.includes('baixa')) {
+      return 'low';
+    }
+    return 'medium';
+  }
+
+  priorityLabel(item: ChamadoTI | null | undefined): string {
+    const priority = this.normalize(item?.prioridade);
+    if (priority.includes('critica')) {
+      return 'Critica';
+    }
+    if (priority.includes('alta')) {
+      return 'Alta';
+    }
+    if (priority.includes('baixa')) {
+      return 'Baixa';
+    }
+    return 'Media';
+  }
+
+  slaPercent(item: ChamadoTI): number {
+    const limit = this.getSlaLimitHours(item);
+    if (limit <= 0) {
+      return 0;
+    }
+
+    return Math.min(100, Math.round((this.getSlaElapsedHours(item) / limit) * 100));
+  }
+
+  slaClass(item: ChamadoTI): string {
+    if (this.isSlaExpired(item)) {
+      return 'expired';
+    }
+    if (this.isSlaMet(item)) {
+      return 'met';
+    }
+    return this.slaPercent(item) >= 80 ? 'warning' : 'ok';
+  }
+
+  slaRemainingText(item: ChamadoTI): string {
+    if (this.isConcluido(item)) {
+      return this.isSlaMet(item) ? 'SLA cumprido' : 'SLA vencido';
+    }
+
+    const remaining = this.getSlaLimitHours(item) - this.getSlaElapsedHours(item);
+    if (remaining <= 0) {
+      return `Vencido ha ${this.formatDuration(Math.abs(remaining))}`;
+    }
+
+    return `SLA restante: ${this.formatDuration(remaining)}`;
+  }
+
+  openedAgo(item: ChamadoTI): string {
+    return `Aberto ha ${this.formatDuration(this.getSlaElapsedHours(item))}`;
+  }
+
+  ticketTimeline(item: ChamadoTI | null): TicketTimelineEvent[] {
+    if (!item) {
+      return [];
+    }
+
+    const events: TicketTimelineEvent[] = [
+      { time: this.formatShortTime(item.dataAbertura), label: 'Chamado aberto' },
+    ];
+
+    if (item.responsavel?.trim()) {
+      events.push({ time: this.formatShortTime(item.ultimaMovimentacao || item.dataAbertura), label: 'Tecnico assumiu' });
+    }
+
+    if (item.observacoesEncerramento?.trim()) {
+      events.push({ time: this.formatShortTime(item.dataEncerramento || item.ultimaMovimentacao), label: 'Solucao registrada' });
+    }
+
+    if (item.dataReabertura) {
+      events.push({ time: this.formatShortTime(item.dataReabertura), label: 'Chamado reaberto' });
+    }
+
+    if (item.dataEncerramento) {
+      events.push({ time: this.formatShortTime(item.dataEncerramento), label: 'Chamado encerrado' });
+    }
+
+    if (item.satisfacaoNota) {
+      events.push({ time: this.formatShortTime(item.dataAvaliacao || item.dataEncerramento), label: 'Usuario avaliou o atendimento' });
+    }
+
+    return events;
   }
 
   readonly responsavelOptions = computed(() => {
@@ -1136,6 +1328,33 @@ export class TiPage implements OnInit, OnDestroy {
     void this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
   }
 
+  private openQrRequestedTicket(): void {
+    const params = this.route.snapshot.queryParamMap;
+    if (params.get('abrirChamado') !== '1' || !this.createTicketModalTemplate) {
+      return;
+    }
+
+    this.form.patchValue({
+      titulo: params.get('titulo') || this.form.controls.titulo.value,
+      categoria: params.get('categoria') || 'Equipamento',
+      solicitante: params.get('solicitante') || this.form.controls.solicitante.value,
+      unidade: params.get('unidade') || this.form.controls.unidade.value,
+      departamento: params.get('departamento') || this.form.controls.departamento.value,
+      prioridade: params.get('prioridade') || 'Media',
+      equipamentoNome: params.get('equipamentoNome') || this.form.controls.equipamentoNome.value,
+      equipamentoSistemaOperacional: params.get('equipamentoSistemaOperacional') || this.form.controls.equipamentoSistemaOperacional.value,
+      observacoes: params.get('observacoes') || this.form.controls.observacoes.value,
+    });
+
+    const descricao = this.form.controls.descricao.value.trim();
+    if (!descricao) {
+      this.form.patchValue({ descricao: 'Chamado aberto via QR Code do inventario de equipamentos.' });
+    }
+
+    this.openCreateTicketModal(this.createTicketModalTemplate);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
+  }
+
   private async connectChat(chamadoId: number): Promise<void> {
     if (!this.isBrowser) {
       return;
@@ -1481,7 +1700,7 @@ export class TiPage implements OnInit, OnDestroy {
       return 'Sugestao inicial: reinicie o equipamento, feche programas pesados e informe desde quando ocorre. Inclua prints ou anexo se houver mensagem de erro.';
     }
 
-    return 'Ainda nao encontrei um artigo igual. Descreva impacto, sistema afetado, horario de inicio, unidade e qualquer mensagem de erro para acelerar o atendimento.';
+    return 'Ainda não encontrei um artigo igual. Descreva impacto, sistema afetado, horário de início, unidade e qualquer mensagem de erro para acelerar o atendimento.';
   }
 
   private buildAssistantLocalContext(text: string): string {
@@ -1526,7 +1745,7 @@ export class TiPage implements OnInit, OnDestroy {
       return;
     }
 
-    const confirmed = window.confirm(`TI Assistant: deseja incluir a solucao do chamado #${item.id} na base de conhecimento?`);
+    const confirmed = window.confirm(`TI Assistant: deseja incluir a solução do chamado #${item.id} na base de conhecimento?`);
     if (!confirmed) {
       return;
     }
@@ -1541,7 +1760,7 @@ export class TiPage implements OnInit, OnDestroy {
         this.conhecimentos.set([created, ...this.conhecimentos()]);
         this.toastr.success(`Base de conhecimento criada a partir do chamado #${item.id}.`, 'TI Assistant');
       },
-      error: (error) => this.toastr.error(this.getErrorMessage('Nao foi possivel criar a base de conhecimento.', error), 'TI Assistant'),
+      error: (error) => this.toastr.error(this.getErrorMessage('Não foi possível criar a base de conhecimento.', error), 'TI Assistant'),
     });
   }
 
@@ -1561,8 +1780,69 @@ export class TiPage implements OnInit, OnDestroy {
     }) ?? null;
   }
 
+  private applyMetricFilter(items: ChamadoTI[]): ChamadoTI[] {
+    const filter = this.metricFilter();
+    if (filter === 'abertos') {
+      return items.filter((item) => this.normalize(item.status).includes('aberto'));
+    }
+
+    if (filter === 'sla-cumprido') {
+      return items.filter((item) => this.isSlaMet(item));
+    }
+
+    if (filter === 'sla-vencido') {
+      return items.filter((item) => this.isSlaExpired(item));
+    }
+
+    if (filter === 'em-atendimento') {
+      return items.filter((item) => !this.isConcluido(item) && !!item.responsavel?.trim());
+    }
+
+    if (filter === 'respondidos') {
+      const respondedIds = new Set(this.movementAlerts().map((alert) => alert.ticketId));
+      return items.filter((item) => respondedIds.has(item.id));
+    }
+
+    return items;
+  }
+
+  private countMetricInRange(filter: MetricFilter, start: number, end: number): number {
+    return this.chamados().filter((item) => {
+      const itemDate = new Date(item.dataAbertura).getTime();
+      return itemDate >= start && itemDate < end && this.applyMetricFilterToItem(item, filter);
+    }).length;
+  }
+
+  private applyMetricFilterToItem(item: ChamadoTI, filter: MetricFilter): boolean {
+    if (filter === 'abertos') {
+      return this.normalize(item.status).includes('aberto');
+    }
+    if (filter === 'sla-cumprido') {
+      return this.isSlaMet(item);
+    }
+    if (filter === 'sla-vencido') {
+      return this.isSlaExpired(item);
+    }
+    if (filter === 'em-atendimento') {
+      return !this.isConcluido(item) && !!item.responsavel?.trim();
+    }
+    if (filter === 'respondidos') {
+      return this.movementAlerts().some((alert) => alert.ticketId === item.id);
+    }
+    return true;
+  }
+
+  private isAwaitingUser(item: ChamadoTI): boolean {
+    const status = this.normalize(item.status);
+    return status.includes('aguard') || status.includes('usuario') || status.includes('respondido');
+  }
+
   private getSlaLimitHours(item: ChamadoTI): number {
     const priority = this.normalize(item.prioridade);
+    if (priority.includes('critica')) {
+      return 4;
+    }
+
     if (priority.includes('alta')) {
       return 8;
     }
@@ -1590,6 +1870,37 @@ export class TiPage implements OnInit, OnDestroy {
 
   private isSlaExpired(item: ChamadoTI): boolean {
     return !this.isSlaMet(item) && this.getSlaElapsedHours(item) > this.getSlaLimitHours(item);
+  }
+
+  private formatDuration(hours: number): string {
+    const totalMinutes = Math.max(0, Math.round(hours * 60));
+    const days = Math.floor(totalMinutes / 1440);
+    const remainingAfterDays = totalMinutes % 1440;
+    const fullHours = Math.floor(remainingAfterDays / 60);
+    const minutes = remainingAfterDays % 60;
+
+    if (days > 0) {
+      return `${days}d ${fullHours}h`;
+    }
+
+    if (fullHours > 0) {
+      return `${fullHours}h ${minutes}min`;
+    }
+
+    return `${minutes}min`;
+  }
+
+  private formatShortTime(value: string | null | undefined): string {
+    if (!value) {
+      return '--:--';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '--:--';
+    }
+
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
   private getFilterDate(item: ChamadoTI, useClosingDate: boolean): Date {
@@ -1728,6 +2039,10 @@ export class TiPage implements OnInit, OnDestroy {
     void this.router.navigate(['/hub']);
   }
 
+  openMonitoring(): void {
+    void this.router.navigate(['/ti/monitoramento']);
+  }
+
   editProfile(): void {
     this.profileMenuOpen.set(false);
     this.profileFlow.editProfile();
@@ -1804,3 +2119,4 @@ export class TiPage implements OnInit, OnDestroy {
     return fallback;
   }
 }
+

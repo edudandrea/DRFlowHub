@@ -69,6 +69,11 @@ export const routes: Routes = [
     canActivate: [accessGuard(['equipamentos-ti'])],
   },
   {
+    path: 'ti/equipamentos/inventario',
+    component: EquipamentosTIPage,
+    canActivate: [accessGuard(['equipamentos-ti'])],
+  },
+  {
     path: 'ti/base-conhecimento',
     component: BaseConhecimentoTIPage,
     canActivate: [accessGuard(['base-conhecimento-ti'])],
@@ -76,7 +81,7 @@ export const routes: Routes = [
   {
     path: 'ti/monitoramento',
     loadComponent: () => import('./pages/monitoramento/monitoramento.component').then((m) => m.MonitoramentoComponent),
-    canActivate: [accessGuard(['ti-admin'])],
+    canActivate: [authGuard],
   },
   {
     path: 'compras',

@@ -93,7 +93,7 @@ export class UsuariosPage implements OnInit {
     }
 
     return this.sortItems(this.users().filter((item) =>
-      [item.nome, item.cpf, item.email, item.role, item.departamento, item.cargo, item.unidadeNome, item.ativo ? 'ativo' : 'inativo']
+      [item.nome, item.cpf, item.email, item.role, ...(item.perfis ?? []), item.departamento, item.cargo, item.unidadeNome, item.ativo ? 'ativo' : 'inativo']
         .some((value) => this.normalize(value).includes(term)),
     ), this.userSortField());
   });
@@ -102,6 +102,8 @@ export class UsuariosPage implements OnInit {
     return this.sortItems(this.unidades().filter((item) => !term || [item.empresaNumero, item.empresa, item.numeroRevenda, item.revenda, item.nome, item.cnpj, item.endereco].some((value) => this.normalize(value).includes(term))), this.unidadeSortField());
   });
   readonly sortedEmpresas = computed(() => this.sortItems(this.empresas(), this.empresaSortField()));
+  readonly perfisSelecionados = computed(() => this.normalizeSelectedPerfis(this.form.controls.role.value as Role, this.form.controls.perfis.value));
+  readonly perfisDisponiveis = computed(() => this.roles().filter((role) => !this.perfisSelecionados().includes(role)));
   readonly userTree = computed(() => this.buildUserTree(this.filtered()));
   readonly totalUserPages = computed(() => this.totalPages(this.filtered().length));
   readonly totalUnidadePages = computed(() => this.totalPages(this.filteredUnidades().length));
@@ -115,6 +117,7 @@ export class UsuariosPage implements OnInit {
     cpf: ['', Validators.required],
     email: ['', [Validators.required, Validators.email]],
     role: ['Usuario', Validators.required],
+    perfis: [[] as Role[]],
     departamento: ['', Validators.required],
     cargo: ['', Validators.required],
     empresaSelecionadaId: [0],
@@ -194,6 +197,7 @@ export class UsuariosPage implements OnInit {
       cpf: '',
       email: '',
       role: 'Usuario',
+      perfis: ['Usuario'],
       departamento: '',
       cargo: '',
       empresaSelecionadaId: 0,
@@ -215,6 +219,7 @@ export class UsuariosPage implements OnInit {
       cpf: item.cpf,
       email: item.email,
       role: item.role,
+      perfis: item.perfis?.length ? item.perfis : [item.role],
       departamento: item.departamento,
       cargo: item.cargo,
       empresaSelecionadaId: this.getEmpresaIdByUnidadeId(item.unidadeId ?? 0),
@@ -301,6 +306,7 @@ export class UsuariosPage implements OnInit {
         cpf: raw.cpf,
         email: raw.email,
         role: raw.role as Role,
+        perfis: this.normalizeSelectedPerfis(raw.role as Role, raw.perfis),
         departamento: raw.departamento,
         cargo: raw.cargo,
         ativo: raw.ativo,
@@ -335,6 +341,7 @@ export class UsuariosPage implements OnInit {
       cpf: raw.cpf,
       email: raw.email,
       role: raw.role as Role,
+      perfis: this.normalizeSelectedPerfis(raw.role as Role, raw.perfis),
       departamento: raw.departamento,
       cargo: raw.cargo,
       ativo: raw.ativo,
@@ -427,6 +434,30 @@ export class UsuariosPage implements OnInit {
     this.form.patchValue({ empresaSelecionadaId: Number(empresaId), unidadeId: 0 });
   }
 
+  togglePerfil(role: Role): void {
+    const current = this.form.controls.perfis.value ?? [];
+    this.form.controls.perfis.setValue(
+      current.includes(role)
+        ? current.filter((perfil) => perfil !== role)
+        : [...current, role],
+    );
+    this.form.controls.perfis.markAsDirty();
+  }
+
+  removePerfil(role: Role): void {
+    this.form.controls.perfis.setValue((this.form.controls.perfis.value ?? []).filter((perfil) => perfil !== role));
+    this.form.controls.perfis.markAsDirty();
+  }
+
+  isPerfilSelecionado(role: Role): boolean {
+    return this.perfisSelecionados().includes(role);
+  }
+
+  perfisResumo(item: User): string {
+    const perfis = item.perfis?.length ? item.perfis : [item.role];
+    return Array.from(new Set(perfis)).join(', ');
+  }
+
   setUserSort(field: UserSortField): void {
     this.userSortField.set(field);
     this.userPage.set(1);
@@ -506,6 +537,10 @@ export class UsuariosPage implements OnInit {
 
   private getEmpresaIdByUnidadeId(unidadeId: number): number {
     return this.unidades().find((item) => item.id === unidadeId)?.empresaId ?? 0;
+  }
+
+  private normalizeSelectedPerfis(role: Role, perfis: Role[] | null | undefined): Role[] {
+    return Array.from(new Set([role, ...(perfis ?? [])].filter(Boolean)));
   }
 
   private buildUserTree(users: User[]): UserEmpresaGroup[] {

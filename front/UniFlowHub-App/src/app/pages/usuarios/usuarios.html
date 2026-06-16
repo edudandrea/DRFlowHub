@@ -89,11 +89,11 @@
                     </summary>
                     <div class="tree-users">
                       <div class="users-table-head">
-                        <span>UsuÃ¡rio</span>
-                        <span>Perfil</span>
+                        <span>Usuário</span>
+                        <span>Perfis</span>
                         <span>Departamento</span>
                         <span>Status</span>
-                        <span>AÃ§Ã£o</span>
+                        <span>Ação</span>
                       </div>
                       @for (item of revenda.users; track item.id) {
                         <button
@@ -107,7 +107,7 @@
                             <strong>{{ item.nome }}</strong>
                             <small>{{ item.email }}</small>
                           </span>
-                          <span class="status">{{ item.role }}</span>
+                          <span class="status">{{ perfisResumo(item) }}</span>
                           <span class="tree-user-office">
                             <strong>{{ item.departamento }}</strong>
                             <small>{{ item.cargo }}</small>
@@ -157,7 +157,7 @@
               <input type="email" formControlName="email" />
             </label>
             <label>
-              Perfil
+              Perfil principal
               <select formControlName="role">
                 @for (role of roles(); track role) {
                   <option [value]="role">{{ role }}</option>
@@ -165,6 +165,36 @@
               </select>
             </label>
           </div>
+
+          <section class="profile-picker">
+            <div class="profile-picker-heading">
+              <strong>Perfis adicionais</strong>
+              <small>O perfil principal também será aplicado automaticamente.</small>
+            </div>
+            <div class="profile-options" aria-label="Perfis disponíveis">
+              @for (role of perfisDisponiveis(); track role) {
+                <button type="button" class="profile-option" (click)="togglePerfil(role)">
+                  {{ role }}
+                </button>
+              }
+            </div>
+            <div class="selected-profiles" aria-label="Perfis liberados">
+              @for (role of perfisSelecionados(); track role) {
+                <button
+                  type="button"
+                  class="profile-chip"
+                  [class.primary-profile]="role === form.controls.role.value"
+                  [disabled]="role === form.controls.role.value"
+                  (click)="removePerfil(role)"
+                >
+                  <span>{{ role }}</span>
+                  @if (role !== form.controls.role.value) {
+                    <strong>x</strong>
+                  }
+                </button>
+              }
+            </div>
+          </section>
 
           <div class="grid two">
             <label>

@@ -20,6 +20,17 @@ namespace UniFlowHub.Api.Services
             "pecas-bi-mg",
             "pecas-bi-geely",
         };
+        private static readonly HashSet<string> AcessosPadraoOcultos = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "ti",
+            "rh",
+            "compras",
+            "ti-admin",
+            "rh-admin",
+            "usuarios",
+            "empresas-revendas",
+            "perfis",
+        };
 
         public static readonly List<AcessoSistemaDto> AcessosDisponiveis = new()
         {
@@ -85,14 +96,15 @@ namespace UniFlowHub.Api.Services
         {
             await EnsureDefaultsAsync();
             return AcessosDisponiveis
+                .Where(acesso => !AcessosPadraoOcultos.Contains(acesso.Chave))
                 .OrderBy(a => a.Grupo)
                 .ThenBy(a => a.Nome)
                 .ToList();
         }
 
-        public async Task<List<PerfilSistemaDto>> ListAsync(string role)
+        public async Task<List<PerfilSistemaDto>> ListAsync(string role, IEnumerable<string>? acessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, acessos);
             await EnsureDefaultsAsync();
             var perfis = await _context.PerfilSistema
                 .Include(p => p.Acessos)
@@ -112,9 +124,9 @@ namespace UniFlowHub.Api.Services
                 .ToList();
         }
 
-        public async Task<PerfilSistemaDto> SaveAsync(string role, PerfilSistemaSaveDto dto)
+        public async Task<PerfilSistemaDto> SaveAsync(string role, PerfilSistemaSaveDto dto, IEnumerable<string>? userAcessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, userAcessos);
             await EnsureDefaultsAsync();
 
             var nome = dto.Nome.Trim();
@@ -204,9 +216,9 @@ namespace UniFlowHub.Api.Services
                 .ToListAsync();
         }
 
-        public async Task DeleteAsync(string role, int id)
+        public async Task DeleteAsync(string role, int id, IEnumerable<string>? acessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, acessos);
             await EnsureDefaultsAsync();
 
             var perfil = await _context.PerfilSistema.Include(p => p.Acessos).FirstOrDefaultAsync(p => p.Id == id);
@@ -261,14 +273,14 @@ namespace UniFlowHub.Api.Services
             return string.IsNullOrWhiteSpace(normalized) ? role.Trim() : normalized;
         }
 
-        private static string NormalizeAcessoChave(string chave)
+        public static string NormalizeAcessoChave(string chave)
         {
             return LegacyPecasBiAcessos.Contains(chave) ? "vendas-pecas" : chave;
         }
 
-        private static void EnsureCanManage(string role)
+        private static void EnsureCanManage(string role, IEnumerable<string>? acessos = null)
         {
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsTI(role))
+            if (!RoleScope.IsAdmin(role) && !RoleScope.IsTI(role) && !(acessos?.Contains("perfis", StringComparer.OrdinalIgnoreCase) ?? false))
                 throw new UnauthorizedAccessException("Somente Admin ou TI podem gerenciar perfis.");
         }
     }

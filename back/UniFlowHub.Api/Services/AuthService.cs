@@ -41,10 +41,11 @@ namespace UniFlowHub.Api.Services
         public UserResponseDto CreateUser(UserCreateDto dto, int? createdByUserId)
         {
             dto.Role = NormalizeRole(dto.Role);
+            var perfis = NormalizePerfilList(dto.Role, dto.Perfis);
             dto.UnidadeId = NormalizeUnidadeId(dto.UnidadeId);
 
             ValidateUser(dto.Nome, dto.Cpf, dto.Email, dto.Senha, dto.Role);
-            ValidateConfiguredRole(dto.Role);
+            ValidateConfiguredRoles(perfis);
             ValidateUnidadeForRole(dto.Role, dto.UnidadeId);
             ValidateUnidadeExists(dto.UnidadeId);
 
@@ -71,8 +72,9 @@ namespace UniFlowHub.Api.Services
 
             _repo.Add(user);
             _repo.Save();
+            SaveUserPerfis(user.Id, perfis);
 
-            return ToResponse(_repo.Query().Include(u => u.Unidade).First(u => u.Id == user.Id));
+            return ToResponse(_repo.Query().Include(u => u.Unidade).Include(u => u.Perfis).First(u => u.Id == user.Id), BuildAcessos(user, perfis), perfis);
         }
 
         public bool HasAnyUser()
@@ -87,11 +89,8 @@ namespace UniFlowHub.Api.Services
                 _configuration.GetValue<int?>("Jwt:ExpiresMinutes") ?? 480);
 
             var role = NormalizeRole(user.Role);
-            var acessos = _context.PerfilSistema
-                .Where(p => p.Nome == role)
-                .SelectMany(p => p.Acessos.Select(a => a.Chave))
-                .Distinct()
-                .ToList();
+            var perfis = GetUserPerfis(user.Id, role);
+            var acessos = BuildAcessos(user, perfis);
 
             var claims = new List<Claim>
             {
@@ -102,6 +101,7 @@ namespace UniFlowHub.Api.Services
                 new(ClaimTypes.Email, user.Email),
                 new(ClaimTypes.Role, role)
             };
+            claims.AddRange(perfis.Select(perfil => new Claim("perfil", perfil)));
             claims.AddRange(acessos.Select(acesso => new Claim("access", acesso)));
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
@@ -117,8 +117,25 @@ namespace UniFlowHub.Api.Services
             {
                 Token = new JwtSecurityTokenHandler().WriteToken(token),
                 ExpiresAt = expiresAt,
-                User = ToResponse(user, acessos)
+                User = ToResponse(user, acessos, perfis)
             };
+        }
+
+        private List<string> BuildAcessos(Users user, List<string> perfis)
+        {
+            var acessos = _context.PerfilSistema
+                .Where(p => perfis.Contains(p.Nome))
+                .SelectMany(p => p.Acessos.Select(a => a.Chave))
+                .Distinct()
+                .ToList();
+
+            acessos.AddRange(GetDefaultAcessos(user.Role, user.Departamento, perfis));
+
+            return acessos
+                .Select(PerfisService.NormalizeAcessoChave)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(acesso => acesso)
+                .ToList();
         }
 
         private static void ValidateUser(string nome, string cpf, string email, string senha, string role)
@@ -211,8 +228,9 @@ namespace UniFlowHub.Api.Services
                 throw new InvalidOperationException("Empresa e revenda informadas nao foram encontradas.");
         }
 
-        public static UserResponseDto ToResponse(Users user, List<string>? acessos = null)
+        public static UserResponseDto ToResponse(Users user, List<string>? acessos = null, List<string>? perfis = null)
         {
+            var userPerfis = perfis ?? NormalizePerfilList(user.Role, user.Perfis?.Select(p => p.Perfil) ?? Enumerable.Empty<string>());
             return new UserResponseDto
             {
                 Id = user.Id,
@@ -220,6 +238,7 @@ namespace UniFlowHub.Api.Services
                 Cpf = user.Cpf,
                 Email = user.Email,
                 Role = NormalizeRole(user.Role),
+                Perfis = userPerfis,
                 Departamento = user.Departamento,
                 Cargo = user.Cargo,
                 Ativo = user.Ativo,
@@ -235,6 +254,98 @@ namespace UniFlowHub.Api.Services
             EnsureDefaultPerfis();
             if (!_context.PerfilSistema.Any(p => p.Nome == role))
                 throw new InvalidOperationException("Perfil invalido.");
+        }
+
+        private void ValidateConfiguredRoles(IEnumerable<string> perfis)
+        {
+            EnsureDefaultPerfis();
+            var configured = _context.PerfilSistema.Select(p => p.Nome).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!perfis.Any() || perfis.Any(perfil => !configured.Contains(perfil)))
+                throw new InvalidOperationException("Perfil invalido.");
+        }
+
+        public static List<string> NormalizePerfilList(string role, IEnumerable<string> perfis)
+        {
+            var result = new List<string>();
+            var primary = NormalizeRole(role);
+            if (!string.IsNullOrWhiteSpace(primary))
+                result.Add(primary);
+
+            result.AddRange(perfis
+                .Select(NormalizeRole)
+                .Where(perfil => !string.IsNullOrWhiteSpace(perfil)));
+
+            return result
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        public static List<string> GetDefaultAcessos(string role, string departamento, IEnumerable<string> perfis)
+        {
+            var acessos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "ti",
+                "rh",
+                "compras"
+            };
+
+            var normalizedRole = NormalizeText(role);
+            var normalizedDepartamento = NormalizeText(departamento);
+            var normalizedPerfis = perfis.Select(NormalizeText).ToList();
+            var isTi = normalizedRole == "ti"
+                || normalizedDepartamento.Contains("ti")
+                || normalizedDepartamento.Contains("tecnologia")
+                || normalizedPerfis.Any(perfil => perfil == "ti" || perfil.Contains("ti"));
+            var isRh = normalizedRole == "rh"
+                || normalizedDepartamento.Contains("rh")
+                || normalizedDepartamento.Contains("recursos humanos")
+                || normalizedPerfis.Any(perfil => perfil == "rh" || perfil.Contains("recursos humanos"));
+
+            if (isTi)
+            {
+                acessos.Add("ti-admin");
+                acessos.Add("usuarios");
+                acessos.Add("empresas-revendas");
+                acessos.Add("perfis");
+            }
+
+            if (isRh)
+            {
+                acessos.Add("rh-admin");
+            }
+
+            return acessos.ToList();
+        }
+
+        private List<string> GetUserPerfis(int userId, string role)
+        {
+            var perfis = _context.UserPerfil
+                .Where(p => p.UserId == userId)
+                .Select(p => p.Perfil)
+                .ToList();
+
+            return NormalizePerfilList(role, perfis);
+        }
+
+        private void SaveUserPerfis(int userId, List<string> perfis)
+        {
+            var existing = _context.UserPerfil.Where(p => p.UserId == userId).ToList();
+            _context.UserPerfil.RemoveRange(existing);
+            foreach (var perfil in perfis)
+                _context.UserPerfil.Add(new UserPerfil { UserId = userId, Perfil = perfil });
+            _context.SaveChanges();
+        }
+
+        private static string NormalizeText(string? value)
+        {
+            var normalized = (value ?? string.Empty).Normalize(NormalizationForm.FormD);
+            var builder = new StringBuilder();
+            foreach (var ch in normalized)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                    builder.Append(ch);
+            }
+            return builder.ToString().ToLowerInvariant().Trim();
         }
 
         private void EnsureDefaultPerfis()

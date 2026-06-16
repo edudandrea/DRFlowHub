@@ -21,7 +21,7 @@ namespace UniFlowHub.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> List()
         {
-            try { return Ok(await _service.ListAsync(GetRole())); }
+            try { return Ok(await _service.ListAsync(GetRole(), GetAcessos())); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
         }
 
@@ -34,7 +34,7 @@ namespace UniFlowHub.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> Save([FromBody] PerfilSistemaSaveDto dto)
         {
-            try { return Ok(await _service.SaveAsync(GetRole(), dto)); }
+            try { return Ok(await _service.SaveAsync(GetRole(), dto, GetAcessos())); }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
         }
@@ -44,7 +44,7 @@ namespace UniFlowHub.Api.Controllers
         {
             try
             {
-                await _service.DeleteAsync(GetRole(), id);
+                await _service.DeleteAsync(GetRole(), id, GetAcessos());
                 return NoContent();
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
@@ -52,5 +52,6 @@ namespace UniFlowHub.Api.Controllers
         }
 
         private string GetRole() => User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+        private IEnumerable<string> GetAcessos() => User.FindAll("access").Select(claim => claim.Value);
     }
 }

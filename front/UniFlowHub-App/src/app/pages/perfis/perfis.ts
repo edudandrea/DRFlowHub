@@ -183,10 +183,13 @@ export class PerfisPage implements OnInit {
   }
 
   novo(): void {
+    this.closeGroupModal();
     this.selected.set(null);
     this.nome.set('');
     this.acessosSelecionados.set([]);
     this.empresasSelecionadas.set([]);
+    this.saving.set(false);
+    this.deleting.set(false);
     this.modalOpen.set(true);
   }
 

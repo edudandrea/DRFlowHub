@@ -102,9 +102,9 @@ namespace UniFlowHub.Api.Services
                 .ToList();
         }
 
-        public EmpresaResponseDto AddEmpresa(EmpresaCreateDto dto, string role)
+        public EmpresaResponseDto AddEmpresa(EmpresaCreateDto dto, string role, IEnumerable<string>? acessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, acessos);
             ValidateEmpresa(dto);
 
             if (_context.Empresa.Any(e => e.Numero == dto.Numero))
@@ -124,9 +124,9 @@ namespace UniFlowHub.Api.Services
             return MapEmpresa(empresa);
         }
 
-        public EmpresaResponseDto UpdateEmpresa(int id, EmpresaCreateDto dto, string role)
+        public EmpresaResponseDto UpdateEmpresa(int id, EmpresaCreateDto dto, string role, IEnumerable<string>? acessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, acessos);
             ValidateEmpresa(dto);
 
             var empresa = _context.Empresa.FirstOrDefault(e => e.Id == id);
@@ -152,9 +152,9 @@ namespace UniFlowHub.Api.Services
             return MapEmpresa(empresa);
         }
 
-        public UnidadeResponseDto Add(UnidadeCreateDto dto, string role)
+        public UnidadeResponseDto Add(UnidadeCreateDto dto, string role, IEnumerable<string>? acessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, acessos);
             Validate(dto);
 
             var empresaEntity = GetEmpresa(dto.EmpresaId);
@@ -183,9 +183,9 @@ namespace UniFlowHub.Api.Services
             return MapResponse(unidade);
         }
 
-        public UnidadeResponseDto Update(int id, UnidadeCreateDto dto, string role)
+        public UnidadeResponseDto Update(int id, UnidadeCreateDto dto, string role, IEnumerable<string>? acessos = null)
         {
-            EnsureCanManage(role);
+            EnsureCanManage(role, acessos);
             Validate(dto);
 
             var unidade = _repo.Query().FirstOrDefault(u => u.Id == id);
@@ -214,9 +214,9 @@ namespace UniFlowHub.Api.Services
             return MapResponse(unidade);
         }
 
-        private static void EnsureCanManage(string role)
+        private static void EnsureCanManage(string role, IEnumerable<string>? acessos = null)
         {
-            if (!RoleScope.IsAdmin(role) && !RoleScope.IsTI(role))
+            if (!RoleScope.IsAdmin(role) && !RoleScope.IsTI(role) && !(acessos?.Contains("empresas-revendas", StringComparer.OrdinalIgnoreCase) ?? false))
                 throw new UnauthorizedAccessException("Voce nao pode administrar unidades.");
         }
 

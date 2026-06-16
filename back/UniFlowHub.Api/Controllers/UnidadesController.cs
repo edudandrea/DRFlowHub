@@ -38,7 +38,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(_service.AddEmpresa(dto, role));
+                return Ok(_service.AddEmpresa(dto, role, GetAcessos()));
             }
             catch (InvalidOperationException ex)
             {
@@ -52,7 +52,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(_service.UpdateEmpresa(id, dto, role));
+                return Ok(_service.UpdateEmpresa(id, dto, role, GetAcessos()));
             }
             catch (InvalidOperationException ex)
             {
@@ -70,7 +70,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(_service.Add(dto, role));
+                return Ok(_service.Add(dto, role, GetAcessos()));
             }
             catch (InvalidOperationException ex)
             {
@@ -84,12 +84,17 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(_service.Update(id, dto, role));
+                return Ok(_service.Update(id, dto, role, GetAcessos()));
             }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        private IEnumerable<string> GetAcessos()
+        {
+            return User.FindAll("access").Select(claim => claim.Value);
         }
     }
 }

@@ -24,14 +24,14 @@ namespace UniFlowHub.Api.Controllers
         {
             var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
             var email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
-            return Ok(_service.List(role, email));
+            return Ok(_service.List(role, email, GetAcessos()));
         }
 
         [HttpGet("administradores")]
         public IActionResult ListAdministradores()
         {
             var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-            return Ok(_service.ListAdministradores(role));
+            return Ok(_service.ListAdministradores(role, GetAcessos()));
         }
 
         [HttpPut("{id:int}")]
@@ -40,7 +40,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(_service.Update(id, dto, role));
+                return Ok(_service.Update(id, dto, role, GetAcessos()));
             }
             catch (InvalidOperationException ex)
             {
@@ -100,6 +100,11 @@ namespace UniFlowHub.Api.Controllers
                 return userId;
 
             throw new UnauthorizedAccessException("Usuario invalido.");
+        }
+
+        private IEnumerable<string> GetAcessos()
+        {
+            return User.FindAll("access").Select(claim => claim.Value);
         }
     }
 }

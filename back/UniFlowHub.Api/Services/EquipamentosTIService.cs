@@ -21,6 +21,7 @@ namespace UniFlowHub.Api.Services
 
             return _repo.Query()
                 .AsNoTracking()
+                .Where(s => !s.Excluido)
                 .OrderByDescending(s => s.DataMovimentacao)
                 .Select(s => MapResponse(s))
                 .ToList();
@@ -29,7 +30,10 @@ namespace UniFlowHub.Api.Services
         public EquipamentoTIResponseDto Add(EquipamentoTICreateDto dto, string role, int userId, string documentoUrl)
         {
             EnsureCanManage(role);
-            Validate(dto.Tipo, dto.Patrimonio, dto.Responsavel);
+            var filialCompra = FirstFilled(dto.FilialCompra, dto.Origem, dto.Destino);
+            var usuarioResponsavelNome = FirstFilled(dto.UsuarioResponsavelNome, dto.Responsavel);
+            var usuarioResponsavelUnidade = FirstFilled(dto.UsuarioResponsavelUnidade, dto.Destino);
+            Validate(dto.Tipo, dto.Patrimonio, filialCompra, dto.NotaFiscalCompra, usuarioResponsavelNome);
 
             var equipamento = new EquipamentoTI
             {
@@ -38,9 +42,17 @@ namespace UniFlowHub.Api.Services
                 Modelo = dto.Modelo.Trim(),
                 Serial = dto.Serial.Trim(),
                 Status = string.IsNullOrWhiteSpace(dto.Status) ? "Enviado" : dto.Status.Trim(),
-                Origem = dto.Origem.Trim(),
-                Destino = dto.Destino.Trim(),
-                Responsavel = dto.Responsavel.Trim(),
+                Origem = FirstFilled(dto.Origem, filialCompra, "TI"),
+                Destino = FirstFilled(dto.Destino, usuarioResponsavelUnidade, filialCompra),
+                Responsavel = FirstFilled(dto.Responsavel, usuarioResponsavelNome),
+                FilialCompraId = dto.FilialCompraId,
+                FilialCompra = filialCompra,
+                NotaFiscalCompra = dto.NotaFiscalCompra.Trim(),
+                UsuarioResponsavelId = dto.UsuarioResponsavelId,
+                UsuarioResponsavelNome = usuarioResponsavelNome,
+                UsuarioResponsavelEmail = dto.UsuarioResponsavelEmail.Trim(),
+                UsuarioResponsavelDepartamento = dto.UsuarioResponsavelDepartamento.Trim(),
+                UsuarioResponsavelUnidade = usuarioResponsavelUnidade,
                 DataMovimentacao = DateTime.UtcNow,
                 DataPrevistaRetorno = dto.DataPrevistaRetorno,
                 Observacoes = dto.Observacoes.Trim(),
@@ -54,10 +66,34 @@ namespace UniFlowHub.Api.Services
             return MapResponse(equipamento);
         }
 
+        public void Excluir(int id, EquipamentoTIExcluirDto dto, string role, int userId)
+        {
+            EnsureCanManage(role);
+
+            if (string.IsNullOrWhiteSpace(dto.Motivo))
+                throw new InvalidOperationException("Motivo da exclusao e obrigatorio.");
+
+            var equipamento = _repo.Query().FirstOrDefault(s => s.Id == id && !s.Excluido);
+            if (equipamento is null)
+                throw new KeyNotFoundException("Equipamento nao encontrado.");
+
+            equipamento.Excluido = true;
+            equipamento.MotivoExclusao = dto.Motivo.Trim();
+            equipamento.DataExclusao = DateTime.UtcNow;
+            equipamento.ExcluidoPorUserId = userId;
+            equipamento.Status = "Excluido";
+
+            _repo.Update(equipamento);
+            _repo.Save();
+        }
+
         public EquipamentoTIResponseDto Update(int id, EquipamentoTIUpdateDto dto, string role)
         {
             EnsureCanManage(role);
-            Validate(dto.Tipo, dto.Patrimonio, dto.Responsavel);
+            var filialCompra = FirstFilled(dto.FilialCompra, dto.Origem, dto.Destino);
+            var usuarioResponsavelNome = FirstFilled(dto.UsuarioResponsavelNome, dto.Responsavel);
+            var usuarioResponsavelUnidade = FirstFilled(dto.UsuarioResponsavelUnidade, dto.Destino);
+            Validate(dto.Tipo, dto.Patrimonio, filialCompra, dto.NotaFiscalCompra, usuarioResponsavelNome);
 
             var equipamento = _repo.Query().FirstOrDefault(s => s.Id == id);
             if (equipamento is null)
@@ -68,9 +104,17 @@ namespace UniFlowHub.Api.Services
             equipamento.Modelo = dto.Modelo.Trim();
             equipamento.Serial = dto.Serial.Trim();
             equipamento.Status = dto.Status.Trim();
-            equipamento.Origem = dto.Origem.Trim();
-            equipamento.Destino = dto.Destino.Trim();
-            equipamento.Responsavel = dto.Responsavel.Trim();
+            equipamento.Origem = FirstFilled(dto.Origem, filialCompra, "TI");
+            equipamento.Destino = FirstFilled(dto.Destino, usuarioResponsavelUnidade, filialCompra);
+            equipamento.Responsavel = FirstFilled(dto.Responsavel, usuarioResponsavelNome);
+            equipamento.FilialCompraId = dto.FilialCompraId;
+            equipamento.FilialCompra = filialCompra;
+            equipamento.NotaFiscalCompra = dto.NotaFiscalCompra.Trim();
+            equipamento.UsuarioResponsavelId = dto.UsuarioResponsavelId;
+            equipamento.UsuarioResponsavelNome = usuarioResponsavelNome;
+            equipamento.UsuarioResponsavelEmail = dto.UsuarioResponsavelEmail.Trim();
+            equipamento.UsuarioResponsavelDepartamento = dto.UsuarioResponsavelDepartamento.Trim();
+            equipamento.UsuarioResponsavelUnidade = usuarioResponsavelUnidade;
             equipamento.DataPrevistaRetorno = dto.DataPrevistaRetorno;
             equipamento.Observacoes = dto.Observacoes.Trim();
 
@@ -100,7 +144,7 @@ namespace UniFlowHub.Api.Services
                 throw new UnauthorizedAccessException("Somente TI pode acessar o controle de equipamentos.");
         }
 
-        private static void Validate(string tipo, string patrimonio, string responsavel)
+        private static void Validate(string tipo, string patrimonio, string filialCompra, string notaFiscalCompra, string usuarioResponsavelNome)
         {
             if (string.IsNullOrWhiteSpace(tipo))
                 throw new InvalidOperationException("Tipo e obrigatorio.");
@@ -108,8 +152,19 @@ namespace UniFlowHub.Api.Services
             if (string.IsNullOrWhiteSpace(patrimonio))
                 throw new InvalidOperationException("Patrimonio e obrigatorio.");
 
-            if (string.IsNullOrWhiteSpace(responsavel))
-                throw new InvalidOperationException("Responsavel e obrigatorio.");
+            if (string.IsNullOrWhiteSpace(filialCompra))
+                throw new InvalidOperationException("Filial da compra e obrigatoria.");
+
+            if (string.IsNullOrWhiteSpace(notaFiscalCompra))
+                throw new InvalidOperationException("Numero da nota fiscal e obrigatorio.");
+
+            if (string.IsNullOrWhiteSpace(usuarioResponsavelNome))
+                throw new InvalidOperationException("Usuario responsavel e obrigatorio.");
+        }
+
+        private static string FirstFilled(params string[] values)
+        {
+            return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
         }
 
         private static EquipamentoTIResponseDto MapResponse(EquipamentoTI s)
@@ -125,10 +180,22 @@ namespace UniFlowHub.Api.Services
                 Origem = s.Origem,
                 Destino = s.Destino,
                 Responsavel = s.Responsavel,
+                FilialCompraId = s.FilialCompraId,
+                FilialCompra = s.FilialCompra,
+                NotaFiscalCompra = s.NotaFiscalCompra,
+                UsuarioResponsavelId = s.UsuarioResponsavelId,
+                UsuarioResponsavelNome = s.UsuarioResponsavelNome,
+                UsuarioResponsavelEmail = s.UsuarioResponsavelEmail,
+                UsuarioResponsavelDepartamento = s.UsuarioResponsavelDepartamento,
+                UsuarioResponsavelUnidade = s.UsuarioResponsavelUnidade,
                 DataMovimentacao = s.DataMovimentacao,
                 DataPrevistaRetorno = s.DataPrevistaRetorno,
                 Observacoes = s.Observacoes,
                 DocumentoUrl = s.DocumentoUrl,
+                Excluido = s.Excluido,
+                MotivoExclusao = s.MotivoExclusao,
+                DataExclusao = s.DataExclusao,
+                ExcluidoPorUserId = s.ExcluidoPorUserId,
                 Userid = s.Userid
             };
         }

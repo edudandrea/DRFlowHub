@@ -31,6 +31,7 @@ namespace UniFlowHub.Api.Data
         public DbSet<PerfilSistema> PerfilSistema { get; set; }
         public DbSet<PerfilSistemaAcesso> PerfilSistemaAcesso { get; set; }
         public DbSet<PerfilSistemaEmpresa> PerfilSistemaEmpresa { get; set; }
+        public DbSet<UserPerfil> UserPerfil { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -53,6 +54,16 @@ namespace UniFlowHub.Api.Data
                 .WithMany(u => u.Usuarios)
                 .HasForeignKey(u => u.UnidadeId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<UserPerfil>()
+                .HasIndex(s => new { s.UserId, s.Perfil })
+                .IsUnique();
+
+            modelBuilder.Entity<UserPerfil>()
+                .HasOne(s => s.User)
+                .WithMany(s => s.Perfis)
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Empresa>()
                 .HasIndex(e => e.Numero)

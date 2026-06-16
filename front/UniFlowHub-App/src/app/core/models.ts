@@ -6,6 +6,7 @@ export interface User {
   cpf: string;
   email: string;
   role: Role;
+  perfis: Role[];
   departamento: string;
   cargo: string;
   ativo: boolean;
@@ -174,10 +175,22 @@ export interface EquipamentoTI {
   origem: string;
   destino: string;
   responsavel: string;
+  filialCompraId?: number | null;
+  filialCompra: string;
+  notaFiscalCompra: string;
+  usuarioResponsavelId?: number | null;
+  usuarioResponsavelNome: string;
+  usuarioResponsavelEmail: string;
+  usuarioResponsavelDepartamento: string;
+  usuarioResponsavelUnidade: string;
   dataMovimentacao: string;
   dataPrevistaRetorno?: string | null;
   observacoes: string;
   documentoUrl: string;
+  excluido: boolean;
+  motivoExclusao: string;
+  dataExclusao?: string | null;
+  excluidoPorUserId?: number | null;
   userid: number;
 }
 

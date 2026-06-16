@@ -37,7 +37,7 @@
       <h2>Perfis registrados</h2>
       <p class="section-description">Visualize perfis padrão e personalizados, e atualize permissões por grupo.</p>
     </div>
-    <button type="button" (click)="novo()">Novo perfil</button>
+    <button type="button" (click)="novo(); $event.stopPropagation()">Novo perfil</button>
   </section>
 
   <section class="profile-list-panel">
@@ -72,7 +72,7 @@
   </section>
 
   @if (modalOpen()) {
-    <section class="modal-backdrop">
+    <section class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
       <form class="modal-dialog" (click)="$event.stopPropagation()" (ngSubmit)="save()">
         <header>
           <div>

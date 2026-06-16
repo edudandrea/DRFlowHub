@@ -1,7 +1,8 @@
 import { isPlatformBrowser } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { Component, HostListener, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, forkJoin, of } from 'rxjs';
+import { catchError, firstValueFrom, forkJoin, of } from 'rxjs';
 import { NgxSpinnerService } from 'ngx-spinner';
 import { ToastrService } from 'ngx-toastr';
 import { AuthService } from '../../core/auth.service';
@@ -96,6 +97,7 @@ export class HubPage implements OnInit {
   private readonly router = inject(Router);
   private readonly toastr = inject(ToastrService);
   private readonly spinner = inject(NgxSpinnerService);
+  private readonly http = inject(HttpClient);
   private readonly profileFlow = inject(ProfileFlowService);
   private readonly rhService = inject(SolicitacoesService);
   private readonly tiService = inject(ChamadosTIService);
@@ -613,14 +615,9 @@ export class HubPage implements OnInit {
         language: 'pt',
         format: 'json',
       });
-      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Location unavailable');
-      }
-
-      const data = await response.json() as {
+      const data = await firstValueFrom(this.http.get<{
         results?: Array<{ name?: string; admin1?: string }>;
-      };
+      }>(`/api/weather/reverse?${params.toString()}`));
       const result = data.results?.[0];
       const city = result?.name?.trim();
       const state = result?.admin1?.trim();
@@ -644,12 +641,7 @@ export class HubPage implements OnInit {
         timezone: 'America/Sao_Paulo',
         forecast_days: '4',
       });
-      const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Forecast unavailable');
-      }
-
-      const data = await response.json() as {
+      const data = await firstValueFrom(this.http.get<{
         daily?: {
           time?: string[];
           weather_code?: number[];
@@ -657,7 +649,7 @@ export class HubPage implements OnInit {
           temperature_2m_min?: number[];
           precipitation_probability_max?: number[];
         };
-      };
+      }>(`/api/weather/forecast?${params.toString()}`));
 
       const days = data.daily?.time ?? [];
       this.forecast.set(days.slice(0, 4).map((date, index) => ({

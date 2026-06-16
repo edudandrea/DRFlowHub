@@ -38,12 +38,13 @@ namespace UniFlowHub.Api.Controllers
         public IActionResult Register([FromBody] UserCreateDto dto)
         {
             var hasAnyUser = _service.HasAnyUser();
-            if (hasAnyUser && !UserHasRole("Admin") && !UserHasRole("TI"))
+            if (hasAnyUser && !UserHasRole("Admin") && !UserHasRole("TI") && !UserHasAccess("usuarios"))
                 return Forbid();
 
             if (!hasAnyUser)
             {
                 dto.Role = "Admin";
+                dto.Perfis = new List<string> { "Admin" };
                 dto.UnidadeId = null;
                 dto.Ativo = true;
             }
@@ -79,6 +80,11 @@ namespace UniFlowHub.Api.Controllers
         private bool UserHasRole(string role)
         {
             return string.Equals(User.FindFirstValue(ClaimTypes.Role), role, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool UserHasAccess(string access)
+        {
+            return User.HasClaim("access", access);
         }
 
         private int? GetCurrentUserId()

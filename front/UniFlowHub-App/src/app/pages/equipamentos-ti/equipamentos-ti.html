@@ -4,7 +4,7 @@
       <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
       <div>
         <p class="system-name">TI</p>
-        <h1>Controle de equipamentos</h1>
+        <h1>{{ isInventoryRoute() ? 'Inventario de equipamentos' : 'Controle de equipamentos' }}</h1>
       </div>
     </button>
     <div class="user-box profile-area">
@@ -32,26 +32,28 @@
 
   <section class="metrics">
     <article><span>Total</span><strong>{{ itens().length }}</strong></article>
+    <article><span>Inventario</span><strong>{{ totalInventario() }}</strong></article>
     <article><span>Em transito</span><strong>{{ emTransito() }}</strong></article>
     <article><span>Recebidos</span><strong>{{ recebidos() }}</strong></article>
-    <article><span>Atrasados</span><strong>{{ atrasados() }}</strong></article>
   </section>
 
   <section class="asset-grid">
     <aside class="list-panel">
       <div class="section-heading">
         <div>
-          <h2>Movimentações</h2>
+          <h2>{{ isInventoryRoute() ? 'Inventario cadastrado' : 'Movimentacoes' }}</h2>
           <p>{{ filtered().length }} registro(s)</p>
         </div>
-        <button class="primary" type="button" (click)="openNewMovement()">Nova movimentação</button>
+        <button class="primary" type="button" (click)="openNewMovement()">
+          {{ isInventoryRoute() ? 'Cadastrar equipamento' : 'Nova movimentacao' }}
+        </button>
       </div>
-      <input type="search" placeholder="Buscar por patrimônio, responsável ou destino" [value]="search()" (input)="search.set($any($event.target).value)" />
+      <input type="search" placeholder="Buscar por patrimonio, usuario, nota fiscal ou filial" [value]="search()" (input)="search.set($any($event.target).value)" />
       <div class="request-list">
         @if (loading()) {
           <p class="empty">Carregando...</p>
         } @else if (filtered().length === 0) {
-          <p class="empty">Nenhuma movimentação encontrada.</p>
+          <p class="empty">Nenhum equipamento encontrado.</p>
         } @else {
           @for (item of filtered(); track item.id) {
             <article class="request-card" (click)="select(item)">
@@ -60,8 +62,11 @@
                 <p>{{ item.modelo || item.serial || 'Sem modelo informado' }}</p>
               </div>
               <span class="status">{{ item.status }}</span>
-              <small>{{ item.origem }} -> {{ item.destino }}</small>
-              <small>Responsável: {{ item.responsavel }}</small>
+              <small>{{ item.filialCompra || item.origem }} -> {{ item.usuarioResponsavelUnidade || item.destino }}</small>
+              <small>Usuario: {{ item.usuarioResponsavelNome || item.responsavel }}</small>
+              @if (item.notaFiscalCompra) {
+                <small>NF: {{ item.notaFiscalCompra }}</small>
+              }
               <small>{{ item.dataMovimentacao | date: 'dd/MM/yyyy HH:mm' }}</small>
             </article>
           }
@@ -75,39 +80,69 @@
       <form class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="equipamentos-modal-title" [formGroup]="form" (ngSubmit)="submit()" (click)="$event.stopPropagation()">
         <div class="section-heading modal-heading">
           <div>
-            <h2 id="equipamentos-modal-title">{{ selected() ? 'Editar movimentacao' : 'Nova movimentacao' }}</h2>
-            <p>{{ selected() ? 'Atualize o status e o responsável.' : 'Controle equipamentos entregues e recebidos pelo TI.' }}</p>
+            <h2 id="equipamentos-modal-title">
+              {{ selected() ? (editing() ? 'Editar equipamento' : 'Inventario salvo') : isInventoryRoute() ? 'Cadastrar equipamento' : 'Nova movimentacao' }}
+            </h2>
+            <p>{{ selected() ? (editing() ? 'Atualize os dados e salve para gerar um novo QR Code.' : 'Inventario salvo com QR Code para abertura de chamados.') : 'Cadastre o equipamento para inventario e abertura por QR Code.' }}</p>
           </div>
           <button class="icon-button" type="button" aria-label="Fechar" (click)="closeModal()">x</button>
         </div>
-        <div class="grid two">
-          <label>Tipo<input formControlName="tipo" /></label>
-          <label>Patrimônio<input formControlName="patrimonio" /></label>
+
+        <div class="grid equipment-main-grid">
+          <label>Tipo<input formControlName="tipo" [readOnly]="!editing()" /></label>
+          <label>Modelo<input formControlName="modelo" [readOnly]="!editing()" /></label>
+          <label>Patrimonio<input formControlName="patrimonio" [readOnly]="!editing()" /></label>
+          <label>Serial<input formControlName="serial" [readOnly]="!editing()" /></label>
+          <label>Nota fiscal<input formControlName="notaFiscalCompra" [readOnly]="!editing()" /></label>
         </div>
         <div class="grid two">
-          <label>Modelo<input formControlName="modelo" /></label>
-          <label>Serial<input formControlName="serial" /></label>
+          <label>
+            Filial de compra
+            <select formControlName="filialCompraId" (change)="onFilialChange($any($event.target).value)" [attr.disabled]="!editing() ? true : null">
+              <option value="">Selecione</option>
+              @for (filial of unidades(); track filial.id) {
+                <option [value]="filial.id">{{ filial.nome }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            Usuario com o equipamento
+            <select formControlName="usuarioResponsavelId" (change)="onUsuarioChange($any($event.target).value)" [attr.disabled]="!editing() ? true : null">
+              <option value="">Selecione</option>
+              @for (usuario of usuarios(); track usuario.id) {
+                <option [value]="usuario.id">{{ usuario.nome }} - {{ usuario.unidadeNome || usuario.departamento }}</option>
+              }
+            </select>
+          </label>
+        </div>
+        <div class="grid two">
+          <label>Email do usuario<input formControlName="usuarioResponsavelEmail" readonly /></label>
+          <label>Responsavel<input formControlName="responsavel" [readOnly]="!editing()" /></label>
+        </div>
+        <div class="grid two">
+          <label>Departamento do usuario<input formControlName="usuarioResponsavelDepartamento" readonly /></label>
+          <label>Filial do usuario<input formControlName="usuarioResponsavelUnidade" readonly /></label>
         </div>
         <div class="grid two">
           <label>
             Status
-            <select formControlName="status">
+            <select formControlName="status" [attr.disabled]="!editing() ? true : null">
+              <option>Em uso</option>
               <option>Enviado</option>
               <option>Em transito</option>
               <option>Recebido</option>
-              <option>Devolução pendente</option>
-              <option>Manutenção</option>
+              <option>Devolucao pendente</option>
+              <option>Manutencao</option>
             </select>
           </label>
-          <label>Previsão de retorno<input type="date" formControlName="dataPrevistaRetorno" /></label>
+          <label>Previsao de retorno<input type="date" formControlName="dataPrevistaRetorno" [readOnly]="!editing()" /></label>
         </div>
         <div class="grid two">
-          <label>Origem<input formControlName="origem" /></label>
-          <label>Destino<input formControlName="destino" /></label>
+          <label>Origem<input formControlName="origem" [readOnly]="!editing()" /></label>
+          <label>Destino<input formControlName="destino" [readOnly]="!editing()" /></label>
         </div>
-        <label>Responsável<input formControlName="responsavel" /></label>
-        <label>Observações<textarea formControlName="observacoes" rows="4"></textarea></label>
-        @if (!selected()) {
+        <label>Observacoes<textarea formControlName="observacoes" rows="4" [readOnly]="!editing()"></textarea></label>
+        @if (!selected() && editing()) {
           <label>
             Documento
             <input #documentoInput type="file" accept=".pdf,.doc,.docx,image/*" (change)="onFileSelected($event)" />
@@ -119,7 +154,54 @@
         @if (selected()?.documentoUrl) {
           <button class="secondary" type="button" (click)="downloadDocument()">Baixar documento</button>
         }
-        <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar controle' }}</button>
+        @if (selected()) {
+          <section class="qr-panel">
+            <div>
+              <strong>Inventario por QR Code</strong>
+              <small>Ao apontar a camera do celular, o usuario abre um chamado com os dados do equipamento preenchidos.</small>
+            </div>
+            @if (qrCodeUrl()) {
+              <img [src]="qrCodeUrl()" alt="QR Code para abertura de chamado do equipamento" />
+            } @else if (qrNeedsRefresh()) {
+              <p class="empty">Dados editados. Gere um novo QR Code antes de imprimir.</p>
+            }
+            <div class="qr-actions">
+              @if (qrNeedsRefresh()) {
+                <button class="secondary" type="button" (click)="generateQrCode()">Gerar novo QR Code</button>
+              }
+              @if (qrCodeUrl()) {
+                <button class="primary" type="button" (click)="printQrCode()">Imprimir QR Code</button>
+              }
+            </div>
+          </section>
+        }
+        <div class="modal-actions">
+          @if (editing()) {
+            <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar inventario' }}</button>
+          } @else if (selected()) {
+            <button class="secondary" type="button" (click)="editInventory()">Editar inventario</button>
+            <button class="danger" type="button" (click)="openDeleteConfirmation()">Excluir inventario</button>
+            <button class="primary" type="button" (click)="closeModal()">Fechar</button>
+          }
+        </div>
+        @if (deleteOpen()) {
+          <section class="delete-panel" [formGroup]="deleteForm">
+            <div>
+              <strong>Confirmar exclusao</strong>
+              <small>Informe o motivo para registrar a exclusao deste inventario.</small>
+            </div>
+            <label>
+              Motivo da exclusao
+              <textarea formControlName="motivo" rows="3" placeholder="Descreva por que este inventario deve ser excluido"></textarea>
+            </label>
+            <div class="modal-actions">
+              <button class="danger" type="button" [disabled]="deleting()" (click)="confirmDelete()">
+                {{ deleting() ? 'Excluindo...' : 'Confirmar exclusao' }}
+              </button>
+              <button class="secondary" type="button" [disabled]="deleting()" (click)="cancelDelete()">Cancelar</button>
+            </div>
+          </section>
+        }
       </form>
     </section>
   }

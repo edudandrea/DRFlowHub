@@ -22,6 +22,7 @@ namespace UniFlowHub.Api.Models
         public Users? CreatedByUser { get; set; }
         public DateTime DataNascimento { get; set; }
         public ICollection<Users>? CreatedUsers { get; set; }
+        public ICollection<UserPerfil> Perfis { get; set; } = new List<UserPerfil>();
 
         
     }

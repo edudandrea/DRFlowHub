@@ -61,6 +61,24 @@ namespace UniFlowHub.Api.Controllers
             }
         }
 
+        [HttpDelete("{id:int}")]
+        public IActionResult Delete(int id, [FromBody] EquipamentoTIExcluirDto dto)
+        {
+            try
+            {
+                _service.Excluir(id, dto, GetRole(), GetUserId());
+                return Ok(new { sucesso = true, mensagem = "Inventario excluido com sucesso" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+        }
+
         [HttpGet("{id:int}/documento")]
         public IActionResult DownloadAttachment(int id)
         {

@@ -98,6 +98,7 @@ export class LoginPage implements OnInit {
     const payload = {
       ...this.setupForm.getRawValue(),
       role: 'Admin' as Role,
+      perfis: ['Admin' as Role],
       ativo: true,
       unidadeId: null,
     };

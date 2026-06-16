@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+﻿import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { NgxSpinnerModule } from 'ngx-spinner';
@@ -76,7 +76,7 @@ export class App {
   });
 
   readonly shellLinks: ShellLink[] = [
-    { label: 'Dashboard', description: 'Visao inicial', route: '/hub', enabled: true },
+    { label: 'Dashboard', description: 'Visão inicial', route: '/hub', enabled: true },
     {
       label: 'Recursos Humanos',
       description: 'Solicitações e ponto',
@@ -95,28 +95,29 @@ export class App {
       children: [
         { label: 'Base de conhecimento', description: 'Manuais e procedimentos', route: '/ti/base-conhecimento', enabled: true, access: 'base-conhecimento-ti' },
         { label: 'Chamados', description: 'Fila e atendimento', route: '/ti', enabled: true, access: 'ti', adminAccess: 'ti-admin' },
-        { label: 'Controle de equipamentos', description: 'Inventario e movimentacoes', route: '/ti/equipamentos', enabled: true, access: 'equipamentos-ti' },
-        { label: 'Monitoramento', description: 'Links e firewalls', route: '/ti/monitoramento', enabled: true, access: 'ti-admin' },
+        { label: 'Controle de equipamentos', description: 'Gestão e movimentações', route: '/ti/equipamentos', enabled: true, access: 'equipamentos-ti' },
+        { label: 'Inventário de equipamentos', description: 'Cadastro, usuário e QR Code', route: '/ti/equipamentos/inventario', enabled: true, access: 'equipamentos-ti' },
+        { label: 'Monitoramento', description: 'Links e firewalls', route: '/ti/monitoramento', enabled: true },
       ],
     },
     { label: 'Compras', description: 'Solicitações e aprovação', route: '/compras', enabled: true, access: 'compras', adminAccess: 'compras-admin' },
     { label: 'Controladoria', description: 'Guias de ICMS', route: '/controladoria', enabled: true, access: 'controladoria', hiddenForRoles: ['Gerente Geral de Pecas', 'Gerente de Pecas', 'Vendedor de Pecas'] },
     {
-      label: 'Veiculos',
-      description: 'Veiculos e reservas',
+      label: 'Veículos',
+      description: 'Veículos e reservas',
       route: '/estoque',
       enabled: true,
       hiddenForRoles: ['Gerente Geral de Pecas', 'Gerente de Pecas', 'Vendedor de Pecas'],
       children: [
         { label: 'Estoque', description: 'Consulta de chassi e reserva', route: '/estoque/veiculos', enabled: true, access: 'veiculos' },
-        { label: 'BI Venda de Veiculos', description: 'Indicadores comerciais', route: '/veiculos/bi-vendas', enabled: true, access: 'veiculos-bi' },
-        { label: 'Repasse', description: 'Analise de estoque usado', route: '/veiculos/repasses', enabled: true, access: 'veiculos-repasses' },
+        { label: 'BI Venda de Veículos', description: 'Indicadores comerciais', route: '/veiculos/bi-vendas', enabled: true, access: 'veiculos-bi' },
+        { label: 'Repasse', description: 'Análise de estoque usado', route: '/veiculos/repasses', enabled: true, access: 'veiculos-repasses' },
       ],
     },
-    { label: 'Vendas Pecas', description: 'B.I comercial de pecas', route: '/vendas-pecas', enabled: true, access: PECAS_BI_ACCESSES },
+    { label: 'Vendas Peças', description: 'B.I comercial de pecas', route: '/vendas-pecas', enabled: true, access: PECAS_BI_ACCESSES },
     { label: 'Financeiro', description: 'Fluxo financeiro', route: '/hub', enabled: false },
     { label: 'Administrativo', description: 'Demandas internas', route: '/hub', enabled: false },
-    { label: 'Operacional', description: 'Solicitacoes operacionais', route: '/hub', enabled: false },
+    { label: 'Operacional', description: 'Solicitações operacionais', route: '/hub', enabled: false },
     { label: 'Comercial', description: 'Demandas comerciais', route: '/hub', enabled: false },
     {
       label: 'Cadastros',
@@ -175,7 +176,15 @@ export class App {
       return false;
     }
 
-    return url === route || (route !== '/hub' && url.startsWith(`${route}/`));
+    if (url === route) {
+      return true;
+    }
+
+    if (route === '/hub' || !url.startsWith(`${route}/`)) {
+      return false;
+    }
+
+    return !this.hasMoreSpecificVisibleRoute(route, url);
   }
 
   visibleChildren(link: ShellLink): ShellLink[] {
@@ -239,6 +248,21 @@ export class App {
     return Array.isArray(access) ? this.auth.hasAnyAccess(access) : this.auth.hasAccess(access);
   }
 
+  private hasMoreSpecificVisibleRoute(route: string, url: string): boolean {
+    return this.flattenLinks(this.shellLinks)
+      .filter((link) => this.canShowRouteCandidate(link))
+      .map((link) => this.resolveRoute(link))
+      .some((candidate) => candidate !== route && candidate.startsWith(`${route}/`) && url.startsWith(candidate));
+  }
+
+  private flattenLinks(links: ShellLink[]): ShellLink[] {
+    return links.flatMap((link) => [link, ...this.flattenLinks(link.children ?? [])]);
+  }
+
+  private canShowRouteCandidate(link: ShellLink): boolean {
+    return link.children?.length ? this.canShowParentLink(link) : this.canShowChildLink(link);
+  }
+
   private sortShellLinks(links: ShellLink[], keepDashboardFirst = true): ShellLink[] {
     const sorted = links.slice().sort((a, b) => collator.compare(a.label, b.label));
 
@@ -250,3 +274,5 @@ export class App {
     return dashboard ? [dashboard, ...sorted.filter((link) => link !== dashboard)] : sorted;
   }
 }
+
+
