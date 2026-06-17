@@ -31,13 +31,15 @@ const ALLOWED_ATTACHMENT_TYPES = [
 ];
 const ALLOWED_ATTACHMENT_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx'];
 const MONITORING_STORAGE_KEY = 'uniflowhub.ti.monitoramento';
+const TI_CHILD_ACCESSES = ['ti-admin', 'base-conhecimento-ti', 'equipamentos-ti'];
 type TiTab = 'pendentes' | 'meus' | 'todos' | 'concluidos';
 type TiSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'prioridade' | 'status' | 'dataAbertura';
 type MonitorStatus = 'online' | 'offline' | 'testando' | 'pendente';
 type MetricFilter = 'none' | 'abertos' | 'sla-cumprido' | 'sla-vencido' | 'em-atendimento' | 'respondidos';
+type TicketColumnKey = 'abertos' | 'andamento' | 'aguardando' | 'concluidos';
 
 interface TicketColumn {
-  key: string;
+  key: TicketColumnKey;
   title: string;
   subtitle: string;
   items: ChamadoTI[];
@@ -131,10 +133,13 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   readonly assistantOpen = signal(false);
   readonly assistantQuestion = signal('');
   readonly assistantSearching = signal(false);
+  readonly draggingTicketId = signal<number | null>(null);
+  readonly dragTargetColumn = signal<TicketColumnKey | null>(null);
   readonly assistantMessages = signal<{ role: 'assistant' | 'user'; text: string; articleId?: number; suggestOpenTicket?: boolean; category?: string; priority?: string; technician?: string }[]>([]);
   readonly createdTicketNumber = signal<number | null>(null);
   readonly user = computed(() => this.auth.user());
   readonly canManage = computed(() => this.auth.hasAccess('ti-admin'));
+  readonly canViewMonitoring = computed(() => this.auth.hasAnyAccess(TI_CHILD_ACCESSES));
   readonly abertos = computed(() => this.chamados().filter((item) => item.status === 'Aberto').length);
   readonly emAtendimento = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && !!item.responsavel?.trim()).length);
   readonly pendentes = computed(() => this.chamados().filter((item) => !this.isConcluido(item) && !item.responsavel?.trim()).length);
@@ -220,7 +225,15 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   });
   readonly ticketColumns = computed<TicketColumn[]>(() => {
     const items = this.filteredChamados().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize());
-    const columns = [
+    const closedColumn: Omit<TicketColumn, 'subtitle'> = {
+      key: 'concluidos',
+      title: 'Concluídos',
+      items: items.filter((item) => this.isConcluido(item)),
+    };
+
+    const columns: Omit<TicketColumn, 'subtitle'>[] = this.canManage() && this.activeTab() === 'concluidos'
+      ? [closedColumn]
+      : [
       {
         key: 'abertos',
         title: 'Abertos',
@@ -236,11 +249,7 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
         title: 'Aguardando usuario',
         items: items.filter((item) => !this.isConcluido(item) && this.isAwaitingUser(item)),
       },
-      {
-        key: 'concluidos',
-        title: 'Concluídos',
-        items: items.filter((item) => this.isConcluido(item)),
-      },
+      closedColumn,
     ];
 
     return columns.map((column) => ({
@@ -256,6 +265,7 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   private ticketModalRef?: BsModalRef;
   private createTicketModalRef?: BsModalRef;
   private satisfactionModalRef?: BsModalRef;
+  private boardCloseModalRef?: BsModalRef;
   private communicationRefreshId: ReturnType<typeof setInterval> | null = null;
   private ticketMovementRefreshId: ReturnType<typeof setInterval> | null = null;
   private chatConnection: HubConnection | null = null;
@@ -268,6 +278,7 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('createTicketModalTemplate') private createTicketModalTemplate?: TemplateRef<void>;
   @ViewChild('approvalModalTemplate') private approvalModalTemplate?: TemplateRef<void>;
   @ViewChild('satisfactionModalTemplate') private satisfactionModalTemplate?: TemplateRef<void>;
+  @ViewChild('boardCloseModalTemplate') private boardCloseModalTemplate?: TemplateRef<void>;
 
   private approvalModalRef?: BsModalRef;
   readonly approvalForm = this.fb.nonNullable.group({
@@ -924,6 +935,10 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
     this.saving.set(true);
     const payload: ChamadoTIPayload = {
       ...this.form.getRawValue(),
+      dataAprovacao: null,
+      aprovada: null,
+      observacoesAprovacao: '',
+      aprovacaoPendente: false,
       userid: this.user()?.id ?? 0,
     };
 
@@ -1015,6 +1030,32 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
     void this.connectChat(item.id);
   }
 
+  openBoardCloseModal(item: ChamadoTI): void {
+    if (!this.boardCloseModalTemplate) {
+      return;
+    }
+
+    this.select(item);
+    this.boardCloseModalRef?.hide();
+    this.boardCloseModalRef = this.modalService.show(this.boardCloseModalTemplate, {
+      animated: true,
+      backdrop: 'static',
+      class: 'modal-md modal-dialog-centered uniflow-modal-shell ti-board-close-modal-shell',
+      ignoreBackdropClick: this.closing(),
+      keyboard: !this.closing(),
+    });
+  }
+
+  closeBoardCloseModal(): void {
+    if (this.closing()) {
+      return;
+    }
+
+    this.boardCloseModalRef?.hide();
+    this.boardCloseModalRef = undefined;
+    this.closeForm.reset({ observacoesEncerramento: this.selected()?.observacoesEncerramento || '' });
+  }
+
   closeTicketModal(): void {
     if (this.updating() || this.sendingMessage() || this.closing() || this.reopening() || this.rating()) {
       return;
@@ -1053,7 +1094,13 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
     }
 
     this.updating.set(true);
-    this.service.update(selected.id, this.adminForm.getRawValue()).subscribe({
+    this.service.update(selected.id, {
+      ...this.adminForm.getRawValue(),
+      dataAprovacao: selected.dataAprovacao ?? null,
+      aprovada: selected.aprovada ?? null,
+      observacoesAprovacao: selected.observacoesAprovacao ?? '',
+      aprovacaoPendente: selected.aprovacaoPendente,
+    }).subscribe({
       next: (updated) => {
         this.chamados.set(this.chamados().map((item) => item.id === updated.id ? updated : item));
         this.rememberTicketMovement(updated);
@@ -1066,6 +1113,66 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
         this.toastr.error(this.getErrorMessage('Não foi possível atualizar o chamado.', error), 'Erro');
       },
     });
+  }
+
+  onTicketDragStart(event: DragEvent, item: ChamadoTI): void {
+    if (!this.canManage() || this.updating()) {
+      event.preventDefault();
+      return;
+    }
+
+    this.draggingTicketId.set(item.id);
+    event.dataTransfer?.setData('text/plain', String(item.id));
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onTicketDragEnd(): void {
+    this.draggingTicketId.set(null);
+    this.dragTargetColumn.set(null);
+  }
+
+  onTicketDragOver(event: DragEvent, columnKey: TicketColumnKey): void {
+    if (!this.canManage() || this.updating() || this.draggingTicketId() === null) {
+      return;
+    }
+
+    event.preventDefault();
+    this.dragTargetColumn.set(columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onTicketDragLeave(columnKey: TicketColumnKey): void {
+    if (this.dragTargetColumn() === columnKey) {
+      this.dragTargetColumn.set(null);
+    }
+  }
+
+  onTicketDrop(event: DragEvent, columnKey: TicketColumnKey): void {
+    event.preventDefault();
+    if (!this.canManage() || this.updating()) {
+      this.onTicketDragEnd();
+      return;
+    }
+
+    const draggedId = Number(event.dataTransfer?.getData('text/plain') || this.draggingTicketId());
+    const item = this.chamados().find((chamado) => chamado.id === draggedId);
+    const status = this.statusForColumn(columnKey);
+    this.onTicketDragEnd();
+
+    if (!item || !status || this.normalize(item.status) === this.normalize(status)) {
+      return;
+    }
+
+    if (columnKey === 'concluidos') {
+      this.openBoardCloseModal(item);
+      return;
+    }
+
+    this.updateTicketStatusFromBoard(item, status);
   }
 
   reopenTicket(): void {
@@ -1160,7 +1267,12 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
         this.selected.set(updated);
         this.adminForm.patchValue({ status: updated.status });
         this.closeForm.patchValue({ observacoesEncerramento: updated.observacoesEncerramento });
+        this.activeTab.set('concluidos');
+        this.metricFilter.set('none');
+        this.page.set(1);
         this.closing.set(false);
+        this.boardCloseModalRef?.hide();
+        this.boardCloseModalRef = undefined;
         this.toastr.success('Chamado encerrado com data e hora atuais.', 'TI');
         this.suggestKnowledgeBaseCreation(updated);
       },
@@ -1430,7 +1542,7 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
     return !!item?.responsavel?.trim();
   }
 
-  private canApprove(item: ChamadoTI | null): boolean {
+  canApprove(item: ChamadoTI | null): boolean {
     const current = this.user();
     return !!item?.dataEncerramento && !!current && item.userid === current.id && !this.canManage() && item.aprovacaoPendente;
   }
@@ -1969,6 +2081,66 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
       const sharedSolutionTerms = solutionTerms.filter((term) => articleText.includes(term)).length;
       return sameTicket || sameTitle || sharedSolutionTerms >= 5;
     }) ?? null;
+  }
+
+  private updateTicketStatusFromBoard(item: ChamadoTI, status: string): void {
+    this.updating.set(true);
+    this.service.update(item.id, this.ticketUpdatePayload(item, status)).subscribe({
+      next: (updated) => {
+        this.chamados.set(this.chamados().map((chamado) => chamado.id === updated.id ? updated : chamado));
+        this.rememberTicketMovement(updated);
+        if (this.isConcluido(updated)) {
+          this.activeTab.set('concluidos');
+          this.metricFilter.set('none');
+          this.page.set(1);
+        }
+        if (this.selected()?.id === updated.id) {
+          this.selected.set(updated);
+          this.adminForm.patchValue({ status: updated.status });
+        }
+        this.updating.set(false);
+        this.toastr.success(`Chamado #${updated.id} movido para ${updated.status}.`, 'TI');
+      },
+      error: (error) => {
+        this.updating.set(false);
+        this.toastr.error(this.getErrorMessage('Não foi possível alterar o status do chamado.', error), 'Erro');
+      },
+    });
+  }
+
+  private statusForColumn(columnKey: TicketColumnKey): string {
+    const statuses: Record<TicketColumnKey, string> = {
+      abertos: 'Aberto',
+      andamento: 'Em atendimento',
+      aguardando: 'Aguardando Usuário',
+      concluidos: 'Concluído',
+    };
+
+    return statuses[columnKey];
+  }
+
+  private ticketUpdatePayload(item: ChamadoTI, status: string): Omit<ChamadoTIPayload, 'userid'> {
+    return {
+      titulo: item.titulo,
+      categoria: item.categoria,
+      descricao: item.descricao,
+      solicitante: item.solicitante,
+      unidade: item.unidade,
+      departamento: item.departamento,
+      prioridade: item.prioridade,
+      status,
+      responsavel: item.responsavel,
+      acessoRemotoUrl: item.acessoRemotoUrl,
+      acessoRemotoSenha: item.acessoRemotoSenha,
+      equipamentoNome: item.equipamentoNome,
+      equipamentoIp: item.equipamentoIp,
+      equipamentoSistemaOperacional: item.equipamentoSistemaOperacional,
+      observacoes: item.observacoes,
+      dataAprovacao: item.dataAprovacao ?? null,
+      aprovada: item.aprovada ?? null,
+      observacoesAprovacao: item.observacoesAprovacao,
+      aprovacaoPendente: item.aprovacaoPendente,
+    };
   }
 
   private applyMetricFilter(items: ChamadoTI[]): ChamadoTI[] {

@@ -42,9 +42,24 @@ namespace UniFlowHub.Api.Controllers
         private bool CanMonitor()
         {
             var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+            var perfis = User.FindAll("perfil").Select(claim => claim.Value);
             return string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(role, "TI", StringComparison.OrdinalIgnoreCase)
-                || User.HasClaim("access", "ti-admin");
+                || IsTiText(role)
+                || perfis.Any(IsTiText)
+                || User.HasClaim("access", "ti-admin")
+                || User.HasClaim("access", "base-conhecimento-ti")
+                || User.HasClaim("access", "equipamentos-ti");
+        }
+
+        private static bool IsTiText(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var normalized = value.Trim().ToLowerInvariant();
+            var compact = new string(normalized.Where(char.IsLetterOrDigit).ToArray());
+            return compact == "ti" || normalized.Contains("tecnologia", StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task<ProbeResult> ProbeAsync(string target, CancellationToken cancellationToken)

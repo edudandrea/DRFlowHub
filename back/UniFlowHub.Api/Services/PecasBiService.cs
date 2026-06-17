@@ -98,27 +98,28 @@ namespace UniFlowHub.Api.Services
                     COALESCE(FV.NOME, 'Vendedor ' || TO_CHAR(FNV.VENDEDOR)) AS NOME_VENDEDOR,
                     REGEXP_REPLACE(COALESCE(TO_CHAR(FV.CPF), ''), '[^0-9]', '') AS CPF_VENDEDOR,
                     CASE
+                        WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
                         WHEN TT.TIPO = 'E' THEN COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
                         ELSE FMC.TIPO_TRANSACAO
                     END AS CANAL,
                     CASE
-                        WHEN TT.TIPO = 'E' THEN -1
+                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                         ELSE 1
                     END * COALESCE(VI.FATURAMENTO, 0) AS FATURAMENTO,
                     CASE
-                        WHEN TT.TIPO = 'E' THEN -1
+                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                         ELSE 1
                     END * (COALESCE(VI.FATURAMENTO, 0) - COALESCE(VI.CUSTO_RENTABILIDADE, 0)) AS MARGEM,
                     CASE
-                        WHEN TT.TIPO = 'E' THEN -1
+                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                         ELSE 1
                     END * COALESCE(VI.CUSTO_RENTABILIDADE, 0) AS CUSTO_RENTABILIDADE,
                     CASE
-                        WHEN TT.TIPO = 'E' THEN -1
+                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                         ELSE 1
                     END * COALESCE(VI.DESPESAS_RENTABILIDADE, 0) AS DESPESAS_RENTABILIDADE,
                     CASE
-                        WHEN TT.TIPO = 'E' THEN 0
+                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN 0
                         ELSE 1
                     END AS QTD_NOTAS
                 FROM FAT_MOVIMENTO_CAPA FMC
@@ -154,6 +155,7 @@ namespace UniFlowHub.Api.Services
                   AND (
                       (TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO = 'N')
                       OR (TT.TIPO = 'E' AND TT.SUBTIPO_TRANSACAO = 'D' AND FMC.FATOPERACAO_ORIGINAL IS NOT NULL)
+                      OR FMC.TIPO_TRANSACAO = 'P33'
                   )
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
                   AND (:EMPRESA IS NULL OR INSTR(',' || :EMPRESA || ',', ',' || TO_CHAR(FMC.EMPRESA) || ',') > 0)
@@ -180,6 +182,7 @@ namespace UniFlowHub.Api.Services
                   AND (
                       :CANAL IS NULL
                       OR INSTR(',' || :CANAL || ',', ',' || CASE
+                            WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
                             WHEN TT.TIPO = 'E' THEN COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
                             ELSE FMC.TIPO_TRANSACAO
                          END || ',') > 0
@@ -301,13 +304,13 @@ namespace UniFlowHub.Api.Services
                     COALESCE(TO_CHAR(PIE.GRUPO), 'Pecas') AS CATEGORIA,
                     SUM(
                         CASE
-                            WHEN TT.TIPO = 'E' THEN -1
+                            WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                             ELSE 1
                         END * COALESCE(FMI.QUANTIDADE, 0)
                     ) AS QUANTIDADE,
                     SUM(
                         CASE
-                            WHEN TT.TIPO = 'E' THEN -1
+                            WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                             ELSE 1
                         END * (
                             COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -318,7 +321,7 @@ namespace UniFlowHub.Api.Services
                     CASE
                         WHEN SUM(
                             CASE
-                                WHEN TT.TIPO = 'E' THEN -1
+                                WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                 ELSE 1
                             END * (
                                 COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -330,7 +333,7 @@ namespace UniFlowHub.Api.Services
                             (
                                 SUM(
                                     CASE
-                                        WHEN TT.TIPO = 'E' THEN -1
+                                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                         ELSE 1
                                     END * (
                                         COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -340,14 +343,14 @@ namespace UniFlowHub.Api.Services
                                 )
                                 - SUM(
                                     CASE
-                                        WHEN TT.TIPO = 'E' THEN -1
+                                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                         ELSE 1
                                     END * COALESCE(FMI.VAL_CUSTO_MEDIO, 0)
                                 )
                             )
                             / SUM(
                                 CASE
-                                    WHEN TT.TIPO = 'E' THEN -1
+                                    WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                     ELSE 1
                                 END * (
                                     COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -360,7 +363,7 @@ namespace UniFlowHub.Api.Services
                     CASE
                         WHEN SUM(
                             CASE
-                                WHEN TT.TIPO = 'E' THEN -1
+                                WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                 ELSE 1
                             END * (
                                 COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -372,7 +375,7 @@ namespace UniFlowHub.Api.Services
                             (
                                 SUM(
                                     CASE
-                                        WHEN TT.TIPO = 'E' THEN -1
+                                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                         ELSE 1
                                     END * (
                                         COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -382,7 +385,7 @@ namespace UniFlowHub.Api.Services
                                 )
                                 - SUM(
                                     CASE
-                                        WHEN TT.TIPO = 'E' THEN -1
+                                        WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                         ELSE 1
                                     END * (
                                         COALESCE(FMI.VAL_CUSTO_MEDIO, 0)
@@ -397,7 +400,7 @@ namespace UniFlowHub.Api.Services
                             )
                             / SUM(
                                 CASE
-                                    WHEN TT.TIPO = 'E' THEN -1
+                                    WHEN TT.TIPO = 'E' OR FMC.TIPO_TRANSACAO = 'P33' THEN -1
                                     ELSE 1
                                 END * (
                                     COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
@@ -432,6 +435,7 @@ namespace UniFlowHub.Api.Services
                   AND (
                       (TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO = 'N')
                       OR (TT.TIPO = 'E' AND TT.SUBTIPO_TRANSACAO = 'D' AND FMC.FATOPERACAO_ORIGINAL IS NOT NULL)
+                      OR FMC.TIPO_TRANSACAO = 'P33'
                   )
                   AND PIE.TIPO_INDUSTRIALIZACAO IS NULL
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
@@ -459,6 +463,7 @@ namespace UniFlowHub.Api.Services
                   AND (
                       :CANAL IS NULL
                       OR INSTR(',' || :CANAL || ',', ',' || CASE
+                            WHEN FMC.TIPO_TRANSACAO = 'P33' THEN 'P23'
                             WHEN TT.TIPO = 'E' THEN COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
                             ELSE FMC.TIPO_TRANSACAO
                          END || ',') > 0

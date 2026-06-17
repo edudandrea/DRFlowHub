@@ -152,13 +152,13 @@ public sealed class InstallerForm : Form
         var siteLabel = CreateFieldLabel("Site IIS", new Point(22, 58));
         var appPoolLabel = CreateFieldLabel("Application Pool", new Point(210, 58));
 
-        _siteName.Text = "DrFlowHub";
+        _siteName.Text = "UniFlowHub";
         _siteName.Location = new Point(22, 84);
         _siteName.Width = 160;
         _siteName.Height = 32;
         StyleTextBox(_siteName);
 
-        _appPoolName.Text = "DrFlowHub";
+        _appPoolName.Text = "UniFlowHub";
         _appPoolName.Location = new Point(210, 84);
         _appPoolName.Width = 160;
         _appPoolName.Height = 32;

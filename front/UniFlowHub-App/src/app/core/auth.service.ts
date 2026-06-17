@@ -137,8 +137,10 @@ export class AuthService {
 
   private isTiText(value: string): boolean {
     const normalized = this.normalize(value);
+    const compact = normalized.replace(/[^a-z0-9]/g, '');
     return /\bti\b/.test(normalized)
       || /\bt\.i\b/.test(normalized)
+      || compact === 'ti'
       || /\btecnologia\b/.test(normalized);
   }
 
@@ -162,7 +164,15 @@ export class AuthService {
       return;
     }
 
-    const next = { ...current, user };
+    const next = {
+      ...current,
+      user: {
+        ...current.user,
+        ...user,
+        perfis: user.perfis?.length ? user.perfis : current.user.perfis,
+        acessos: user.acessos?.length ? user.acessos : current.user.acessos,
+      },
+    };
     this.session.set(next);
     if (this.hasStorage()) {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));

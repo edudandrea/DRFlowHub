@@ -30,6 +30,7 @@ const PECAS_BI_ACCESSES = [
   'pecas-bi-mg',
   'pecas-bi-geely',
 ];
+const TI_CHILD_ACCESSES = ['ti-admin', 'base-conhecimento-ti', 'equipamentos-ti'];
 
 export const routes: Routes = [
   { path: 'login', component: LoginPage },
@@ -81,7 +82,7 @@ export const routes: Routes = [
   {
     path: 'ti/monitoramento',
     loadComponent: () => import('./pages/monitoramento/monitoramento.component').then((m) => m.MonitoramentoComponent),
-    canActivate: [authGuard],
+    canActivate: [accessGuard(TI_CHILD_ACCESSES)],
   },
   {
     path: 'compras',

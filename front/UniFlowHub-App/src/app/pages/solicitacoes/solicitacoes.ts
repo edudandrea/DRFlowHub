@@ -262,7 +262,13 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
     }
 
     this.updating.set(true);
-    this.service.update(selected.id, this.editForm.getRawValue()).subscribe({
+    this.service.update(selected.id, {
+      ...this.editForm.getRawValue(),
+      dataAprovacao: selected.dataAprovacao ?? null,
+      aprovada: selected.aprovada ?? null,
+      observacoesAprovacao: selected.observacoesAprovacao ?? '',
+      aprovacaoPendente: selected.aprovacaoPendente,
+    }).subscribe({
       next: (updated) => {
         this.solicitacoes.set(this.solicitacoes().map((item) => item.id === updated.id ? updated : item));
         this.updating.set(false);
@@ -365,6 +371,10 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
 
     const payload: SolicitacaoPayload = {
       ...this.form.getRawValue(),
+      dataAprovacao: null,
+      aprovada: null,
+      observacoesAprovacao: '',
+      aprovacaoPendente: false,
       userid: this.user()?.id ?? 0,
     };
 

@@ -52,6 +52,7 @@ const PECAS_BI_ACCESSES = [
   'pecas-bi-mg',
   'pecas-bi-geely',
 ];
+const TI_CHILD_ACCESSES = ['ti-admin', 'base-conhecimento-ti', 'equipamentos-ti'];
 
 @Component({
   selector: 'app-root',
@@ -97,7 +98,7 @@ export class App {
         { label: 'Chamados', description: 'Fila e atendimento', route: '/ti', enabled: true, access: 'ti', adminAccess: 'ti-admin' },
         { label: 'Controle de equipamentos', description: 'Gestão e movimentações', route: '/ti/equipamentos', enabled: true, access: 'equipamentos-ti' },
         { label: 'Inventário de equipamentos', description: 'Cadastro, usuário e QR Code', route: '/ti/equipamentos/inventario', enabled: true, access: 'equipamentos-ti' },
-        { label: 'Monitoramento', description: 'Links e firewalls', route: '/ti/monitoramento', enabled: true },
+        { label: 'Monitoramento', description: 'Links e firewalls', route: '/ti/monitoramento', enabled: true, access: TI_CHILD_ACCESSES },
       ],
     },
     { label: 'Compras', description: 'Solicitações e aprovação', route: '/compras', enabled: true, access: 'compras', adminAccess: 'compras-admin' },

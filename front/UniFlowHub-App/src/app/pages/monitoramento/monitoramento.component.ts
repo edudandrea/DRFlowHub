@@ -287,6 +287,10 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
         equipamentoIp: item.alvo,
         equipamentoSistemaOperacional: '',
         observacoes: `Incidente detectado em ${new Date().toLocaleString('pt-BR')}. Erro: ${errorMessage}`,
+        dataAprovacao: null,
+        aprovada: null,
+        observacoesAprovacao: '',
+        aprovacaoPendente: false,
         userid: 0,
       };
 

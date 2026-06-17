@@ -291,7 +291,13 @@ export class AdminPage implements OnInit, OnDestroy {
 
     this.saving.set(true);
     void this.spinner.show();
-    this.service.update(selected.id, this.form.getRawValue()).subscribe({
+    this.service.update(selected.id, {
+      ...this.form.getRawValue(),
+      dataAprovacao: selected.dataAprovacao ?? null,
+      aprovada: selected.aprovada ?? null,
+      observacoesAprovacao: selected.observacoesAprovacao ?? '',
+      aprovacaoPendente: selected.aprovacaoPendente,
+    }).subscribe({
       next: (updated) => {
         this.solicitacoes.set(this.solicitacoes().map((item) => item.id === updated.id ? updated : item));
         this.selected.set(updated);

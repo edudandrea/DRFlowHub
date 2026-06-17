@@ -62,17 +62,33 @@
 
     <section class="metrics-grid" aria-label="Indicadores do setor">
       @for (metric of metrics(); track metric.label) {
-        <article
-          class="metric-card"
-          [class.attention]="metric.tone === 'attention'"
-          [class.danger]="metric.tone === 'danger'"
-          [class.success]="metric.tone === 'success'"
-          [class.neutral]="metric.tone === 'neutral'"
-        >
-          <span>{{ metric.label }}</span>
-          <strong>{{ metric.value }}</strong>
-          <p>{{ metric.detail }}</p>
-        </article>
+        @if (metric.route) {
+          <button
+            class="metric-card metric-action"
+            type="button"
+            [class.attention]="metric.tone === 'attention'"
+            [class.danger]="metric.tone === 'danger'"
+            [class.success]="metric.tone === 'success'"
+            [class.neutral]="metric.tone === 'neutral'"
+            (click)="openMetric(metric)"
+          >
+            <span>{{ metric.label }}</span>
+            <strong>{{ metric.value }}</strong>
+            <p>{{ metric.detail }}</p>
+          </button>
+        } @else {
+          <article
+            class="metric-card"
+            [class.attention]="metric.tone === 'attention'"
+            [class.danger]="metric.tone === 'danger'"
+            [class.success]="metric.tone === 'success'"
+            [class.neutral]="metric.tone === 'neutral'"
+          >
+            <span>{{ metric.label }}</span>
+            <strong>{{ metric.value }}</strong>
+            <p>{{ metric.detail }}</p>
+          </article>
+        }
       }
     </section>
 

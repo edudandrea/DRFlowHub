@@ -79,6 +79,7 @@ export class UsuariosPage implements OnInit {
   readonly unidadeSortField = signal<UnidadeSortField>('empresa');
   readonly empresaSortField = signal<EmpresaSortField>('numero');
   readonly sortDirection = signal<'asc' | 'desc'>('asc');
+  readonly selectedPerfis = signal<Role[]>(['Usuario']);
 
   readonly roles = signal<Role[]>(['Admin', 'RH', 'TI', 'Diretoria', 'Compras', 'Controladoria', 'Qualidade Nissan', 'Gerente Geral de Pecas', 'Gerente de Pecas', 'Vendedor de Pecas', 'Gestor', 'Usuario']);
   readonly departamentos = ['Administrativo', 'RH', 'TI', 'Financeiro', 'Controladoria', 'Compras', 'Qualidade Nissan', 'Pecas', 'Operacional', 'Comercial'];

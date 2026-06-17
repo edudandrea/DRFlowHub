@@ -18,6 +18,7 @@ import { ThemeService } from '../../core/theme.service';
 type DashboardArea = 'admin' | 'rh' | 'ti' | 'compras' | 'controladoria' | 'financeiro' | 'padrao';
 const USEFUL_LINKS_KEY = 'uniflowhub.usefulLinks';
 const MONITORING_STORAGE_KEY = 'uniflowhub.ti.monitoramento';
+const TI_CHILD_ACCESSES = ['ti-admin', 'base-conhecimento-ti', 'equipamentos-ti'];
 
 type MonitorStatus = 'online' | 'offline' | 'testando' | 'pendente';
 
@@ -38,6 +39,7 @@ interface MetricCard {
   value: number | string;
   detail: string;
   tone: 'neutral' | 'attention' | 'danger' | 'success';
+  route?: string;
 }
 
 interface AlertItem {
@@ -161,7 +163,7 @@ export class HubPage implements OnInit, OnDestroy {
       return 'rh';
     }
 
-    if (role === 'TI' || this.isTiDepartment(department)) {
+    if (this.auth.hasAnyAccess(TI_CHILD_ACCESSES) || role === 'TI' || this.isTiDepartment(department)) {
       return 'ti';
     }
 
@@ -287,13 +289,18 @@ export class HubPage implements OnInit, OnDestroy {
 
     if (area === 'ti') {
       const items = this.tiScope();
+      const canViewMonitoring = this.auth.hasAnyAccess(TI_CHILD_ACCESSES);
       return [
         this.metric('Chamados abertos', items.filter((item) => this.isOpenStatus(item.status)).length, 'Chamados ativos no setor', 'attention'),
-        this.metric('Chamados por setor', this.tiDepartmentCount(items), this.tiDepartmentSummary(items), 'neutral'),
+        ...(canViewMonitoring ? [this.metric('Chamados por setor', this.tiDepartmentCount(items), this.tiDepartmentSummary(items), 'neutral')] : []),
         this.metric('SLA cumprido', items.filter((item) => this.isTiSlaMet(item)).length, 'Fechados dentro do prazo', 'success'),
         this.metric('SLA vencido', items.filter((item) => this.isTiSlaExpired(item)).length, 'Fora do prazo por prioridade', 'danger'),
-        this.metric('Equipamentos por unidade', this.equipamentosTi().length, this.equipmentUnitSummary(), 'neutral'),
-        this.metric('Disponibilidade dos links', this.linkAvailability(items), this.linkAvailabilityDetail(), 'success'),
+        ...(canViewMonitoring
+          ? [
+              this.metric('Equipamentos por unidade', this.equipamentosTi().length, this.equipmentUnitSummary(), 'neutral'),
+              this.metric('Disponibilidade dos links', this.linkAvailability(items), this.linkAvailabilityDetail(), 'success', '/ti/monitoramento'),
+            ]
+          : []),
       ];
     }
 
@@ -368,6 +375,7 @@ export class HubPage implements OnInit, OnDestroy {
         { label: 'Abrir chamado', route: '/ti', description: 'Criar ou acompanhar chamado de TI.', enabled: true },
         { label: 'Base de conhecimento', route: '/ti/base-conhecimento', description: 'Manuais e procedimentos do setor.', enabled: this.auth.hasAccess('base-conhecimento-ti') },
         { label: 'Equipamentos', route: '/ti/equipamentos', description: 'Controle de entregas e retornos.', enabled: this.auth.hasAccess('ti-admin') },
+        { label: 'Monitoramento', route: '/ti/monitoramento', description: 'Links, firewalls e disponibilidade.', enabled: this.auth.hasAnyAccess(TI_CHILD_ACCESSES) },
       ];
     }
 
@@ -450,6 +458,14 @@ export class HubPage implements OnInit, OnDestroy {
 
   openAlert(alert: AlertItem): void {
     void this.router.navigateByUrl(alert.route);
+  }
+
+  openMetric(metric: MetricCard): void {
+    if (!metric.route) {
+      return;
+    }
+
+    void this.router.navigateByUrl(metric.route);
   }
 
   faviconUrl(link: UsefulLink): string {
@@ -537,8 +553,8 @@ export class HubPage implements OnInit, OnDestroy {
     }
   }
 
-  private metric(label: string, value: number | string, detail: string, tone: MetricCard['tone']): MetricCard {
-    return { label, value, detail, tone };
+  private metric(label: string, value: number | string, detail: string, tone: MetricCard['tone'], route?: string): MetricCard {
+    return { label, value, detail, tone, route };
   }
 
   private defaultMetrics(): MetricCard[] {

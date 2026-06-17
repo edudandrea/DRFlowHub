@@ -64,10 +64,12 @@
       <strong>{{ emAtendimento() }}</strong>
       <small [class]="metricTrendClass('em-atendimento')">{{ metricTrend('em-atendimento') }}</small>
     </article>
-    <article class="metric-card neutral">
-      <span>Chamados por setor</span>
-      <strong class="metric-text">{{ chamadosPorSetor() }}</strong>
-    </article>
+    @if (canViewMonitoring()) {
+      <article class="metric-card neutral">
+        <span>Chamados por setor</span>
+        <strong class="metric-text">{{ chamadosPorSetor() }}</strong>
+      </article>
+    }
     <article
       class="metric-card success"
       [class.active]="metricFilter() === 'sla-cumprido'"
@@ -92,20 +94,24 @@
       <strong>{{ slaVencido() }}</strong>
       <small [class]="metricTrendClass('sla-vencido')">{{ metricTrend('sla-vencido') }}</small>
     </article>
-    <article class="metric-card neutral">
-      <span>Equipamentos por unidade</span>
-      <strong class="metric-text">{{ equipamentosPorUnidade() }}</strong>
-    </article>
-    <article
-      class="metric-card success"
-      role="button"
-      tabindex="0"
-      (click)="openMonitoring()"
-      (keydown.enter)="openMonitoring()"
-    >
-      <span>Disponibilidade dos links</span>
-      <strong>{{ disponibilidadeLinks() }}</strong>
-    </article>
+    @if (canViewMonitoring()) {
+      <article class="metric-card neutral">
+        <span>Equipamentos por unidade</span>
+        <strong class="metric-text">{{ equipamentosPorUnidade() }}</strong>
+      </article>
+    }
+    @if (canViewMonitoring()) {
+      <article
+        class="metric-card success"
+        role="button"
+        tabindex="0"
+        (click)="openMonitoring()"
+        (keydown.enter)="openMonitoring()"
+      >
+        <span>Disponibilidade dos links</span>
+        <strong>{{ disponibilidadeLinks() }}</strong>
+      </article>
+    }
     @if (canManage()) {
       <article
         class="metric-card response-metric answered"
@@ -179,56 +185,7 @@
             Concluídos
           </button>
         </div>
-      }
-
-      <div class="date-filters">
-        <label>
-          De
-          <input
-            type="date"
-            [value]="dateFrom()"
-            (input)="dateFrom.set($any($event.target).value)"
-          />
-        </label>
-        <label>
-          Ate
-          <input type="date" [value]="dateTo()" (input)="dateTo.set($any($event.target).value)" />
-        </label>
-        <button class="secondary" type="button" (click)="clearDateFilters()">Limpar período</button>
-      </div>
-
-      <div class="date-filters">
-        <label>
-          Ordenar
-          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
-            <option value="id">Número</option>
-            <option value="titulo">Título</option>
-            <option value="solicitante">Solicitante</option>
-            <option value="unidade">Unidade</option>
-            <option value="departamento">Departamento</option>
-            <option value="prioridade">Prioridade</option>
-            <option value="status">Status</option>
-            <option value="dataAbertura">Data</option>
-          </select>
-        </label>
-        <button class="secondary" type="button" (click)="setSort(sortField())">
-          {{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}
-        </button>
-      </div>
-
-      <div class="date-filters queue-filter-grid">
-        <label>
-          Responsável
-          <select [value]="responsibleFilter()" (change)="setResponsibleFilter($any($event.target).value)">
-            <option value="">Todos</option>
-            <option value="Sem responsavel">Sem responsável</option>
-            @for (responsavel of responsavelOptions(); track responsavel) {
-              <option [value]="responsavel">{{ responsavel }}</option>
-            }
-          </select>
-        </label>
-        <button class="secondary" type="button" (click)="clearQueueFilters()">Limpar filtros</button>
-      </div>
+      }  
 
       @if (createdTicketNumber()) {
         <p class="notice">Chamado #{{ createdTicketNumber() }} criado com sucesso.</p>
@@ -331,14 +288,21 @@
         </div>
       }
 
-      <div class="ticket-board">
+      <div class="ticket-board" [class.completed-only]="canManage() && activeTab() === 'concluidos'">
         @if (loading()) {
           <p class="empty">Carregando...</p>
         } @else if (filteredChamados().length === 0) {
           <p class="empty">Nenhum chamado encontrado.</p>
         } @else {
           @for (column of ticketColumns(); track column.key) {
-            <section class="ticket-column">
+            <section
+              class="ticket-column"
+              [class.completed-column]="column.key === 'concluidos'"
+              [class.drag-over]="dragTargetColumn() === column.key"
+              (dragover)="onTicketDragOver($event, column.key)"
+              (dragleave)="onTicketDragLeave(column.key)"
+              (drop)="onTicketDrop($event, column.key)"
+            >
               <header>
                 <strong>{{ column.title }}</strong>
                 <small>{{ column.subtitle }}</small>
@@ -350,7 +314,11 @@
                   <article
                     class="request-card ticket-card"
                     [class.active]="selected()?.id === item.id"
+                    [class.dragging]="draggingTicketId() === item.id"
                     [class.sla-expired]="slaClass(item) === 'expired'"
+                    [draggable]="canManage() && !updating()"
+                    (dragstart)="onTicketDragStart($event, item)"
+                    (dragend)="onTicketDragEnd()"
                     (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate, approvalModalTemplate)"
                   >
                     <div class="ticket-card-header">
@@ -1304,6 +1272,44 @@
             }
           </section>
         </div>
+      </div>
+    </ng-template>
+
+    <ng-template #boardCloseModalTemplate>
+      <div class="modal-content uniflow-modal-content ti-board-close-modal">
+        <div class="modal-header uniflow-modal-header">
+          <div>
+            <p class="system-name">Encerrar chamado</p>
+            <h2>#{{ selected()?.id }} - {{ selected()?.titulo }}</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Fechar modal"
+            [disabled]="closing()"
+            (click)="closeBoardCloseModal()"
+          >
+            x
+          </button>
+        </div>
+        <form class="modal-body uniflow-modal-body close-form board-close-form" [formGroup]="closeForm" (ngSubmit)="closeTicket()">
+          <label>
+            Observação de encerramento
+            <textarea
+              formControlName="observacoesEncerramento"
+              rows="4"
+              placeholder="Descreva a solução aplicada antes de encerrar"
+            ></textarea>
+          </label>
+          <div class="attachment-actions">
+            <button class="secondary" type="button" [disabled]="closing()" (click)="closeBoardCloseModal()">
+              Cancelar
+            </button>
+            <button class="primary" type="submit" [disabled]="closing()">
+              {{ closing() ? 'Encerrando...' : 'Encerrar chamado' }}
+            </button>
+          </div>
+        </form>
       </div>
     </ng-template>
   </section>
