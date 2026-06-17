@@ -1275,6 +1275,57 @@
       </div>
     </ng-template>
 
+    <ng-template #knowledgeBaseSuggestionModalTemplate>
+      <div class="modal-content uniflow-modal-content ti-knowledge-base-modal">
+        <div class="modal-header uniflow-modal-header">
+          <div>
+            <p class="system-name">TI Assistant</p>
+            <h2>Incluir solução na base?</h2>
+            <span>#{{ knowledgeBaseSuggestion()?.id }} - {{ knowledgeBaseSuggestion()?.titulo }}</span>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Fechar modal"
+            [disabled]="creatingKnowledgeBase()"
+            (click)="closeKnowledgeBaseSuggestionModal()"
+          >
+            x
+          </button>
+        </div>
+        <div class="modal-body uniflow-modal-body knowledge-base-confirm">
+          <p>
+            Deseja incluir a solução deste chamado na base de conhecimento para reutilizar em
+            atendimentos futuros?
+          </p>
+          @if (knowledgeBaseSuggestion()?.observacoesEncerramento) {
+            <section class="closure-notes">
+              <strong>Solução registrada</strong>
+              <p>{{ knowledgeBaseSuggestion()?.observacoesEncerramento }}</p>
+            </section>
+          }
+          <div class="attachment-actions">
+            <button
+              class="secondary"
+              type="button"
+              [disabled]="creatingKnowledgeBase()"
+              (click)="closeKnowledgeBaseSuggestionModal()"
+            >
+              Agora não
+            </button>
+            <button
+              class="primary"
+              type="button"
+              [disabled]="creatingKnowledgeBase()"
+              (click)="confirmKnowledgeBaseCreation()"
+            >
+              {{ creatingKnowledgeBase() ? 'Incluindo...' : 'Incluir na base' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ng-template>
+
     <ng-template #boardCloseModalTemplate>
       <div class="modal-content uniflow-modal-content ti-board-close-modal">
         <div class="modal-header uniflow-modal-header">

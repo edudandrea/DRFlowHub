@@ -135,6 +135,8 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   readonly assistantSearching = signal(false);
   readonly draggingTicketId = signal<number | null>(null);
   readonly dragTargetColumn = signal<TicketColumnKey | null>(null);
+  readonly knowledgeBaseSuggestion = signal<ChamadoTI | null>(null);
+  readonly creatingKnowledgeBase = signal(false);
   readonly assistantMessages = signal<{ role: 'assistant' | 'user'; text: string; articleId?: number; suggestOpenTicket?: boolean; category?: string; priority?: string; technician?: string }[]>([]);
   readonly createdTicketNumber = signal<number | null>(null);
   readonly user = computed(() => this.auth.user());
@@ -266,6 +268,7 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   private createTicketModalRef?: BsModalRef;
   private satisfactionModalRef?: BsModalRef;
   private boardCloseModalRef?: BsModalRef;
+  private knowledgeBaseSuggestionModalRef?: BsModalRef;
   private communicationRefreshId: ReturnType<typeof setInterval> | null = null;
   private ticketMovementRefreshId: ReturnType<typeof setInterval> | null = null;
   private chatConnection: HubConnection | null = null;
@@ -279,6 +282,7 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('approvalModalTemplate') private approvalModalTemplate?: TemplateRef<void>;
   @ViewChild('satisfactionModalTemplate') private satisfactionModalTemplate?: TemplateRef<void>;
   @ViewChild('boardCloseModalTemplate') private boardCloseModalTemplate?: TemplateRef<void>;
+  @ViewChild('knowledgeBaseSuggestionModalTemplate') private knowledgeBaseSuggestionModalTemplate?: TemplateRef<void>;
 
   private approvalModalRef?: BsModalRef;
   readonly approvalForm = this.fb.nonNullable.group({
@@ -1054,6 +1058,16 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
     this.boardCloseModalRef?.hide();
     this.boardCloseModalRef = undefined;
     this.closeForm.reset({ observacoesEncerramento: this.selected()?.observacoesEncerramento || '' });
+  }
+
+  closeKnowledgeBaseSuggestionModal(): void {
+    if (this.creatingKnowledgeBase()) {
+      return;
+    }
+
+    this.knowledgeBaseSuggestionModalRef?.hide();
+    this.knowledgeBaseSuggestionModalRef = undefined;
+    this.knowledgeBaseSuggestion.set(null);
   }
 
   closeTicketModal(): void {
@@ -2048,22 +2062,45 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    const confirmed = window.confirm(`TI Assistant: deseja incluir a solução do chamado #${item.id} na base de conhecimento?`);
-    if (!confirmed) {
+    if (!this.knowledgeBaseSuggestionModalTemplate) {
       return;
     }
 
+    this.knowledgeBaseSuggestion.set(item);
+    this.knowledgeBaseSuggestionModalRef?.hide();
+    this.knowledgeBaseSuggestionModalRef = this.modalService.show(this.knowledgeBaseSuggestionModalTemplate, {
+      animated: true,
+      backdrop: 'static',
+      class: 'modal-md modal-dialog-centered uniflow-modal-shell ti-knowledge-base-modal-shell',
+      ignoreBackdropClick: true,
+      keyboard: false,
+    });
+  }
+
+  confirmKnowledgeBaseCreation(): void {
+    const item = this.knowledgeBaseSuggestion();
+    const descricao = item?.observacoesEncerramento?.trim();
+    if (!item || !descricao || this.creatingKnowledgeBase()) {
+      return;
+    }
+
+    this.creatingKnowledgeBase.set(true);
     this.baseConhecimentoService.create({
       titulo: `Chamado #${item.id} - ${item.titulo}`,
       categoria: item.categoria || 'Chamados',
-      descricao: item.observacoesEncerramento,
+      descricao,
       tags: `chamado-${item.id}, ${item.departamento}, ${item.unidade}, ${item.categoria}`,
     }).subscribe({
       next: (created) => {
         this.conhecimentos.set([created, ...this.conhecimentos()]);
+        this.creatingKnowledgeBase.set(false);
+        this.closeKnowledgeBaseSuggestionModal();
         this.toastr.success(`Base de conhecimento criada a partir do chamado #${item.id}.`, 'TI Assistant');
       },
-      error: (error) => this.toastr.error(this.getErrorMessage('Não foi possível criar a base de conhecimento.', error), 'TI Assistant'),
+      error: (error) => {
+        this.creatingKnowledgeBase.set(false);
+        this.toastr.error(this.getErrorMessage('Não foi possível criar a base de conhecimento.', error), 'TI Assistant');
+      },
     });
   }
 

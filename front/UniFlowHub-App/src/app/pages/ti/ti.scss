@@ -621,6 +621,35 @@ textarea {
   line-height: 1.25;
 }
 
+.ti-knowledge-base-modal .uniflow-modal-header h2 {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.ti-knowledge-base-modal .uniflow-modal-header span {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-base-confirm {
+  display: grid;
+  gap: 14px;
+}
+
+.knowledge-base-confirm > p {
+  color: var(--color-muted);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.knowledge-base-confirm .attachment-actions {
+  justify-content: flex-end;
+}
+
 .board-close-form {
   display: grid;
   gap: 14px;
