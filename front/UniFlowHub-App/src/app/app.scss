@@ -1,0 +1,308 @@
+.app-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 100;
+  display: flex;
+  width: 280px;
+  max-height: 100dvh;
+  flex-direction: column;
+  gap: 22px;
+  padding: 22px 18px;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-panel);
+}
+
+:host-context(:is([data-theme='light'], [data-theme='pink'], [data-theme='green'], [data-theme='nissan'], [data-theme='renault'], [data-theme='gm'], [data-theme='peugeot-citroen'], [data-theme='bajaj'], [data-theme='geely'])) .app-sidebar {
+  border-right-color: color-mix(in srgb, var(--color-brand-blue-strong) 70%, #ffffff);
+  background: linear-gradient(180deg, var(--color-brand-blue-strong), var(--color-brand-blue));
+  color: #ffffff;
+}
+
+.app-brand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-brand img {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card-alt);
+}
+
+.app-brand span,
+.app-side-nav {
+  display: grid;
+}
+
+.app-brand small {
+  color: var(--color-brand-blue);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:host-context(:is([data-theme='light'], [data-theme='pink'], [data-theme='green'], [data-theme='nissan'], [data-theme='renault'], [data-theme='gm'], [data-theme='peugeot-citroen'], [data-theme='bajaj'], [data-theme='geely'])) :is(.app-brand, .app-brand small) {
+  color: #ffffff;
+}
+
+.app-brand strong {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.app-side-nav {
+  gap: 7px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-color: color-mix(in srgb, var(--color-brand-blue) 34%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.app-side-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-side-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-side-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-brand-blue) 28%, transparent);
+}
+
+.app-side-nav:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-brand-blue) 46%, transparent);
+}
+
+.nav-group,
+.sub-nav {
+  display: grid;
+  gap: 9px;
+}
+
+.nav-group.has-children {
+  gap: 10px;
+}
+
+.sub-nav {
+  margin-left: 14px;
+  padding-left: 13px;
+  max-height: 0;
+  overflow: hidden;
+  border-left: 1px solid color-mix(in srgb, var(--color-brand-blue) 28%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: max-height 220ms ease, opacity 180ms ease, transform 220ms ease;
+}
+
+.sub-nav.expanded {
+  max-height: 260px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.app-side-nav button {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sub-nav button {
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+:host-context(:is([data-theme='light'], [data-theme='pink'], [data-theme='green'], [data-theme='nissan'], [data-theme='renault'], [data-theme='gm'], [data-theme='peugeot-citroen'], [data-theme='bajaj'], [data-theme='geely'])) .app-side-nav button {
+  color: color-mix(in srgb, #ffffff 78%, var(--color-brand-blue-soft));
+}
+
+.app-side-nav button:hover,
+.app-side-nav button.active {
+  border-color: var(--color-border);
+  background: var(--color-card-alt);
+  color: var(--color-text);
+}
+
+:host-context(:is([data-theme='light'], [data-theme='pink'], [data-theme='green'], [data-theme='nissan'], [data-theme='renault'], [data-theme='gm'], [data-theme='peugeot-citroen'], [data-theme='bajaj'], [data-theme='geely'])) .app-side-nav button:is(:hover, .active) {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.app-side-nav button.active {
+  border-left-color: var(--color-brand-green-strong);
+}
+
+:host-context(:is([data-theme='light'], [data-theme='pink'], [data-theme='green'], [data-theme='nissan'], [data-theme='renault'], [data-theme='gm'], [data-theme='peugeot-citroen'], [data-theme='bajaj'], [data-theme='geely'])) .app-side-nav button.active {
+  border-left-color: #ffffff;
+}
+
+.app-side-nav button.disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.app-side-nav span {
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.app-side-nav small {
+  color: var(--color-muted);
+  line-height: 1.3;
+}
+
+:host-context(:is([data-theme='light'], [data-theme='pink'], [data-theme='green'], [data-theme='nissan'], [data-theme='renault'], [data-theme='gm'], [data-theme='peugeot-citroen'], [data-theme='bajaj'], [data-theme='geely'])) .app-side-nav small {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.app-route-content.with-sidebar {
+  display: block;
+  margin-left: 280px;
+}
+
+.chat-alert-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 10, 22, 0.86);
+}
+
+.chat-alert-modal {
+  display: grid;
+  gap: 18px;
+  width: min(560px, 100%);
+  padding: 26px;
+  border: 1px solid rgba(64, 126, 255, 0.42);
+  border-radius: 8px;
+  background: #111827;
+  color: #f8fafc;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+}
+
+.chat-alert-modal header {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-alert-modal p,
+.chat-alert-modal h2,
+.chat-alert-modal blockquote {
+  margin: 0;
+}
+
+.chat-alert-modal p {
+  color: #93c5fd;
+  font-weight: 900;
+}
+
+.chat-alert-modal blockquote {
+  padding: 16px;
+  border-left: 4px solid #57f49a;
+  border-radius: 6px;
+  background: #0b1220;
+  color: #f8fafc;
+  line-height: 1.45;
+}
+
+.chat-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chat-alert-primary,
+.chat-alert-secondary {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 6px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.chat-alert-primary {
+  border: 0;
+  background: #2f63f4;
+  color: #ffffff;
+}
+
+.chat-alert-secondary {
+  border: 1px solid #334155;
+  background: #1f2937;
+  color: #e5e7eb;
+}
+
+@media (max-width: 860px) {
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    max-width: 100vw;
+    max-height: none;
+    padding: 18px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-side-nav {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    padding-right: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .app-side-nav button {
+    flex: 0 0 min(180px, 72vw);
+  }
+
+  .nav-group {
+    flex: 0 0 auto;
+    min-width: min(220px, 78vw);
+  }
+
+  .sub-nav {
+    margin-left: 0;
+  }
+
+  .app-route-content.with-sidebar {
+    width: 100%;
+    max-width: 100vw;
+    margin-left: 0;
+    overflow-x: hidden;
+  }
+}

@@ -1,0 +1,81 @@
+<main class="login-shell">
+   <section class="brand-panel">
+    <div class="brand-lockup">
+      <div>
+        <p>UniFlowHub</p>
+        <span>Conectando soluções, impulsionando setores</span>
+      </div>
+    </div>
+    <h1>HUB integrado com rastreio claro e acesso por perfil.</h1>
+    <p class="support">
+      Gestores e usuários registram demandas. Administradores dos setores acompanham tudo em uma fila unica.
+    </p>
+  </section>
+
+  <section class="login-card">
+    <img class="login-logo" src="/uniflowhub-logo.png" alt="UniFlowHub" />
+    <div>
+      <p class="eyebrow">Acesso seguro</p>
+      <h2>{{ setupMode() ? 'Primeiro acesso' : 'Entrar no sistema' }}</h2>
+    </div>
+
+    @if (!setupMode()) {
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <label>
+        Email
+        <input type="email" formControlName="email" autocomplete="email" placeholder="voce@empresa.com" />
+      </label>
+
+      <label>
+        Senha
+        <input type="password" formControlName="senha" autocomplete="current-password" placeholder="Sua senha" />
+      </label>
+
+      <button type="submit" [disabled]="loading()">
+        {{ loading() ? 'Entrando...' : 'Entrar' }}
+      </button>
+      @if (canCreateFirstAdmin()) {
+        <button class="ghost" type="button" (click)="setupMode.set(true)">Criar primeiro Admin</button>
+      }
+    </form>
+    } @else {
+    <form [formGroup]="setupForm" (ngSubmit)="createFirstAdmin()">
+      <label>
+        Nome
+        <input formControlName="nome" placeholder="Nome completo" />
+      </label>
+      <label>
+        CPF
+        <input formControlName="cpf" placeholder="000.000.000-00" />
+      </label>
+      <label>
+        Email
+        <input type="email" formControlName="email" placeholder="admin@empresa.com" />
+      </label>
+      <label>
+        Senha inicial
+        <input type="password" formControlName="senha" placeholder="Minimo de 6 caracteres" />
+      </label>
+      <div class="split">
+        <label>
+          Departamento
+          <input formControlName="departamento" />
+        </label>
+        <label>
+          Cargo
+          <input formControlName="cargo" />
+        </label>
+      </div>
+      <label>
+        Data de nascimento
+        <input type="date" formControlName="dataNascimento" />
+      </label>
+
+      <button type="submit" [disabled]="creating()">
+        {{ creating() ? 'Criando...' : 'Criar Admin' }}
+      </button>
+      <button class="ghost" type="button" (click)="setupMode.set(false)">Voltar ao login</button>
+    </form>
+    }
+  </section>
+</main>

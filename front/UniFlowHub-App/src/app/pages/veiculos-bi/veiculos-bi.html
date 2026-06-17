@@ -1,0 +1,659 @@
+<main class="bi-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">UniFlowHub</p>
+        <h1>B.I Venda de Veículos</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="filters">
+    <div class="filter-copy">
+      <p class="system-name">Comercial</p>
+      <h2>Visão executiva de performance, margem, mix, acessorios e F&I.</h2>
+    </div>
+    <div class="filters-table">
+      <label>
+        Empresa
+        <select [value]="empresaNumero() ?? ''" (change)="setEmpresa($any($event.target).value)">
+          <option value="">Todas</option>
+          @for (empresa of empresasDisponiveis(); track empresa.id) {
+            <option [value]="empresa.numero">{{ empresa.numero }} - {{ empresa.nome }}</option>
+          }
+        </select>
+      </label>
+      <div class="filter-field revenda-picker">
+        <span>Revenda</span>
+        <button class="picker-trigger" type="button" (click)="revendaPickerOpen.set(!revendaPickerOpen())">
+          {{ revendasSelecionadasLabel() }}
+        </button>
+        @if (revendaPickerOpen()) {
+          <div class="picker-menu">
+            <button type="button" (click)="clearRevendas()">Todas as revendas</button>
+            @for (revenda of revendasDaEmpresa(); track revenda.id) {
+              <label>
+                <input type="checkbox" [checked]="isRevendaSelected(revenda.numeroRevenda)" (change)="toggleRevenda(revenda.numeroRevenda)" />
+                {{ revenda.numeroRevenda }} - {{ revenda.revenda }}
+              </label>
+            }
+          </div>
+        }
+      </div>
+      <label>
+        Data inicial
+        <input type="date" [value]="dataInicio()" (change)="dataInicio.set($any($event.target).value)" />
+      </label>
+      <label>
+        Data final
+        <input type="date" [value]="dataFim()" (change)="dataFim.set($any($event.target).value)" />
+      </label>
+      <button class="secondary filter-action" type="button" (click)="load()" [disabled]="loading()">
+        {{ loading() ? 'Atualizando...' : 'Atualizar' }}
+      </button>
+      <app-auto-refresh-control
+        storageKey="uniflowhub.autoRefresh.veiculos-bi"
+        [updatedAt]="atualizadoEm()"
+        [loading]="loading()"
+        (refresh)="load()"
+      />
+    </div>
+  </section>
+
+  <nav class="bi-tabs" role="tablist" aria-label="Areas do BI de venda de veiculos">
+    <button type="button" role="tab" [class.active]="activeTab() === 'veiculos'" (click)="setTab('veiculos')">Veiculos</button>
+    <button type="button" role="tab" [class.active]="activeTab() === 'acessorios'" (click)="setTab('acessorios')">Acessorios</button>
+    <button type="button" role="tab" [class.active]="activeTab() === 'retorno-fi'" (click)="setTab('retorno-fi')">Retornos F&I</button>
+  </nav>
+
+  @if (activeTab() === 'veiculos') {
+  <section class="metrics">
+    <article>
+      <span>Realizado total</span>
+      <strong>{{ formatNumber(unidadesTotal()) }}</strong>
+      <p>{{ metaTotal() ? formatPercent(atingimento()) + ' da meta de novos e direta' : 'No periodo selecionado' }}</p>
+    </article>
+    <article>
+      <span>Faturamento</span>
+      <strong>{{ formatMoney(faturamentoTotal()) }}</strong>
+      <p>Ticket medio {{ formatMoney(ticketMedio()) }}</p>
+    </article>
+    <article>
+      <span>Margem</span>
+      <strong>{{ formatMoney(margemTotal()) }}</strong>
+      <p>{{ formatPercent(margemPercentual()) }} sobre faturamento</p>
+    </article>
+    <article>
+      <span>Funil</span>
+      <strong>{{ formatPercent(conversao()) }}</strong>
+      <p>{{ formatNumber(baixadosTotal()) }} baixados de {{ formatNumber(propostasTotal()) }} propostas</p>
+    </article>
+  </section>
+
+  <section class="bi-grid">
+    <article class="panel branch-panel">
+      <header>
+        <div>
+          <p class="system-name">Revendas</p>
+          <h2>Meta x Realizado</h2>
+        </div>
+        <span>Atualizado {{ atualizadoEm() | date: 'dd/MM/yyyy HH:mm' }}</span>
+      </header>
+      <div class="branch-list">
+        @for (item of vendasFiltradas(); track item.empresaNumero + '-' + item.revendaNumero) {
+          <div class="branch-row">
+            <div class="branch-title">
+              <strong>{{ item.filial }}</strong>
+              <span>{{ item.empresaNumero }}/{{ item.revendaNumero }} - {{ item.empresaNome }}</span>
+            </div>
+            <div class="branch-tower">
+              <span class="tower-meta" [style.height.%]="towerHeight(item.metaNovos + item.metaVendaDireta, maxFilial())"></span>
+              <span class="tower-done" [style.height.%]="towerHeight(item.faturadosNovos + item.faturadosDireta, maxFilial())"></span>
+              <span class="tower-seminovos" [style.height.%]="towerHeight(item.seminovos, maxFilial())"></span>
+            </div>
+            <div class="branch-footer">
+              <span>{{ formatPercent(filialAtingimento(item)) }} incluindo seminovos</span>
+              <strong>{{ formatNumber(item.faturadosNovos + item.faturadosDireta + item.seminovos) }} vendidos</strong>
+              <small>{{ formatNumber(item.faturadosNovos + item.faturadosDireta) }} novos/direta - {{ formatNumber(item.seminovos) }} seminovos</small>
+            </div>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel mix-panel">
+      <header>
+        <div>
+          <p class="system-name">Mix</p>
+          <h2>Realizado por tipo</h2>
+        </div>
+      </header>
+      <div class="pie-layout" (mouseleave)="hoveredSlice.set('')">
+        <div class="donut">
+          <svg class="pie-chart" viewBox="0 0 120 120" role="img" aria-label="Mix realizado por tipo">
+            <circle class="donut-base" cx="60" cy="60" r="47"></circle>
+            @for (slice of mixRealizado(); track slice.label; let index = $index) {
+              <g
+                class="donut-segment"
+                [attr.transform]="sliceTransform(mixRealizado(), index, 'mix-' + index)"
+                (mouseenter)="hoveredSlice.set('mix-' + index)"
+                (focus)="hoveredSlice.set('mix-' + index)"
+                tabindex="0"
+              >
+                <path class="donut-slice" [attr.d]="slicePath(mixRealizado(), index)" [style.fill]="slice.color"></path>
+                @if (slicePercent(mixRealizado(), slice.value) >= 7) {
+                  <foreignObject [attr.x]="sliceLabelX(mixRealizado(), index) - 18" [attr.y]="sliceLabelY(mixRealizado(), index) - 9" width="36" height="18">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(mixRealizado(), slice.value)) }}</div>
+                  </foreignObject>
+                }
+              </g>
+            }
+          </svg>
+        </div>
+        <div class="legend-list">
+          @for (slice of mixRealizado(); track slice.label) {
+            <div>
+              <i [style.background]="slice.color"></i>
+              <span>{{ slice.label }}</span>
+              <strong>{{ formatNumber(slice.value) }}</strong>
+            </div>
+          }
+        </div>
+      </div>
+    </article>
+
+    <article class="panel mix-panel">
+      <header>
+        <div>
+          <p class="system-name">Mix x Realizado</p>
+          <h2>Torre de meta contra entrega</h2>
+        </div>
+      </header>
+      <div class="tower-chart">
+        @for (item of mixTower(); track item.label) {
+          <div class="tower-group">
+            <div class="tower-bars">
+              <span class="tower-meta" [style.height.%]="item.meta ? percent(item.meta, maxMixTower()) : 0"></span>
+              <span class="tower-done" [style.height.%]="percent(item.realizado, maxMixTower())" [style.background]="item.color"></span>
+            </div>
+            <strong>{{ item.label }}</strong>
+            <small>
+              @if (item.meta) {
+                {{ formatNumber(item.realizado) }} / {{ formatNumber(item.meta) }}
+              } @else {
+                {{ formatNumber(item.realizado) }} realizado
+              }
+            </small>
+          </div>
+        }
+      </div>
+      <div class="legend-inline">
+        <span><i class="tower-meta-dot"></i> Meta</span>
+        <span><i class="tower-done-dot"></i> Realizado</span>
+      </div>
+    </article>
+
+    <article class="panel daily-panel">
+      <header>
+        <div>
+          <p class="system-name">Entregas</p>
+          <h2>Evolucao diaria em pizzas</h2>
+        </div>
+      </header>
+      <div class="daily-pies" (mouseleave)="hoveredSlice.set('')">
+        @for (item of entregasPies(); track item.data) {
+          <div class="daily-pie-card">
+            <div class="mini-pie">
+              <svg class="pie-chart" viewBox="0 0 120 120" role="img" aria-label="Entregas por tipo">
+                <circle class="donut-base" cx="60" cy="60" r="47"></circle>
+                @for (slice of item.slices; track slice.label; let index = $index) {
+                  <g
+                    class="donut-segment"
+                    [attr.transform]="sliceTransform(item.slices, index, item.data + '-' + index)"
+                    (mouseenter)="hoveredSlice.set(item.data + '-' + index)"
+                    (focus)="hoveredSlice.set(item.data + '-' + index)"
+                    tabindex="0"
+                  >
+                    <path class="donut-slice" [attr.d]="slicePath(item.slices, index)" [style.fill]="slice.color"></path>
+                  </g>
+                }
+              </svg>
+            </div>
+            <span>{{ item.data | date: 'dd/MM' }} - {{ formatNumber(item.total) }} un.</span>
+            <small>{{ item.novos }} novos - {{ item.vendaDireta }} direta - {{ item.seminovos }} seminovos</small>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel">
+      <header>
+        <div>
+          <p class="system-name">Modelos</p>
+          <h2>Top 10 mais vendidos</h2>
+        </div>
+      </header>
+      <div class="rank-list">
+        @for (item of topModelos(); track item.modelo; let i = $index) {
+          <div>
+            <b>{{ i + 1 }}</b>
+            <section>
+              <strong>{{ item.modelo }}</strong>
+              <span>{{ item.familia }} - {{ formatMoney(item.faturamento) }} - {{ formatPercent(item.margemPercentual) }}</span>
+              <p><i [style.width.%]="percent(item.unidades, maxModelo())"></i></p>
+            </section>
+            <em>{{ formatNumber(item.unidades) }}</em>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel">
+      <header>
+        <div>
+          <p class="system-name">Vendedores</p>
+          <h2>Metas por vendedor</h2>
+        </div>
+      </header>
+      <div class="seller-list">
+        @for (item of vendedoresFiltrados(); track item.vendedor) {
+          <div>
+            <header>
+              <strong>{{ item.vendedor }}</strong>
+              <span>{{ item.filial }}</span>
+            </header>
+            <p><i [style.width.%]="percent(item.realizado, item.meta)"></i></p>
+            <footer>
+              <span>{{ formatNumber(item.realizado) }} de {{ formatNumber(item.meta) }} un.</span>
+              <strong>{{ formatPercent(metaPercentual(item)) }}</strong>
+            </footer>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel funnel-panel">
+      <header>
+        <div>
+          <p class="system-name">Funil</p>
+          <h2>Propostas, baixados e faturados</h2>
+        </div>
+      </header>
+      <div class="pie-layout" (mouseleave)="hoveredSlice.set('')">
+        <div class="donut">
+          <svg class="pie-chart" viewBox="0 0 120 120" role="img" aria-label="Funil comercial">
+            <circle class="donut-base" cx="60" cy="60" r="47"></circle>
+            @for (slice of funilSlices(); track slice.label; let index = $index) {
+              <g
+                class="donut-segment"
+                [attr.transform]="sliceTransform(funilSlices(), index, 'funil-' + index)"
+                (mouseenter)="hoveredSlice.set('funil-' + index)"
+                (focus)="hoveredSlice.set('funil-' + index)"
+                tabindex="0"
+              >
+                <path class="donut-slice" [attr.d]="slicePath(funilSlices(), index)" [style.fill]="slice.color"></path>
+                @if (slicePercent(funilSlices(), slice.value) >= 7) {
+                  <foreignObject [attr.x]="sliceLabelX(funilSlices(), index) - 18" [attr.y]="sliceLabelY(funilSlices(), index) - 9" width="36" height="18">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(funilSlices(), slice.value)) }}</div>
+                  </foreignObject>
+                }
+              </g>
+            }
+          </svg>
+        </div>
+        <div class="legend-list">
+          @for (slice of funilSlices(); track slice.label) {
+            <div>
+              <i [style.background]="slice.color"></i>
+              <span>{{ slice.label }}</span>
+              <strong>{{ formatNumber(slice.value) }}</strong>
+            </div>
+          }
+        </div>
+      </div>
+    </article>
+
+    <article class="panel table-panel">
+      <header>
+        <div>
+          <p class="system-name">Vendas por periodo</p>
+          <h2>Revendas no periodo</h2>
+        </div>
+        <span>Mostrando 10 por pagina</span>
+      </header>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>Revenda</th>
+              <th>Meta</th>
+              <th>Anunciados</th>
+              <th>Faturados</th>
+              <th>Seminovos</th>
+              <th>Propostas</th>
+              <th>Faturamento</th>
+              <th>Margem</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of vendasPeriodoPaginadas(); track item.empresaNumero + '-' + item.revendaNumero) {
+              <tr>
+                <td>{{ item.empresaNumero }} - {{ item.empresaNome }}</td>
+                <td><strong>{{ item.revendaNumero }} - {{ item.filial }}</strong></td>
+                <td>{{ formatNumber(item.metaNovos + item.metaVendaDireta) }}</td>
+                <td>{{ formatNumber(item.anunciadosNovos + item.anunciadosDireta) }}</td>
+                <td>{{ formatNumber(item.faturadosNovos + item.faturadosDireta) }}</td>
+                <td>{{ formatNumber(item.seminovos) }}</td>
+                <td>{{ formatNumber(item.propostas) }}</td>
+                <td>{{ formatMoney(item.faturamento) }}</td>
+                <td>{{ formatMoney(item.margem) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <button class="secondary" type="button" (click)="previousVendasPeriodoPage()" [disabled]="vendasPeriodoPage() <= 1">Anterior</button>
+        <span>Pagina {{ vendasPeriodoPage() }} de {{ vendasPeriodoTotalPages() }}</span>
+        <button class="secondary" type="button" (click)="nextVendasPeriodoPage()" [disabled]="vendasPeriodoPage() >= vendasPeriodoTotalPages()">Proxima</button>
+      </div>
+    </article>
+  </section>
+  }
+
+  @if (activeTab() === 'acessorios') {
+  <section class="metrics">
+    <article>
+      <span>Faturamento acessorios</span>
+      <strong>{{ formatMoney(acessoriosFaturamentoTotal()) }}</strong>
+      <p>{{ formatNumber(acessoriosQuantidadeTotal()) }} itens no periodo</p>
+    </article>
+    <article>
+      <span>Rentabilidade</span>
+      <strong>{{ formatMoney(acessoriosRentabilidadeTotal()) }}</strong>
+      <p>{{ formatPercent(acessoriosMargemPercentual()) }} sobre vendas</p>
+    </article>
+    <article>
+      <span>Ticket medio</span>
+      <strong>{{ formatMoney(acessoriosTicketMedio()) }}</strong>
+      <p>Por item vendido</p>
+    </article>
+    <article>
+      <span>Itens ranqueados</span>
+      <strong>{{ formatNumber(acessorios().length) }}</strong>
+      <p>Departamento 7</p>
+    </article>
+  </section>
+
+  <section class="bi-grid accessories-grid">
+    <article class="panel revenue-panel">
+      <header>
+        <div>
+          <p class="system-name">Acessorios</p>
+          <h2>Top itens por faturamento</h2>
+        </div>
+        <span>Atualizado {{ atualizadoEm() | date: 'dd/MM/yyyy HH:mm' }}</span>
+      </header>
+      <div class="accessory-bars">
+        @for (item of acessorios(); track item.codigo) {
+          <div>
+            <header>
+              <strong>{{ item.nome }}</strong>
+              <span>{{ item.codigo }} - {{ item.categoria }}</span>
+            </header>
+            <p><i [style.width.%]="percent(item.faturamento, maxAcessorioFaturamento())"></i></p>
+            <footer>
+              <span>{{ formatNumber(item.quantidade) }} itens</span>
+              <strong>{{ formatMoney(item.faturamento) }}</strong>
+            </footer>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel composition-panel">
+      <header>
+        <div>
+          <p class="system-name">Margem</p>
+          <h2>Composicao do periodo</h2>
+        </div>
+      </header>
+      <div class="margin-kpi">
+        <strong>{{ formatPercent(acessoriosMargemPercentual()) }}</strong>
+        <span>{{ formatMoney(acessoriosRentabilidadeTotal()) }} de rentabilidade sobre {{ formatMoney(acessoriosFaturamentoTotal()) }}</span>
+      </div>
+      <div class="prep-grid">
+        @for (item of acessoriosPreparacao(); track item.titulo) {
+          <div>
+            <span>{{ item.indicador }}</span>
+            <strong>{{ item.titulo }}</strong>
+            <p>{{ item.descricao }}</p>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel table-panel">
+      <header>
+        <div>
+          <p class="system-name">Detalhamento</p>
+          <h2>Acessorios vendidos</h2>
+        </div>
+      </header>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Codigo</th>
+              <th>Acessorio</th>
+              <th>Categoria</th>
+              <th>Quantidade</th>
+              <th>Faturamento</th>
+              <th>Rentabilidade</th>
+              <th>Margem</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of acessorios(); track item.codigo) {
+              <tr>
+                <td>{{ item.codigo }}</td>
+                <td><strong>{{ item.nome }}</strong></td>
+                <td>{{ item.categoria }}</td>
+                <td>{{ formatNumber(item.quantidade) }}</td>
+                <td>{{ formatMoney(item.faturamento) }}</td>
+                <td>{{ formatMoney(item.rentabilidade) }}</td>
+                <td>{{ formatPercent(item.margemPercentual) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+  }
+
+  @if (activeTab() === 'retorno-fi') {
+  <section class="metrics">
+    <article>
+      <span>Retorno F&I</span>
+      <strong>{{ formatMoney(retornoTotal()) }}</strong>
+      <p>{{ formatNumber(retornoContratos()) }} contratos no periodo</p>
+    </article>
+    <article>
+      <span>Valor financiado</span>
+      <strong>{{ formatMoney(retornoValorFinanciado()) }}</strong>
+      <p>{{ formatPercent(retornoSobreVenda()) }} sobre valor de venda</p>
+    </article>
+    <article>
+      <span>Ticket retorno</span>
+      <strong>{{ formatMoney(retornoTicketMedio()) }}</strong>
+      <p>{{ formatPercent(retornoSobreFinanciado()) }} sobre financiado</p>
+    </article>
+    <article>
+      <span>Comissao</span>
+      <strong>{{ formatMoney(retornoComissaoTotal()) }}</strong>
+      <p>Receita de comissao informada</p>
+    </article>
+  </section>
+
+  <section class="bi-grid fi-grid">
+    <article class="panel revenue-panel">
+      <header>
+        <div>
+          <p class="system-name">Financeiras</p>
+          <h2>Retorno por financeira</h2>
+        </div>
+        <span>Atualizado {{ retornoFi()?.atualizadoEm | date: 'dd/MM/yyyy HH:mm' }}</span>
+      </header>
+      <div class="accessory-bars fi-bars">
+        @for (item of retornoFi()?.financeiras ?? []; track item.nome) {
+          <div>
+            <header>
+              <strong>{{ item.nome }}</strong>
+              <span>{{ formatNumber(item.quantidade) }} contratos</span>
+            </header>
+            <p><i [style.width.%]="percent(item.retorno, maxRetornoFinanceira())"></i></p>
+            <footer>
+              <span>{{ formatPercent(retornoPercentual(item)) }} do financiado</span>
+              <strong>{{ formatMoney(item.retorno) }}</strong>
+            </footer>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel">
+      <header>
+        <div>
+          <p class="system-name">Vendedores</p>
+          <h2>Ranking de retorno</h2>
+        </div>
+      </header>
+      <div class="seller-list">
+        @for (item of retornoFi()?.vendedores ?? []; track item.nome) {
+          <div>
+            <header>
+              <strong>{{ item.nome }}</strong>
+              <span>{{ formatNumber(item.quantidade) }} contratos</span>
+            </header>
+            <p><i [style.width.%]="percent(item.retorno, maxRetornoVendedor())"></i></p>
+            <footer>
+              <span>{{ formatMoney(item.valorFinanciado) }} financiado</span>
+              <strong>{{ formatMoney(item.retorno) }}</strong>
+            </footer>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel composition-panel fi-chart-card">
+      <header>
+        <div>
+          <p class="system-name">Composicao</p>
+          <h2>Financiado x retorno</h2>
+        </div>
+      </header>
+      <div class="pie-layout" (mouseleave)="hoveredSlice.set('')">
+        <div class="donut">
+          <svg class="pie-chart" viewBox="0 0 120 120" role="img" aria-label="Financeiro x retorno">
+            <circle class="donut-base" cx="60" cy="60" r="47"></circle>
+            @for (slice of retornoFinanceiroSlices(); track slice.label; let index = $index) {
+              <g
+                class="donut-segment"
+                [attr.transform]="sliceTransform(retornoFinanceiroSlices(), index, 'fi-fin-' + index)"
+                (mouseenter)="hoveredSlice.set('fi-fin-' + index)"
+                (focus)="hoveredSlice.set('fi-fin-' + index)"
+                tabindex="0"
+              >
+                <path class="donut-slice" [attr.d]="slicePath(retornoFinanceiroSlices(), index)" [style.fill]="slice.color"></path>
+                @if (slicePercent(retornoFinanceiroSlices(), slice.value) >= 7) {
+                  <foreignObject [attr.x]="sliceLabelX(retornoFinanceiroSlices(), index) - 18" [attr.y]="sliceLabelY(retornoFinanceiroSlices(), index) - 9" width="36" height="18">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(retornoFinanceiroSlices(), slice.value)) }}</div>
+                  </foreignObject>
+                }
+              </g>
+            }
+          </svg>
+        </div>
+        <div class="legend-list">
+          <div><i style="background:#16a34a"></i><span>Retorno</span><strong>{{ formatMoney(retornoTotal()) }}</strong></div>
+          <div><i style="background:#2563eb"></i><span>Financiado</span><strong>{{ formatMoney(retornoValorFinanciado()) }}</strong></div>
+          <div><i style="background:#64748b"></i><span>Venda</span><strong>{{ formatMoney(retornoValorVenda()) }}</strong></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel fi-chart-card">
+      <header>
+        <div>
+          <p class="system-name">Parcelas</p>
+          <h2>Distribuicao dos contratos</h2>
+        </div>
+      </header>
+      <div class="pie-layout" (mouseleave)="hoveredSlice.set('')">
+        <div class="donut">
+          <svg class="pie-chart" viewBox="0 0 120 120" role="img" aria-label="Distribuicao de contratos por parcelas">
+            <circle class="donut-base" cx="60" cy="60" r="47"></circle>
+            @for (slice of retornoParcelasSlices(); track slice.label; let index = $index) {
+              <g
+                class="donut-segment"
+                [attr.transform]="sliceTransform(retornoParcelasSlices(), index, 'fi-parc-' + index)"
+                (mouseenter)="hoveredSlice.set('fi-parc-' + index)"
+                (focus)="hoveredSlice.set('fi-parc-' + index)"
+                tabindex="0"
+              >
+                <path class="donut-slice" [attr.d]="slicePath(retornoParcelasSlices(), index)" [style.fill]="slice.color"></path>
+                @if (slicePercent(retornoParcelasSlices(), slice.value) >= 7) {
+                  <foreignObject [attr.x]="sliceLabelX(retornoParcelasSlices(), index) - 18" [attr.y]="sliceLabelY(retornoParcelasSlices(), index) - 9" width="36" height="18">
+                    <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(retornoParcelasSlices(), slice.value)) }}</div>
+                  </foreignObject>
+                }
+              </g>
+            }
+          </svg>
+        </div>
+        <div class="legend-list">
+          @for (slice of retornoParcelasSlices(); track slice.label) {
+            <div>
+              <i [style.background]="slice.color"></i>
+              <span>{{ slice.label }}</span>
+              <strong>{{ formatNumber(slice.value) }}</strong>
+            </div>
+          }
+          @if (!retornoParcelasSlices().length) {
+            <div>
+              <i style="background:#cbd5e1"></i>
+              <span>Sem contratos</span>
+              <strong>0</strong>
+            </div>
+          }
+        </div>
+      </div>
+    </article>
+  </section>
+  }
+</main>

@@ -1,0 +1,466 @@
+<main class="repasses-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Veículos Usados</p>
+        <h1>Repasses</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="filters">
+    <div class="filter-copy">
+      <p class="system-name">Comercial</p>
+      <h2>Análise de SEMINOVOS e REPASSES</h2>
+      <p>Resumo de custo contábil, situação e tempo em estoque por empresa e revenda.</p>
+    </div>
+    <div class="filters-table">
+    <label>
+      Empresa
+      <select [ngModel]="empresaSelecionada()" (ngModelChange)="empresaSelecionada.set($event); onEmpresaChange()">
+        <option [ngValue]="null">Todas</option>
+        <option *ngFor="let empresa of empresasRepasse()" [ngValue]="empresa.numero">
+          {{ empresa.numero }} - {{ empresa.nome }}
+        </option>
+      </select>
+    </label>
+
+    <label>
+      Revenda
+      <select [ngModel]="revendaSelecionada()" (ngModelChange)="revendaSelecionada.set($event); onRevendaChange()">
+        <option [ngValue]="null">Todas as revendas</option>
+        <option *ngFor="let revenda of revendasFiltradas()" [ngValue]="revenda.numeroRevenda">
+          {{ revenda.empresaNumero }}.{{ revenda.numeroRevenda }} - {{ revenda.revenda }}
+        </option>
+      </select>
+    </label>
+
+    <label>
+      Data inicial
+      <input type="date" [ngModel]="dataInicio()" (ngModelChange)="dataInicio.set($event); onDateChange()" />
+    </label>
+
+    <label>
+      Data final
+      <input type="date" [ngModel]="dataFim()" (ngModelChange)="dataFim.set($event); onDateChange()" />
+    </label>
+
+    <button type="button" class="primary-button filter-action" (click)="loadDashboard()" [disabled]="loading()">
+      {{ loading() ? 'Atualizando...' : 'Atualizar' }}
+    </button>
+    <app-auto-refresh-control
+      storageKey="uniflowhub.autoRefresh.repasses"
+      [updatedAt]="atualizadoEm()"
+      [loading]="loading()"
+      (refresh)="loadDashboard()"
+    />
+    </div>
+  </section>
+
+  <section class="kpi-grid">
+    <article class="kpi-card">
+      <span>Veículos em estoque</span>
+      <strong>{{ formatNumber(totalVeiculos()) }}</strong>
+      <small>Unidades encontradas no filtro atual</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Custo contábil</span>
+      <strong>{{ formatMoney(custoTotal()) }}</strong>
+      <small>Capital imobilizado em estoque</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Média em estoque</span>
+      <strong>{{ formatNumber(mediaDias()) }} dias</strong>
+      <small>Tempo médio até hoje</small>
+    </article>
+
+    <article class="kpi-card attention">
+      <span>Estoque crítico</span>
+      <strong>{{ formatNumber(estoqueCritico()) }}</strong>
+      <small>Veículos com 90 dias ou mais</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Volume de</span>
+      <strong>{{ formatNumber(resumoTotal().volumeDe) }}</strong>
+      <small>Quantidade na data inicial</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Volume para</span>
+      <strong>{{ formatNumber(resumoTotal().volumePara) }}</strong>
+      <small>Quantidade na data final</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Ticket médio</span>
+      <strong>{{ formatMoney(resumoTotal().ticketMedio) }}</strong>
+      <small>Custo médio por veículo</small>
+    </article>
+
+    <article class="kpi-card" [class.attention]="resumoTotal().distorcao > 0">
+      <span>Distorção</span>
+      <strong>{{ formatSignedMoney(resumoTotal().distorcao) }}</strong>
+      <small>Diferença contra limite autorizado</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Limite autorizado</span>
+      <strong>{{ formatMoney(resumoTotal().limiteAutorizado) }}</strong>
+      <small>Soma dos limites por empresa</small>
+    </article>
+  </section>
+
+  <section class="summary-card">
+    <div class="section-title">
+      <div>
+        <span class="eyebrow">Estatística</span>
+        <h2>Estoque total de repasses e seminovos</h2>
+      </div>
+      <span class="table-count">{{ dataInicio() | date:'dd/MM/yyyy' }} para {{ dataFim() | date:'dd/MM/yyyy' }}</span>
+    </div>
+
+    <div class="company-summary-grid" *ngIf="resumos().length">
+      <button
+        class="company-summary-card"
+        type="button"
+        *ngFor="let resumo of resumos(); trackBy: trackByResumo"
+        [class.over-limit]="resumo.distorcao > 0"
+        (click)="openResumoModal(resumo)"
+      >
+        <header>
+          <div>
+            <strong>{{ nomeEmpresa(resumo.empresa, resumo.nomeEmpresa) }}</strong>
+            <small>{{ formatNumber(resumo.volumePara) }} veículos</small>
+          </div>
+          <span>{{ resumo.empresa }}</span>
+        </header>
+
+        <div class="company-value">
+          <small>Estoque atual</small>
+          <strong>{{ formatMoney(resumo.custoPara) }}</strong>
+        </div>
+
+        <div class="company-bars" aria-hidden="true">
+          <span class="company-track">
+            <i class="company-fill value" [style.width.%]="empresaCustoPercentual(resumo)"></i>
+          </span>
+          <span class="company-track">
+            <i class="company-fill limit" [class.over-limit]="resumo.distorcao > 0" [style.width.%]="empresaLimitePercentual(resumo)"></i>
+          </span>
+        </div>
+
+        <div class="company-card-footer">
+          <span>Limite {{ formatMoney(resumo.limiteAutorizado) }}</span>
+          <strong [class.positive-value]="resumo.distorcao > 0" [class.negative-value]="resumo.distorcao < 0">
+            {{ formatSignedMoney(resumo.distorcao) }}
+          </strong>
+        </div>
+      </button>
+    </div>
+
+    <div class="summary-total-card">
+      <div>
+        <span>Total atual</span>
+        <strong>{{ formatMoney(resumoTotal().custoPara) }}</strong>
+      </div>
+      <div>
+        <span>Volume</span>
+        <strong>{{ formatNumber(resumoTotal().volumePara) }}</strong>
+      </div>
+      <div>
+        <span>Limite autorizado</span>
+        <strong>{{ formatMoney(resumoTotal().limiteAutorizado) }}</strong>
+      </div>
+      <div>
+        <span>Distorção total</span>
+        <strong [class.positive-value]="resumoTotal().distorcao > 0" [class.negative-value]="resumoTotal().distorcao < 0">
+          {{ formatSignedMoney(resumoTotal().distorcao) }}
+        </strong>
+      </div>
+      <div>
+        <span>Ticket médio</span>
+        <strong>{{ formatMoney(resumoTotal().ticketMedio) }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="summary-modal-backdrop" *ngIf="resumoSelecionado() as resumo" (click)="closeResumoModal()">
+    <article class="summary-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+      <header>
+        <div>
+          <span class="eyebrow">Totais por empresa</span>
+          <h2>{{ nomeEmpresa(resumo.empresa, resumo.nomeEmpresa) }}</h2>
+        </div>
+        <button type="button" class="modal-close" (click)="closeResumoModal()" aria-label="Fechar">x</button>
+      </header>
+
+      <div class="modal-metrics">
+        <div>
+          <span>Volume de</span>
+          <strong>{{ formatNumber(resumo.volumeDe) }}</strong>
+        </div>
+        <div>
+          <span>Volume para</span>
+          <strong>{{ formatNumber(resumo.volumePara) }}</strong>
+        </div>
+        <div>
+          <span>Estatística de</span>
+          <strong>{{ formatMoney(resumo.custoDe) }}</strong>
+        </div>
+        <div>
+          <span>Estatística para</span>
+          <strong>{{ formatMoney(resumo.custoPara) }}</strong>
+        </div>
+        <div>
+          <span>Ticket médio</span>
+          <strong>{{ formatMoney(resumo.ticketMedio) }}</strong>
+        </div>
+        <div>
+          <span>Média giro est.</span>
+          <strong>{{ formatNumber(resumo.mediaGiroEstoque) }}</strong>
+        </div>
+        <div>
+          <span>Limite autorizado</span>
+          <strong>{{ formatMoney(resumo.limiteAutorizado) }}</strong>
+        </div>
+        <div>
+          <span>Distorção</span>
+          <strong [class.positive-value]="resumo.distorcao > 0" [class.negative-value]="resumo.distorcao < 0">
+            {{ formatSignedMoney(resumo.distorcao) }}
+          </strong>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="analytics-grid">
+    <article class="chart-card">
+      <div class="section-title">
+        <div>
+          <span class="eyebrow">Top 5</span>
+          <h2>Maior tempo em estoque</h2>
+        </div>
+        <strong>{{ maiorTempo() }} dias</strong>
+      </div>
+
+      <div class="pie-layout" *ngIf="topDiasEstoque().length; else emptyTop">
+        <div class="pie-chart" (mouseleave)="setHoveredTop(null)">
+          <svg class="pie-svg" viewBox="0 0 100 100" role="img" aria-label="Top 5 veículos com maior tempo em estoque">
+            <path
+              *ngFor="let slice of pieSlices()"
+              class="pie-slice"
+              [class.active]="hoveredTopIndex() === slice.index"
+              [attr.d]="slice.path"
+              [attr.fill]="slice.color"
+              tabindex="0"
+              (mouseenter)="setHoveredTop(slice.index)"
+              (focus)="setHoveredTop(slice.index)"
+              (blur)="setHoveredTop(null)"
+            >
+              <title>{{ slice.item.modelo }} - {{ slice.item.placa || 'Sem placa' }} - {{ slice.item.diasEstoque }} dias</title>
+            </path>
+            <text
+              *ngFor="let slice of pieSlices()"
+              class="pie-percent"
+              [attr.x]="slice.labelX"
+              [attr.y]="slice.labelY"
+              [attr.transform]="sliceLabelTransform(slice)"
+              text-anchor="middle"
+              dominant-baseline="central"
+            >
+              {{ formatPercent(slice.percent) }}
+            </text>
+          </svg>
+          <div class="pie-hole">
+            <span>{{ activeTopVehicle().diasEstoque }}</span>
+            <small>dias</small>
+          </div>
+          <div class="pie-tooltip" *ngIf="hoveredTopVehicle() as vehicle">
+            <strong>{{ vehicle.modelo }}</strong>
+            <small>{{ vehicle.placa || 'Sem placa' }}</small>
+          </div>
+        </div>
+
+        <div class="legend-list">
+          <div
+            class="legend-item"
+            *ngFor="let item of topDiasEstoque(); let i = index"
+            [class.active]="hoveredTopIndex() === i"
+            (mouseenter)="setHoveredTop(i)"
+            (mouseleave)="setHoveredTop(null)"
+          >
+            <span class="legend-swatch" [style.background]="legendColor(i)"></span>
+            <div>
+              <strong>{{ item.modelo }}</strong>
+              <small>{{ item.placa || 'Sem placa' }} - {{ item.diasEstoque }} dias</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ng-template #emptyTop>
+        <div class="empty-state">Sem veículos para exibir no gráfico.</div>
+      </ng-template>
+    </article>
+
+    <article class="chart-card">
+      <div class="section-title">
+        <div>
+          <span class="eyebrow">Situação</span>
+          <h2>Distribuição do estoque</h2>
+        </div>
+      </div>
+
+      <div class="status-bars" *ngIf="situacoes().length; else emptySituacao">
+        <div class="status-row" *ngFor="let situacao of situacoes()">
+          <div class="status-row-header">
+            <strong>{{ situacao.nome }}</strong>
+            <span>{{ situacao.total }} Veículos</span>
+          </div>
+          <div class="bar-track">
+            <span class="bar-fill" [style.width.%]="situacao.percentual"></span>
+          </div>
+          <small>{{ formatMoney(situacao.custo) }}</small>
+        </div>
+      </div>
+
+      <ng-template #emptySituacao>
+        <div class="empty-state">Sem situações para o filtro atual.</div>
+      </ng-template>
+    </article>
+  </section>
+
+  <article class="table-card">
+    <div class="section-title">
+      <div>
+        <span class="eyebrow">Detalhamento</span>
+        <h2>Veículos em estoque para repasse</h2>
+      </div>
+      <span class="table-count">{{ veiculosFiltrados().length }} de {{ totalVeiculos() }} registros</span>
+    </div>
+
+    <div class="detail-filters">
+      <label>
+        Placa ou modelo
+        <input
+          type="search"
+          [ngModel]="buscaDetalhe()"
+          (ngModelChange)="setBuscaDetalhe($event)"
+          placeholder="Digite placa ou modelo"
+        />
+      </label>
+
+      <label>
+        Dias inicial
+        <input
+          type="number"
+          min="0"
+          [ngModel]="diasInicio()"
+          (ngModelChange)="setDiasInicio($event)"
+          placeholder="Ex: 30"
+        />
+      </label>
+
+      <label>
+        Dias final
+        <input
+          type="number"
+          min="0"
+          [ngModel]="diasFim()"
+          (ngModelChange)="setDiasFim($event)"
+          placeholder="Ex: 90"
+        />
+      </label>
+
+      <label>
+        Situação
+        <select [ngModel]="situacaoFiltro()" (ngModelChange)="setSituacaoFiltro($event)">
+          <option value="">Todas</option>
+          <option *ngFor="let situacao of situacoesFiltro()" [value]="situacao">{{ situacao }}</option>
+        </select>
+      </label>
+
+      <button class="secondary-button" type="button" (click)="clearDetailFilters()">Limpar pesquisa</button>
+      <button class="primary-button" type="button" (click)="printFilteredPdf()" [disabled]="!veiculosFiltrados().length">Imprimir PDF</button>
+    </div>
+
+    <div class="detail-totals">
+      <div>
+        <span>Total contÃ¡bil filtrado</span>
+        <strong>{{ formatMoney(custoTotalFiltrado()) }}</strong>
+      </div>
+      <div>
+        <span>Total de veÃ­culos filtrado</span>
+        <strong>{{ formatNumber(totalVeiculosFiltrado()) }}</strong>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Empresa / Revenda</th>
+            <th>Modelo</th>
+            <th>Placa</th>
+            <th>Custo contábil</th>
+            <th>Situação</th>
+            <th>Dias estoque</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of pagedVeiculos(); trackBy: trackByVehicle">
+            <td>
+              <strong>{{ nomeEmpresa(item.empresa, item.nomeEmpresa) }}</strong>
+              <small>{{ item.empresa }}.{{ item.revenda }} - {{ item.nomeRevenda }}</small>
+            </td>
+            <td>{{ item.modelo }}</td>
+            <td><span class="plate">{{ item.placa || 'Sem placa' }}</span></td>
+            <td>{{ formatMoney(item.custoContabil) }}</td>
+            <td><span class="status-pill">{{ item.situacao }}</span></td>
+            <td>
+              <strong [class.warn-days]="item.diasEstoque >= 90">{{ item.diasEstoque }}</strong>
+              <small>dias</small>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" *ngIf="veiculosFiltrados().length > pageSize()">
+      <button class="secondary-button" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+      <span>Página {{ page() }} de {{ totalPages() }}</span>
+      <button class="secondary-button" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Próxima</button>
+    </div>
+
+    <div class="empty-state" *ngIf="!loading() && !veiculos().length">Nenhum veículo encontrado para os filtros selecionados.</div>
+    <div class="empty-state" *ngIf="!loading() && veiculos().length && !veiculosFiltrados().length">Nenhum veículo encontrado na pesquisa do detalhamento.</div>
+  </article>
+</main>

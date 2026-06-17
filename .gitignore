@@ -1,0 +1,52 @@
+# Compiled output
+**/dist/
+**/tmp/
+**/out-tsc/
+**/bazel-out/
+**/_deploy/
+*.zip
+*.exe
+
+# Node
+**/node_modules/
+npm-debug.log
+yarn-error.log
+
+# Angular
+**/.angular/cache/
+**/coverage/
+
+# .NET
+**/bin/
+**/obj/
+
+# IDEs
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
+.history/*
+
+# Misc
+.sass-cache/
+connect.lock
+libpeerconnection.log
+testem.log
+typings/
+__screenshots__/
+
+# System
+.DS_Store
+Thumbs.db
+.fake

@@ -1,0 +1,47 @@
+<main class="admin-dashboard">
+  <header class="topbar">
+    <div>
+      <p>Administração</p>
+      <h1>Dashboard do administrador do sistema</h1>
+    </div>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article>
+      <span>Usuários ativos</span>
+      <strong>{{ activeUsers() }}</strong>
+    </article>
+    <article>
+      <span>Perfis em uso</span>
+      <strong>{{ profiles() }}</strong>
+    </article>
+    <article>
+      <span>Total de usuários</span>
+      <strong>{{ users().length }}</strong>
+    </article>
+  </section>
+</main>

@@ -1,0 +1,250 @@
+<main class="hub-layout">
+  <section class="dashboard-shell">
+    <header class="topbar">
+      <div>
+        <p class="system-name">Painel pós-login</p>
+        <h1>{{ dashboardTitle() }}</h1>
+      </div>
+
+      <div class="user-box profile-area">
+        <label class="theme-picker">
+          Tema
+          <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+            @for (option of theme.options; track option.value) {
+              <option [value]="option.value">{{ option.label }}</option>
+            }
+          </select>
+        </label>
+
+        <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+          <span>{{ user()?.nome }}</span>
+          <strong>{{ user()?.role }}</strong>
+        </button>
+
+        @if (profileMenuOpen()) {
+          <div class="profile-menu">
+            <button type="button" (click)="editProfile()">Editar perfil</button>
+            <button type="button" (click)="changePassword()">Trocar senha</button>
+            <button type="button" (click)="logout()">Sair</button>
+          </div>
+        }
+      </div>
+    </header>
+
+    <section class="dashboard-intro">
+      <div>
+        <p class="system-name">{{ dashboardScopeLabel() }}</p>
+        <h2>{{ greeting() }}</h2>
+        <p>{{ dashboardSubtitle() }}</p>
+      </div>
+      <div class="refresh-actions">
+        <app-auto-refresh-control
+          storageKey="uniflowhub.autoRefresh.dashboard"
+          [updatedAt]="atualizadoEm()"
+          [loading]="loading()"
+          (refresh)="loadDashboard()"
+        />
+        <button class="refresh-button" type="button" (click)="loadDashboard()" [disabled]="loading()">
+          {{ loading() ? 'Atualizando...' : 'Atualizar' }}
+        </button>
+      </div>
+    </section>
+
+    @if (isBirthdayToday()) {
+      <section class="birthday-banner" aria-label="Mensagem de aniversario">
+        <div>
+          <p class="system-name">Hoje e seu dia</p>
+          <h2>{{ birthdayGreeting() }}</h2>
+        </div>
+        <span>Parabens!</span>
+      </section>
+    }
+
+    <section class="metrics-grid" aria-label="Indicadores do setor">
+      @for (metric of metrics(); track metric.label) {
+        <article
+          class="metric-card"
+          [class.attention]="metric.tone === 'attention'"
+          [class.danger]="metric.tone === 'danger'"
+          [class.success]="metric.tone === 'success'"
+          [class.neutral]="metric.tone === 'neutral'"
+        >
+          <span>{{ metric.label }}</span>
+          <strong>{{ metric.value }}</strong>
+          <p>{{ metric.detail }}</p>
+        </article>
+      }
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel forecast-panel">
+        <header>
+          <div>
+            <p class="system-name">Clima</p>
+            <h2>Previsão do tempo</h2>
+            <span>{{ forecastLocation() }}</span>
+          </div>
+          <button class="mini-button" type="button" (click)="loadForecast()" [disabled]="forecastLoading()">
+            {{ forecastLoading() ? '...' : 'Atualizar' }}
+          </button>
+        </header>
+
+        @if (forecast().length) {
+          <div class="forecast-list">
+            @for (day of forecast(); track day.date) {
+              <article class="forecast-day">
+                <div class="forecast-day-head">
+                  <i class="weather-icon" [class]="day.iconTone" aria-hidden="true">{{ day.icon }}</i>
+                  <div class="forecast-day-title">
+                    <strong>{{ day.label }}</strong>
+                    <small>{{ day.summary }}</small>
+                  </div>
+                </div>
+                <span class="forecast-temperature">{{ day.temperatureMin }}° / {{ day.temperatureMax }}°</span>
+                <p>{{ day.rainChance }}% de chance de chuva</p>
+              </article>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            <strong>{{ forecastLoading() ? 'Carregando previsão...' : 'Previsão indisponível' }}</strong>
+            <p>{{ forecastError() || 'A previsão aparece aqui assim que os dados forem carregados.' }}</p>
+          </div>
+        }
+      </article>
+
+      <article class="panel useful-links-panel" style="flex: 1 1 100%;">
+        <header>
+          <div>
+            <p class="system-name">Links úteis</p>
+            <h2>Sites mais utilizados</h2>
+          </div>
+        </header>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+          @for (link of usefulLinks(); track link.url) {
+            <a class="useful-link-card" [href]="link.url" target="_blank" rel="noopener noreferrer" style="position: relative;">
+              @if (link.icon === 'outlook') {
+                <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true" style="border-radius: 10px; flex: 0 0 auto;">
+                  <rect width="46" height="46" rx="10" fill="#0078d4" />
+                  <rect x="20" y="11" width="18" height="24" rx="2" fill="#1ca0f2" />
+                  <path d="M20 14h18l-9 7.5L20 14Z" fill="#ffffff" opacity="0.92" />
+                  <rect x="7" y="8" width="21" height="30" rx="5" fill="#0756c9" />
+                  <text x="17.5" y="28" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="900" font-family="Arial, sans-serif">O</text>
+                </svg>
+              } @else if (link.icon === 'whatsapp') {
+                <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true" style="border-radius: 10px; flex: 0 0 auto;">
+                  <rect width="46" height="46" rx="10" fill="#25d366" />
+                  <path d="M13 34l1.8-6A12 12 0 1 1 19 32.2L13 34Z" fill="#ffffff" />
+                  <path d="M20.2 16.8c-.3-.7-.6-.7-.9-.7h-.8c-.3 0-.8.1-1.2.6-.4.4-1.5 1.5-1.5 3.6s1.6 4.2 1.8 4.5c.2.3 3.1 5 7.7 6.7 3.8 1.5 4.6 1.2 5.4 1.1.8-.1 2.7-1.1 3.1-2.2.4-1.1.4-2 .3-2.2-.1-.2-.4-.3-.8-.5l-2.8-1.4c-.4-.2-.7-.2-1 .2-.3.5-1.1 1.4-1.4 1.7-.2.3-.5.3-.9.1-.4-.2-1.8-.7-3.4-2.1-1.2-1.1-2.1-2.5-2.3-2.9-.2-.4 0-.6.2-.8.2-.2.4-.5.6-.7.2-.2.3-.4.5-.7.2-.3.1-.5 0-.8l-1.3-3.2Z" fill="#25d366" />
+                </svg>
+              } @else {
+                <span style="display: grid; width: 46px; height: 46px; place-items: center; border-radius: 10px; background: var(--color-button-soft-bg); color: var(--color-button-soft-text); font-weight: 900;">
+                  <img [src]="faviconUrl(link)" alt="" width="28" height="28" style="border-radius: 6px;" (error)="hideBrokenFavicon($event)" />
+                  {{ link.label.charAt(0).toUpperCase() }}
+                </span>
+              }
+              <span style="display: grid; gap: 4px; min-width: 0;">
+                <strong style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ link.label }}</strong>
+                <small style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ link.description }}</small>
+              </span>
+              @if (!link.locked) {
+                <button type="button" aria-label="Remover link" title="Remover link" (click)="removeUsefulLink(link, $event)" style="position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-muted); font-weight: 900; cursor: pointer;">
+                  ×
+                </button>
+              }
+            </a>
+          }
+        </div>
+
+        <form style="display: flex; flex-wrap: wrap; gap: 10px; align-items: end;" (submit)="$event.preventDefault(); addUsefulLink()">
+          <input style="flex: 1 1 180px; height: 38px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-field); color: var(--color-text);" placeholder="Nome do card" [value]="newLinkName()" (input)="newLinkName.set($any($event.target).value)" />
+          <input style="flex: 1 1 220px; height: 38px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-field); color: var(--color-text);" placeholder="https://site.com" [value]="newLinkUrl()" (input)="newLinkUrl.set($any($event.target).value)" />
+          <input style="flex: 1 1 240px; height: 38px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-field); color: var(--color-text);" placeholder="Descrição" [value]="newLinkDescription()" (input)="newLinkDescription.set($any($event.target).value)" />
+          <button class="mini-button" type="submit">Adicionar</button>
+        </form>
+      </article>
+
+      <article class="panel alerts-panel">
+        <header>
+          <div>
+            <p class="system-name">Alertas</p>
+            <h2>Solicitações que precisam de atenção</h2>
+          </div>
+        </header>
+
+        @if (alerts().length) {
+          <div class="alert-list">
+            @for (alert of alerts(); track alert.id) {
+              <button class="alert-row" type="button" (click)="openAlert(alert)">
+                <span class="sector-pill">{{ alert.sector }}</span>
+                <div>
+                  <strong>{{ alert.title }}</strong>
+                  <p>{{ alert.detail }}</p>
+                </div>
+                <span class="status-pill">{{ alert.status }}</span>
+                <span class="priority-pill">{{ alert.priority }}</span>
+              </button>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            <strong>Nenhum alerta crítico agora.</strong>
+            <p>As solicitações carregadas Não possuem pendências priorizadas para este perfil.</p>
+          </div>
+        }
+      </article>
+
+      <article class="panel actions-panel">
+        <header>
+          <div>
+            <p class="system-name">Ações</p>
+            <h2>Atalhos do perfil</h2>
+          </div>
+        </header>
+
+        <div class="action-list">
+          @for (action of actions(); track action.label) {
+            <button type="button" [class.disabled]="!action.enabled" (click)="openAction(action)">
+              <strong>{{ action.label }}</strong>
+              <span>{{ action.description }}</span>
+            </button>
+          }
+        </div>
+      </article>
+
+      @if (showBirthdays()) {
+        <article class="panel birthday-panel">
+          <header>
+            <div>
+              <p class="system-name">Aniversariantes</p>
+              <h2>Aniversariantes do mes</h2>
+            </div>
+          </header>
+
+          @if (monthBirthdays().length) {
+            <div class="birthday-list">
+              @for (birthday of monthBirthdays(); track birthday.id) {
+                <article class="birthday-row" [class.today]="birthday.isToday">
+                  <span>{{ birthday.day.toString().padStart(2, '0') }}</span>
+                  <div>
+                    <strong>{{ birthday.nome }}</strong>
+                    <p>{{ birthday.departamento || 'Sem departamento' }} - {{ birthday.cargo || 'Sem cargo' }}</p>
+                  </div>
+                  @if (birthday.isToday) {
+                    <em>Hoje</em>
+                  }
+                </article>
+              }
+            </div>
+          } @else {
+            <div class="empty-state">
+              <strong>Nenhum aniversario neste mes.</strong>
+              <p>Quando houver aniversariantes, eles aparecem aqui para o RH acompanhar.</p>
+            </div>
+          }
+        </article>
+      }
+    </section>
+  </section>
+</main>

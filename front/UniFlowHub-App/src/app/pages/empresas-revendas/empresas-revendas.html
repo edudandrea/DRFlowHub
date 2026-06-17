@@ -1,0 +1,144 @@
+<main class="company-shell">
+  <header class="standard-topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img [src]="branding.headerLogo()" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">UniFlowHub</p>
+        <h1>Empresas e Revendas</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="grid">
+    <article class="panel">
+      <div class="panel-title">
+        <div>
+          <h2>Arvore de empresas</h2>
+          <span>{{ empresas().length }} registros</span>
+        </div>
+        <button type="button" (click)="novaEmpresa()">Nova Empresa</button>
+      </div>
+
+      <div class="company-tree">
+        @for (node of empresaTree(); track node.empresa.id) {
+          <section class="company-node" [class.active]="expandedEmpresaId() === node.empresa.id">
+            <div class="company-row">
+              <button class="record-row" type="button" (click)="selectEmpresa(node.empresa)">
+                <span class="code">{{ node.empresa.numero }}</span>
+                <strong>{{ node.empresa.nome }}</strong>
+                <small>{{ node.revendas.length }} revenda(s) cadastrada(s)</small>
+                <span class="row-hint">{{ expandedEmpresaId() === node.empresa.id ? 'Recolher' : 'Ver revendas' }}</span>
+              </button>
+              <div class="company-logo-editor">
+                <img [src]="node.empresa.logoUrl || branding.defaultLogo" [alt]="'Logo de ' + node.empresa.nome" />
+                <label class="secondary logo-upload compact">
+                  Escolher
+                  <input type="file" accept="image/*" [disabled]="savingLogoId() === node.empresa.id" (change)="onCompanyLogoSelected($event, node.empresa)" />
+                </label>
+                <button class="secondary logo-remove" type="button" [disabled]="savingLogoId() === node.empresa.id || !node.empresa.logoUrl" (click)="clearCompanyLogo(node.empresa)">
+                  Remover
+                </button>
+              </div>
+              <button class="secondary action-button" type="button" (click)="editEmpresa(node.empresa)">Editar</button>
+            </div>
+            @if (expandedEmpresaId() === node.empresa.id) {
+              <div class="branch-list">
+                @for (revenda of node.revendas; track revenda.id) {
+                  <button class="branch-row" type="button" (click)="editRevenda(revenda)">
+                    <span>{{ node.empresa.numero }}/{{ revenda.numeroRevenda }}</span>
+                    <strong>{{ revenda.revenda }}</strong>
+                    <small>{{ revenda.cnpj }}</small>
+                    <span class="row-hint">Editar</span>
+                  </button>
+                } @empty {
+                  <p class="empty">Nenhuma revenda cadastrada para esta empresa.</p>
+                }
+                <button class="branch-add" type="button" (click)="novaRevenda(node.empresa.id)">Nova Revenda</button>
+              </div>
+            }
+          </section>
+        } @empty {
+          <p class="empty">Nenhuma empresa cadastrada.</p>
+        }
+      </div>
+    </article>
+
+  </section>
+
+  @if (empresaModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-dialog" [formGroup]="empresaForm" (ngSubmit)="saveEmpresa()" (click)="$event.stopPropagation()">
+        <header>
+          <div>
+            <p>Empresa</p>
+            <h2>{{ selectedEmpresa() ? 'Editar empresa' : 'Nova empresa' }}</h2>
+          </div>
+          <button class="icon-button" type="button" (click)="closeEmpresaModal()">x</button>
+        </header>
+        <div class="form-grid">
+          <label>Codigo <input type="number" formControlName="numero" /></label>
+          <label>Nome <input formControlName="nome" /></label>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeEmpresaModal()">Cancelar</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar empresa' }}</button>
+        </div>
+      </form>
+    </section>
+  }
+
+  @if (revendaModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-dialog" [formGroup]="revendaForm" (ngSubmit)="saveRevenda()" (click)="$event.stopPropagation()">
+        <header>
+          <div>
+            <p>Revenda</p>
+            <h2>{{ selectedRevenda() ? 'Editar revenda' : 'Nova revenda' }}</h2>
+          </div>
+          <button class="icon-button" type="button" (click)="closeRevendaModal()">x</button>
+        </header>
+        <div class="form-grid two">
+          <label>
+            Empresa
+            <select formControlName="empresaId">
+              <option [ngValue]="0">Selecione</option>
+              @for (empresa of empresas(); track empresa.id) {
+                <option [ngValue]="empresa.id">{{ empresa.numero }} - {{ empresa.nome }}</option>
+              }
+            </select>
+          </label>
+          <label>Código Revenda <input type="number" formControlName="numeroRevenda" /></label>
+          <label>Revenda <input formControlName="revenda" /></label>
+          <label>CNPJ <input formControlName="cnpj" /></label>
+          <label class="wide">Endereco <textarea formControlName="endereco" rows="3"></textarea></label>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeRevendaModal()">Cancelar</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar revenda' }}</button>
+        </div>
+      </form>
+    </section>
+  }
+</main>

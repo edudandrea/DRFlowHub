@@ -1,0 +1,385 @@
+<main class="app-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">UniFlowHub</p>
+        <h1>Solicitações de RH</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article>
+      <span>Total</span>
+      <strong>{{ minhasSolicitacoes().length }}</strong>
+    </article>
+    <article>
+      <span>Abertas</span>
+      <strong>{{ abertas() }}</strong>
+    </article>
+    <article>
+      <span>Encerradas</span>
+      <strong>{{ encerradas() }}</strong>
+    </article>
+    <article>
+      <span>A avaliar</span>
+      <strong>{{ avaliacoesPendentes() }}</strong>
+    </article>
+  </section>
+
+  <section class="work-area">
+    <aside class="list-panel">
+      <div class="section-heading">
+        <div>
+          <h2>Minhas solicitações</h2>
+          <p>{{ minhasSolicitacoes().length }} registro(s)</p>
+        </div>
+        <button class="primary" type="button" (click)="openCreateModal()">Abrir solicitação</button>
+      </div>
+
+      <div class="detail-actions">
+        <label>
+          Ordenar
+          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
+            <option value="id">Número</option>
+            <option value="titulo">Título</option>
+            <option value="tipoSolicitacao">Tipo</option>
+            <option value="departamento">Departamento</option>
+            <option value="status">Status</option>
+            <option value="dataSolicitacao">Data</option>
+          </select>
+        </label>
+        <button class="secondary" type="button" (click)="setSort(sortField())">{{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}</button>
+      </div>
+
+      @if (avaliacoesPendentes() > 0) {
+        <p class="satisfaction-alert">Você tem {{ avaliacoesPendentes() }} solicitação(ões) encerrada(s) para avaliar.</p>
+      }
+
+      <div class="request-list">
+        @if (loading()) {
+          <p class="empty">Carregando...</p>
+        } @else if (minhasSolicitacoes().length === 0) {
+          <p class="empty">Nenhuma solicitação criada ainda.</p>
+        } @else {
+          @for (item of pagedSolicitacoes(); track item.id) {
+            <article class="request-card" [class.editable]="canEdit(item)" (click)="openEditModal(item)">
+              <div>
+                <h3>#{{ item.id }} - {{ item.titulo }}</h3>
+                <p>{{ item.tipoSolicitacao }} - {{ item.departamento }}</p>
+              </div>
+              @if (item.responsavel) {
+                <small>Responsável: {{ item.responsavel }}</small>
+              } @else {
+                <small>Sem responsável</small>
+              }
+              <span class="status">{{ item.status }}</span>
+              <small>Criada em {{ item.dataSolicitacao | date: 'dd/MM/yyyy HH:mm' }}</small>
+              @if (item.dataEncerramento) {
+                <small>Encerrada em {{ item.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</small>
+              }
+              @if (item.observacoesEncerramento) {
+                <p>Encerramento: {{ item.observacoesEncerramento }}</p>
+              }
+              @if (canEvaluate(item)) {
+                <form class="satisfaction-form" [formGroup]="satisfactionForm" (click)="$event.stopPropagation()" (ngSubmit)="submitSatisfaction(item)">
+                  <strong>Avalie o atendimento do RH</strong>
+                  <div class="rating-buttons" role="radiogroup" aria-label="Nota de satisfação">
+                    @for (star of [1, 2, 3, 4, 5]; track star) {
+                      <button
+                        type="button"
+                        [class.active]="satisfactionForm.controls.solicitacaoId.value === item.id && star <= satisfactionForm.controls.nota.value"
+                        [attr.aria-label]="star === 1 ? '1 estrela, muito insatisfeito' : star + ' estrelas'"
+                        (click)="setRating(item, star)"
+                      >
+                        *
+                      </button>
+                    }
+                  </div>
+                  <small>1 muito insatisfeito, 5 super satisfeito</small>
+                  <label>
+                    Comentário
+                    <textarea formControlName="comentario" rows="3" placeholder="Opcional"></textarea>
+                  </label>
+                  <button class="primary" type="submit" [disabled]="rating()">
+                    {{ rating() ? 'Enviando...' : 'Enviar avaliação' }}
+                  </button>
+                </form>
+              } @else if (item.satisfacaoNota) {
+                <div class="satisfaction-view">
+                  <strong>Sua avaliação</strong>
+                  <p class="stars">
+                    @for (star of [1, 2, 3, 4, 5]; track star) {
+                      <span [class.filled]="star <= item.satisfacaoNota">*</span>
+                    }
+                  </p>
+                </div>
+              }
+            </article>
+          }
+        }
+      </div>
+      @if (minhasSolicitacoes().length > pageSize()) {
+        <div class="detail-actions">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Próxima</button>
+        </div>
+      }
+    </aside>
+  </section>
+
+  @if (createModalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeCreateModal()">
+      <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rh-create-title" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <p class="system-name">UniFlowHub</p>
+            <h2 id="rh-create-title">Abrir Solicitação</h2>
+            <span>Preencha as informações para o RH avaliar e acompanhar.</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeCreateModal()" [disabled]="saving()">x</button>
+        </div>
+
+        <form class="form-panel modal-form-panel" [formGroup]="form" (ngSubmit)="submit()">
+          <div class="grid two">
+            <label>
+              Tipo
+              <select formControlName="tipoSolicitacao">
+                <option>Admissão</option>
+                <option>Desligamento</option>
+                <option>Ferias</option>
+                <option>Beneficios</option>
+                <option>Alteracao cadastral</option>
+                <option>Atestados médicos</option>
+                <option>Outros</option>
+              </select>
+            </label>
+            <label>
+              Prioridade
+              <select formControlName="prioridade">
+                <option>Baixa</option>
+                <option>média</option>
+                <option>Alta</option>
+                <option>Critica</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Tiítulo
+            <input formControlName="titulo" placeholder="Ex: Solicitar admissao para equipe comercial" />
+          </label>
+
+          <div class="grid two">
+            <label>
+              Solicitante
+              <input formControlName="solicitante" />
+            </label>
+            <label>
+              Unidade
+              <select formControlName="unidade">
+                <option value="">Selecione</option>
+                @for (unidade of unidades(); track unidade.id) {
+                  <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                }
+              </select>
+            </label>
+          </div>
+
+          <div class="grid two">
+            <label>
+              Departamento
+              <input formControlName="departamento" />
+            </label>
+            <label>
+              Responsável
+              <input formControlName="responsavel" placeholder="Opcional" />
+            </label>
+          </div>
+
+          <label>
+            Descrição
+            <textarea formControlName="descricao" rows="5" placeholder="Descreva o contexto, prazo e detalhes importantes"></textarea>
+          </label>
+
+          <label>
+            Observações
+            <textarea formControlName="observacoes" rows="3" placeholder="Inclua detalhes adicionais, prazos ou restricoes"></textarea>
+          </label>
+
+          <label>
+            Anexo
+            <input #anexoInput type="file" accept=".pdf,.doc,.docx,image/*" (change)="onFileSelected($event)" />
+            @if (selectedFileName()) {
+              <small class="file-name">{{ selectedFileName() }}</small>
+            }
+          </label>
+
+          <div class="modal-actions">
+            <button class="secondary" type="button" (click)="closeCreateModal()" [disabled]="saving()">Cancelar</button>
+            <button class="primary" type="submit" [disabled]="saving()">
+              {{ saving() ? 'Enviando...' : 'Enviar solicitação' }}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (editModalOpen() && selected()) {
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeEditModal()">
+      <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rh-edit-title" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <p class="system-name">Solicitação #{{ selected()?.id }}</p>
+            <h2 id="rh-edit-title">Editar solicitação</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeEditModal()" [disabled]="updating()">x</button>
+        </div>
+
+        <form class="form-panel modal-form-panel" [formGroup]="editForm" (ngSubmit)="updateSolicitacao()">
+          <div class="detail-tabs" role="tablist" aria-label="Detalhes da solicitação">
+            <button type="button" [class.active]="detailTab() === 'detalhes'" (click)="detailTab.set('detalhes')">Detalhes</button>
+            <button type="button" [class.active]="detailTab() === 'comunicacao'" (click)="detailTab.set('comunicacao')">Comunicação</button>
+          </div>
+
+          @if (detailTab() === 'detalhes') {
+            @if (isFinalized(selected())) {
+              <p class="notice">Solicitação encerrada ou cancelada. Edicao bloqueada.</p>
+            }
+            <div class="grid two">
+              <label>
+                Tipo
+                <select formControlName="tipoSolicitacao">
+                  <option>Admissão</option>
+                  <option>Desligamento</option>
+                  <option>Ferias</option>
+                  <option>Beneficios</option>
+                  <option>Alteracao cadastral</option>
+                  <option>Atestados médicos</option>
+                  <option>Outros</option>
+                </select>
+              </label>
+              <label>
+                Prioridade
+                <select formControlName="prioridade">
+                  <option>Baixa</option>
+                  <option>média</option>
+                  <option>Alta</option>
+                  <option>Crítica</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Título
+              <input formControlName="titulo" />
+            </label>
+
+            <div class="grid two">
+              <label>
+                Solicitante
+                <input formControlName="solicitante" />
+              </label>
+              <label>
+                Unidade
+                <select formControlName="unidade">
+                  <option value="">Selecione</option>
+                  @for (unidade of unidades(); track unidade.id) {
+                    <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                  }
+                </select>
+              </label>
+            </div>
+
+            <div class="grid two">
+              <label>
+                Departamento
+                <input formControlName="departamento" />
+              </label>
+              <label>
+                Responsável
+                <input formControlName="responsavel" placeholder="Opcional" />
+              </label>
+            </div>
+
+            <label>
+              Descrição
+              <textarea formControlName="descricao" rows="5"></textarea>
+            </label>
+
+            <label>
+              Observacões
+              <textarea formControlName="observacoes" rows="3"></textarea>
+            </label>
+
+            <div class="modal-actions">
+              <button class="secondary" type="button" (click)="closeEditModal()" [disabled]="updating()">Cancelar</button>
+              <button class="primary" type="submit" [disabled]="updating() || isFinalized(selected())">
+                {{ updating() ? 'Salvando...' : 'Salvar solicitação' }}
+              </button>
+            </div>
+          } @else {
+            <section class="communication-panel">
+              <div class="communication-list">
+                @if (loadingComunicacoes()) {
+                  <p class="empty">Carregando comunicação...</p>
+                } @else if (comunicacoes().length === 0) {
+                  <p class="empty">Nenhuma mensagem nesta solicitação.</p>
+                } @else {
+                  @for (mensagem of comunicacoes(); track mensagem.id) {
+                    <article class="message-card" [class.own]="mensagem.autorUserId === user()?.id">
+                      <div>
+                        <strong>{{ mensagem.autorNome }}</strong>
+                        <span>{{ mensagem.autorRole }} - {{ mensagem.dataCriacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+                      </div>
+                      <p>{{ mensagem.mensagem }}</p>
+                    </article>
+                  }
+                }
+              </div>
+
+              @if (isFinalized(selected())) {
+                <p class="notice">Comunicação bloqueada para solicitações encerradas ou canceladas.</p>
+              } @else {
+                <div class="message-form" [formGroup]="messageForm">
+                  <label>
+                    Nova mensagem
+                    <textarea formControlName="mensagem" rows="4" placeholder="Escreva uma atualização para esta solicitação"></textarea>
+                  </label>
+                  <button class="primary" type="button" [disabled]="sendingMessage()" (click)="sendMessage()">
+                    {{ sendingMessage() ? 'Enviando...' : 'Enviar mensagem' }}
+                  </button>
+                </div>
+              }
+            </section>
+          }
+        </form>
+      </section>
+    </div>
+  }
+</main>

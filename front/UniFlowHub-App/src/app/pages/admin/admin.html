@@ -1,0 +1,385 @@
+<main class="admin-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">UniFlowHub</p>
+        <h1>Painel do RH</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <button class="secondary" type="button" (click)="openNewSolicitacao()">Abrir solicitação</button>
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article>
+      <span>Total</span>
+      <strong>{{ solicitacoes().length }}</strong>
+    </article>
+    <article>
+      <span>Abertas</span>
+      <strong>{{ abertas() }}</strong>
+    </article>
+    <article>
+      <span>Alta prioridade</span>
+      <strong>{{ altaPrioridade() }}</strong>
+    </article>
+    <article>
+      <span>Avaliações</span>
+      <strong>{{ avaliacoesRespondidas() }}</strong>
+    </article>
+  </section>
+
+  <section class="admin-grid">
+    <div class="table-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Solicitações</h2>
+          <p>Fila completa para RH e Admin</p>
+        </div>
+        <div class="filters">
+          <input type="search" placeholder="Buscar" [value]="search()" (input)="search.set($any($event.target).value)" />
+          <label>
+            De
+            <input type="date" [value]="dateFrom()" (input)="dateFrom.set($any($event.target).value)" />
+          </label>
+          <label>
+            Ate
+            <input type="date" [value]="dateTo()" (input)="dateTo.set($any($event.target).value)" />
+          </label>
+          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
+            <option value="id">Número</option>
+            <option value="titulo">Título</option>
+            <option value="solicitante">Solicitante</option>
+            <option value="unidade">Unidade</option>
+            <option value="departamento">Departamento</option>
+            <option value="prioridade">Prioridade</option>
+            <option value="status">Status</option>
+            <option value="dataSolicitacao">Data</option>
+          </select>
+          <button class="secondary" type="button" (click)="setSort(sortField())">{{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}</button>
+          <button class="secondary" type="button" (click)="clearDateFilters()">Limpar</button>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Solicitante</th>
+              <th>Unidade</th>
+              <th>Departamento</th>
+              <th>Prioridade</th>
+              <th>Status</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (loading()) {
+              <tr>
+                <td colspan="7">Carregando...</td>
+              </tr>
+            } @else if (filtered().length === 0) {
+              <tr>
+                <td colspan="7">Nenhuma solicitações encontrada.</td>
+              </tr>
+            } @else {
+              @for (item of paged(); track item.id) {
+                <tr [class.active]="selected()?.id === item.id" (click)="select(item)">
+                  <td>{{ item.titulo }}</td>
+                  <td>{{ item.solicitante }}</td>
+                  <td>{{ item.unidade }}</td>
+                  <td>{{ item.departamento }}</td>
+                  <td><span class="tag">{{ item.prioridade }}</span></td>
+                  <td><span class="status">{{ item.status }}</span></td>
+                  <td>{{ item.dataSolicitacao | date: 'dd/MM/yyyy' }}</td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (filtered().length > pageSize()) {
+        <div class="filters">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Próxima</button>
+        </div>
+      }
+    </div>
+
+    <aside class="birthday-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Aniversariantes do mes</h2>
+          <p>Colaboradores com aniversario no mes atual</p>
+        </div>
+      </div>
+
+      @if (aniversariantesMes().length) {
+        <div class="birthday-list">
+          @for (birthday of aniversariantesMes(); track birthday.id) {
+            <article class="birthday-row" [class.today]="birthday.isToday">
+              <span>{{ birthday.day.toString().padStart(2, '0') }}</span>
+              <div>
+                <strong>{{ birthday.nome }}</strong>
+                <p>{{ birthday.departamento || 'Sem departamento' }} - {{ birthday.cargo || 'Sem cargo' }}</p>
+              </div>
+              @if (birthday.isToday) {
+                <em>Hoje</em>
+              }
+            </article>
+          }
+        </div>
+      } @else {
+        <p class="empty">Nenhum aniversariante encontrado neste mes.</p>
+      }
+    </aside>
+  </section>
+
+  @if (modalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
+      <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <p class="system-name">Atendimento #{{ selected()?.id }}</p>
+            <h2 id="modal-title">Atualizar atendimento</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeModal()" [disabled]="saving() || closing() || reopening()">x</button>
+        </div>
+
+        <form class="detail-panel modal-form" [formGroup]="form" (ngSubmit)="update()">
+          <div class="detail-tabs" role="tablist" aria-label="Detalhes da solicitação">
+            <button type="button" [class.active]="detailTab() === 'detalhes'" (click)="detailTab.set('detalhes')">Detalhes</button>
+            <button type="button" [class.active]="detailTab() === 'comunicacao'" (click)="detailTab.set('comunicacao')">Comunicação</button>
+          </div>
+
+          @if (selected()) {
+            @if (detailTab() === 'detalhes') {
+            <label>
+              Título
+              <input formControlName="titulo" />
+            </label>
+
+            <div class="grid two">
+              <label>
+                Unidade
+                <select formControlName="unidade">
+                  @for (unidade of unidades(); track unidade.id) {
+                    <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                  }
+                </select>
+              </label>
+              <label>
+                Tipo
+                <select formControlName="tipoSolicitacao">
+                  <option>Admissao</option>
+                  <option>Desligamento</option>
+                  <option>Ferias</option>
+                  <option>Beneficios</option>
+                  <option>Alteracao cadastral</option>
+                  <option>Atestados Medicos</option>
+                  <option>Outros</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="grid two">
+              <label>
+                Solicitante
+                <input formControlName="solicitante" />
+              </label>
+              <label>
+                Departamento
+                <input formControlName="departamento" />
+              </label>
+            </div>
+
+            <label>
+              Descrição
+              <textarea formControlName="descricao" rows="5"></textarea>
+            </label>
+
+            <label>
+              Observações
+              <textarea formControlName="observacoes" rows="3"></textarea>
+            </label>
+
+            <div class="grid two">
+              <label>
+                Prioridade
+                <select formControlName="prioridade">
+                  <option>Baixa</option>
+                  <option>média</option>
+                  <option>Alta</option>
+                  <option>Critica</option>
+                </select>
+              </label>
+              <label>
+                Status
+                <select formControlName="status">
+                  <option>Aberta</option>
+                  <option>Em análise</option>
+                  <option>Em andamento</option>
+                  <option [disabled]="!selected()?.dataEncerramento">Concluida</option>
+                  <option>Cancelada</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="grid two">
+              <label>
+                Responsável
+                <input formControlName="responsavel" />
+              </label>
+              <label class="attachment-field">
+                Anexo
+                @if (selected()?.anexossUrl) {
+                  <div class="attachment-actions">
+                    <span>{{ attachmentFileName(selected()!.anexossUrl) }}</span>
+                    <button class="secondary" type="button" (click)="previewAttachment()">Previsualizar</button>
+                    <button class="secondary" type="button" (click)="downloadAttachment()">Baixar</button>
+                  </div>
+                } @else {
+                  <span class="empty">Sem anexo</span>
+                }
+              </label>
+            </div>
+
+            @if (attachmentPreviewUrl()) {
+              <section class="attachment-preview">
+                <div class="panel-title">
+                  <div>
+                    <h3>Pre-visualização do anexo</h3>
+                    <p>{{ selected()?.anexossUrl ? attachmentFileName(selected()!.anexossUrl) : '' }}</p>
+                  </div>
+                </div>
+
+                @if (attachmentPreviewType() === 'image') {
+                  <img [src]="attachmentPreviewUrl()" alt="pré-visualização do anexo" />
+                } @else if (attachmentPreviewType() === 'pdf') {
+                  <iframe [src]="attachmentPreviewUrl()" title="pré-visualização do PDF"></iframe>
+                } @else {
+                  <p class="empty">Este tipo de documento Não possui pre-visualizacao no navegador. Use a opção baixar.</p>
+                }
+              </section>
+            }
+
+            <section class="ticket-dates">
+              <span>Criada em {{ selected()?.dataSolicitacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+              @if (selected()?.dataEncerramento) {
+                <span>Encerrada em {{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</span>
+              }
+            </section>
+
+            @if (selected()?.observacoesEncerramento) {
+              <section class="closure-notes">
+                <strong>Observações de encerramento</strong>
+                <p>{{ selected()?.observacoesEncerramento }}</p>
+              </section>
+            }
+
+            @if (selected()?.satisfacaoNota) {
+              <section class="satisfaction-view">
+                <div>
+                  <strong>Satisfação do usuário</strong>
+                  <span>{{ selected()?.dataAvaliacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+                </div>
+                <p class="stars">
+                  @for (star of [1, 2, 3, 4, 5]; track star) {
+                    <span [class.filled]="star <= (selected()?.satisfacaoNota ?? 0)">â˜…</span>
+                  }
+                </p>
+                @if (selected()?.satisfacaoComentario) {
+                  <p>{{ selected()?.satisfacaoComentario }}</p>
+                }
+              </section>
+            }
+
+            <div class="modal-actions">
+              <button class="secondary" type="button" (click)="closeModal()" [disabled]="saving() || closing() || reopening()">Cancelar</button>
+              <button class="secondary" type="button" [disabled]="reopening() || !selected()?.dataEncerramento" (click)="reopenSolicitacao()">
+                {{ reopening() ? 'Reabrindo...' : 'Reabrir solicitação' }}
+              </button>
+              <button class="primary" type="submit" [disabled]="saving() || !!selected()?.dataEncerramento">
+                {{ saving() ? 'Salvando...' : 'Salvar atualização' }}
+              </button>
+            </div>
+
+            @if (!selected()?.dataEncerramento) {
+              <div class="close-form" [formGroup]="closeForm">
+                <label>
+                  Observações de encerramento
+                  <textarea formControlName="observacoesEncerramento" rows="3" placeholder="Descreva a conclusao do atendimento antes de encerrar"></textarea>
+                </label>
+                <button class="danger" type="button" [disabled]="closing()" (click)="closeSolicitacao()">
+                  {{ closing() ? 'Encerrando...' : 'Encerrar solicitação' }}
+                </button>
+              </div>
+            }
+            } @else {
+              <section class="communication-panel">
+                <div class="communication-list">
+                  @if (loadingComunicacoes()) {
+                    <p class="empty">Carregando comunicação...</p>
+                  } @else if (comunicacoes().length === 0) {
+                    <p class="empty">Nenhuma mensagem nesta solicitação.</p>
+                  } @else {
+                    @for (mensagem of comunicacoes(); track mensagem.id) {
+                      <article class="message-card" [class.own]="mensagem.autorUserId === user()?.id">
+                        <div>
+                          <strong>{{ mensagem.autorNome }}</strong>
+                          <span>{{ mensagem.autorRole }} - {{ mensagem.dataCriacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+                        </div>
+                        <p>{{ mensagem.mensagem }}</p>
+                      </article>
+                    }
+                  }
+                </div>
+
+                @if (isFinalized(selected())) {
+                  <p class="notice">Comunicação bloqueada para solicitações encerradas ou canceladas.</p>
+                } @else {
+                  <div class="message-form" [formGroup]="messageForm">
+                    <label>
+                      Nova mensagem
+                      <textarea formControlName="mensagem" rows="4" placeholder="Escreva uma atualização para esta solicitação"></textarea>
+                    </label>
+                    <button class="primary" type="button" [disabled]="sendingMessage()" (click)="sendMessage()">
+                      {{ sendingMessage() ? 'Enviando...' : 'Enviar mensagem' }}
+                    </button>
+                  </div>
+                }
+              </section>
+            }
+          } @else {
+            <p class="empty">Selecione uma solicitação para editar.</p>
+          }
+        </form>
+      </section>
+    </div>
+  }
+</main>

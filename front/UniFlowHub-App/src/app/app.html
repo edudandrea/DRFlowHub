@@ -1,0 +1,82 @@
+<ngx-spinner
+  [bdColor]="spinnerBackdropColor()"
+  size="medium"
+  color="#18d4b4"
+  type="ball-scale-multiple"
+  [fullScreen]="true"
+>
+  <div class="brand-spinner" role="status" aria-live="polite">
+    <img class="brand-spinner-logo" [src]="branding.headerLogo()" alt="UniFlowHub" />
+    <p class="spinner-text">Carregando...</p>
+  </div>
+</ngx-spinner>
+
+@if (showSidebar()) {
+  <aside class="app-sidebar" aria-label="Menu de departamentos">
+    <button class="app-brand" type="button" (click)="openShellLink(shellLinks[0])" aria-label="Ir para o dashboard">
+      <img [src]="branding.defaultLogo" alt="UniFlowHub" />
+      <span>
+        <small>UniFlowHub</small>
+        <strong>Departamentos</strong>
+      </span>
+    </button>
+
+    <nav class="app-side-nav">
+      @for (link of visibleShellLinks(); track link.label) {
+        <div class="nav-group" [class.has-children]="visibleChildren(link).length > 0">
+          <button
+            type="button"
+            [class.active]="isActive(link) || hasActiveChild(link)"
+            [class.disabled]="!link.enabled"
+            [attr.aria-expanded]="visibleChildren(link).length > 0 ? isExpanded(link) : null"
+            (click)="openShellLink(link)"
+          >
+            <span>{{ link.label }}</span>
+            <small>{{ link.description }}</small>
+          </button>
+          @if (visibleChildren(link).length > 0) {
+            <div
+              class="sub-nav"
+              [class.expanded]="isExpanded(link)"
+              [attr.aria-hidden]="!isExpanded(link)"
+              [attr.aria-label]="'Submenu ' + link.label"
+            >
+              @for (child of visibleChildren(link); track child.label) {
+                <button
+                  type="button"
+                  [class.active]="isActive(child)"
+                  [class.disabled]="!child.enabled"
+                  (click)="openShellLink(child)"
+                >
+                  <span>{{ child.label }}</span>
+                  <small>{{ child.description }}</small>
+                </button>
+              }
+            </div>
+          }
+        </div>
+      }
+    </nav>
+  </aside>
+}
+
+<section class="app-route-content" [class.with-sidebar]="showSidebar()">
+  <router-outlet />
+</section>
+<app-profile-dialog />
+
+@if (chatAlert.message(); as msg) {
+  <div class="chat-alert-backdrop" role="alertdialog" aria-modal="true" aria-label="Nova mensagem do chamado">
+    <section class="chat-alert-modal">
+      <header>
+        <p>Nova mensagem no chamado #{{ msg.chamadoTIId }}</p>
+        <h2>{{ msg.autorNome }}</h2>
+      </header>
+      <blockquote>{{ msg.mensagem }}</blockquote>
+      <div class="chat-alert-actions">
+        <button type="button" class="chat-alert-primary" (click)="chatAlert.respond()">Responder agora</button>
+        <button type="button" class="chat-alert-secondary" (click)="chatAlert.dismiss()">Li a mensagem</button>
+      </div>
+    </section>
+  </div>
+}

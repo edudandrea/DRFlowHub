@@ -1,0 +1,201 @@
+<main class="monitor-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">TI</p>
+        <h1>Monitoramento</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article>
+      <span>Total</span>
+      <strong>{{ itens().length }}</strong>
+    </article>
+    <article class="online">
+      <span>Online</span>
+      <strong>{{ onlineCount() }}</strong>
+    </article>
+    <article class="offline">
+      <span>Offline</span>
+      <strong>{{ offlineCount() }}</strong>
+    </article>
+    <article>
+      <span>Pendente</span>
+      <strong>{{ pendingCount() }}</strong>
+    </article>
+  </section>
+
+  <section class="monitor-grid">
+    <form class="panel monitor-form" [formGroup]="form" (ngSubmit)="addItem()">
+      <div class="section-heading">
+        <div>
+          <h2>Novo monitor</h2>
+          <p>Cadastre links de internet, firewalls ou conexoes com endpoint HTTP/HTTPS.</p>
+        </div>
+        <button class="primary" type="submit">Cadastrar</button>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          Nome
+          <input formControlName="nome" placeholder="Ex: Link Vivo Matriz" />
+        </label>
+        <label>
+          Tipo
+          <select formControlName="tipo">
+            <option>Link de internet</option>
+            <option>Firewall</option>
+            <option>Conexao</option>
+          </select>
+        </label>
+        <label>
+          IP ou URL
+          <input formControlName="alvo" placeholder="10.0.2.1 ou https://firewall.local" />
+        </label>
+        <label>
+          Consulta a cada
+          <div class="interval-input">
+            <input formControlName="intervaloSegundos" type="number" min="10" step="5" />
+            <span>seg</span>
+          </div>
+        </label>
+      </div>
+    </form>
+
+    <section class="panel list-panel">
+      <div class="section-heading">
+        <div>
+          <h2>Links e firewalls</h2>
+          <p>{{ itens().length }} item(ns) cadastrados</p>
+        </div>
+        <button class="secondary" type="button" (click)="testAll()" [disabled]="testingAll() || itens().length === 0">
+          {{ testingAll() ? 'Testando...' : 'Testar agora' }}
+        </button>
+      </div>
+
+      @if (itens().length === 0) {
+        <p class="empty">Nenhum link ou firewall cadastrado.</p>
+      } @else {
+        <div class="monitor-list">
+          @for (item of itens(); track item.id) {
+            <article class="monitor-card" [class.online]="item.status === 'online'" [class.offline]="item.status === 'offline'">
+              <div class="monitor-card-head">
+                <span class="status-dot" [class]="item.status"></span>
+                <div>
+                  <h3>{{ item.nome }}</h3>
+                  <p>{{ item.tipo }} - {{ formatTarget(item.alvo) }}</p>
+                </div>
+                <strong class="status-pill" [class]="item.status">{{ statusLabel(item.status) }}</strong>
+              </div>
+
+              <div class="monitor-meta">
+                <span>
+                  Intervalo
+                  <strong>{{ item.intervaloSegundos }}s</strong>
+                </span>
+                <span>
+                  Resposta
+                  <strong>{{ item.tempoRespostaMs ? item.tempoRespostaMs + 'ms' : '-' }}</strong>
+                </span>
+                <span>
+                  Ultima consulta
+                  <strong>{{ item.ultimaConsulta ? (item.ultimaConsulta | date: 'dd/MM/yyyy HH:mm:ss') : '-' }}</strong>
+                </span>
+              </div>
+
+              @if (item.erro) {
+                <p class="error-text">{{ item.erro }}</p>
+              }
+
+              <div class="actions">
+                <button class="secondary" type="button" (click)="testItem(item)" [disabled]="item.status === 'testando'">
+                  {{ item.status === 'testando' ? 'Testando...' : 'Testar' }}
+                </button>
+                <button class="secondary" type="button" (click)="openEditModal(item)">Editar</button>
+                <button class="danger" type="button" (click)="removeItem(item)">Remover</button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+  </section>
+
+  @if (editingItem()) {
+    <section class="modal-backdrop" role="presentation" (click)="closeEditModal()">
+      <form
+        class="edit-modal"
+        [formGroup]="editForm"
+        (ngSubmit)="saveEdit()"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Editar monitoramento"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="modal-heading">
+          <div>
+            <p class="system-name">Monitoramento</p>
+            <h2>Editar monitor</h2>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" (click)="closeEditModal()">x</button>
+        </div>
+
+        <div class="form-grid edit-grid">
+          <label>
+            Nome
+            <input formControlName="nome" placeholder="Ex: Link Vivo Matriz" />
+          </label>
+          <label>
+            Tipo
+            <select formControlName="tipo">
+              <option>Link de internet</option>
+              <option>Firewall</option>
+              <option>Conexao</option>
+            </select>
+          </label>
+          <label>
+            IP ou URL
+            <input formControlName="alvo" placeholder="192.168.1.254 ou https://firewall.local" />
+          </label>
+          <label>
+            Consulta a cada
+            <div class="interval-input">
+              <input formControlName="intervaloSegundos" type="number" min="10" step="5" />
+              <span>seg</span>
+            </div>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeEditModal()">Cancelar</button>
+          <button class="primary" type="submit">Salvar alteracoes</button>
+        </div>
+      </form>
+    </section>
+  }
+</main>

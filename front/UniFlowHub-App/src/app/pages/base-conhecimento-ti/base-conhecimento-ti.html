@@ -1,0 +1,119 @@
+<main class="knowledge-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">TI</p>
+        <h1>Base de conhecimento</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article><span>Total</span><strong>{{ itens().length }}</strong></article>
+    <article><span>Categorias</span><strong>{{ categorias() }}</strong></article>
+    <article><span>Com anexos</span><strong>{{ totalComAnexo() }}</strong></article>
+  </section>
+
+  <section class="knowledge-grid">
+    <aside class="list-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Manuais e procedimentos</p>
+          <h2>Conhecimentos cadastrados</h2>
+          <p>{{ filtered().length }} registro(s)</p>
+        </div>
+        <button class="primary" type="button" (click)="openNew()">Novo conhecimento</button>
+      </div>
+      <input type="search" placeholder="Buscar por título, categoria, tags ou manual" [value]="search()" (input)="search.set($any($event.target).value)" />
+
+      <div class="knowledge-list">
+        @if (loading()) {
+          <p class="empty">Carregando...</p>
+        } @else if (filtered().length === 0) {
+          <p class="empty">Nenhum conhecimento encontrado.</p>
+        } @else {
+          @for (item of filtered(); track item.id) {
+            <article class="knowledge-card" (click)="select(item)">
+              <div class="card-title">
+                <span>{{ item.categoria || 'Geral' }}</span>
+                <small>{{ (item.dataAtualizacao || item.dataCadastro) | date: 'dd/MM/yyyy HH:mm' }}</small>
+              </div>
+              <h3>{{ item.titulo }}</h3>
+              <p>{{ item.descricao }}</p>
+              @if (item.tags) {
+                <small>Tags: {{ item.tags }}</small>
+              }
+              @if (item.arquivoNome) {
+                <button class="link-button" type="button" (click)="$event.stopPropagation(); downloadDocument(item)">
+                  {{ item.arquivoNome }}
+                </button>
+              }
+            </article>
+          }
+        }
+      </div>
+    </aside>
+  </section>
+
+  @if (modalOpen()) {
+    <section class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
+      <form class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="knowledge-modal-title" [formGroup]="form" (ngSubmit)="submit()" (click)="$event.stopPropagation()">
+        <div class="section-heading modal-heading">
+          <div>
+            <h2 id="knowledge-modal-title">{{ selected() ? 'Editar conhecimento' : 'Novo conhecimento' }}</h2>
+            <p>Registre procedimentos, manuais e documentos uteis para o setor de TI.</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" (click)="closeModal()">x</button>
+        </div>
+
+        <div class="grid two">
+          <label>Título<input formControlName="titulo" /></label>
+          <label>Categoria<input formControlName="categoria" /></label>
+        </div>
+        <label>Descricao<textarea formControlName="descricao" rows="6"></textarea></label>
+        <label>Tags<input formControlName="tags" placeholder="rede, impressora, sistema" /></label>
+        <label>
+          Documento ou manual
+          <input #documentoInput type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*" (change)="onFileSelected($event)" />
+          @if (selectedFileName()) {
+            <small class="file-name">{{ selectedFileName() }}</small>
+          } @else if (selected()?.arquivoNome) {
+            <small class="file-name">Atual: {{ selected()?.arquivoNome }}</small>
+          }
+        </label>
+
+        <div class="modal-actions">
+          @if (selected()?.arquivoUrl) {
+            <button class="secondary" type="button" (click)="downloadDocument()">Baixar documento</button>
+          }
+          @if (selected()) {
+            <button class="danger" type="button" [disabled]="saving()" (click)="deleteSelected()">Remover</button>
+          }
+          <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar' }}</button>
+        </div>
+      </form>
+    </section>
+  }
+</main>

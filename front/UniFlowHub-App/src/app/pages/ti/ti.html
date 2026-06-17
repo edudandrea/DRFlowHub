@@ -1,0 +1,1373 @@
+<main class="ti-shell">
+  <header class="topbar">
+    <button
+      class="brand-heading"
+      type="button"
+      (click)="goHome()"
+      aria-label="Ir para a tela inicial"
+    >
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">UniFlowHub</p>
+        <h1>Chamados de TI</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button
+        class="profile-trigger"
+        type="button"
+        (click)="profileMenuOpen.set(!profileMenuOpen())"
+      >
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article
+      class="metric-card attention"
+      [class.active]="metricFilter() === 'abertos'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('abertos')"
+      (keydown.enter)="setMetricFilter('abertos')"
+    >
+      <span>Chamados abertos</span>
+      <strong>{{ abertos() }}</strong>
+      <small [class]="metricTrendClass('abertos')">{{ metricTrend('abertos') }}</small>
+    </article>
+    <article
+      class="metric-card warning"
+      [class.active]="metricFilter() === 'em-atendimento'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('em-atendimento')"
+      (keydown.enter)="setMetricFilter('em-atendimento')"
+    >
+      <span>Em atendimento</span>
+      <strong>{{ emAtendimento() }}</strong>
+      <small [class]="metricTrendClass('em-atendimento')">{{ metricTrend('em-atendimento') }}</small>
+    </article>
+    <article class="metric-card neutral">
+      <span>Chamados por setor</span>
+      <strong class="metric-text">{{ chamadosPorSetor() }}</strong>
+    </article>
+    <article
+      class="metric-card success"
+      [class.active]="metricFilter() === 'sla-cumprido'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('sla-cumprido')"
+      (keydown.enter)="setMetricFilter('sla-cumprido')"
+    >
+      <span>SLA cumprido</span>
+      <strong>{{ slaCumprido() }}</strong>
+      <small [class]="metricTrendClass('sla-cumprido')">{{ metricTrend('sla-cumprido') }}</small>
+    </article>
+    <article
+      class="metric-card danger"
+      [class.active]="metricFilter() === 'sla-vencido'"
+      role="button"
+      tabindex="0"
+      (click)="setMetricFilter('sla-vencido')"
+      (keydown.enter)="setMetricFilter('sla-vencido')"
+    >
+      <span>SLA vencido</span>
+      <strong>{{ slaVencido() }}</strong>
+      <small [class]="metricTrendClass('sla-vencido')">{{ metricTrend('sla-vencido') }}</small>
+    </article>
+    <article class="metric-card neutral">
+      <span>Equipamentos por unidade</span>
+      <strong class="metric-text">{{ equipamentosPorUnidade() }}</strong>
+    </article>
+    <article
+      class="metric-card success"
+      role="button"
+      tabindex="0"
+      (click)="openMonitoring()"
+      (keydown.enter)="openMonitoring()"
+    >
+      <span>Disponibilidade dos links</span>
+      <strong>{{ disponibilidadeLinks() }}</strong>
+    </article>
+    @if (canManage()) {
+      <article
+        class="metric-card response-metric answered"
+        [class.active]="metricFilter() === 'respondidos'"
+        role="button"
+        tabindex="0"
+        (click)="setMetricFilter('respondidos')"
+        (keydown.enter)="setMetricFilter('respondidos')"
+      >
+        <span>Chamado respondido</span>
+        <strong>{{ chamadosRespondidos() }}</strong>
+        <small [class]="metricTrendClass('respondidos')">{{ metricTrend('respondidos') }}</small>
+      </article>
+    }
+  </section>
+
+  <section class="ti-grid">
+    <aside class="list-panel">
+      <div class="section-heading">
+        <div>
+          <h2>
+            {{
+              canManage() && activeTab() === 'concluidos'
+                ? 'Chamados concluidos'
+                : canManage()
+                  ? 'Fila de chamados'
+                  : 'Meus chamados'
+            }}
+          </h2>
+          <p>{{ filteredChamados().length }} registro(s)</p>
+        </div>
+        <button
+          class="primary"
+          type="button"
+          (click)="openCreateTicketModal(createTicketModalTemplate)"
+        >
+          Abrir chamado
+        </button>
+      </div>
+
+      <label class="filter-field">
+        Filtrar chamados
+        <input
+          type="search"
+          [value]="filterTerm()"
+          (input)="setFilter($any($event.target).value)"
+          placeholder="Número, título, responsável ou data"
+        />
+      </label>
+
+      @if (canManage()) {
+        <div class="tabs queue-tabs top-queue-tabs" role="tablist" aria-label="Filtros de chamados de TI">
+          <button
+            type="button"
+            [class.active]="activeTab() === 'pendentes'"
+            (click)="setTab('pendentes')"
+          >
+            Pendentes
+          </button>
+          <button type="button" [class.active]="activeTab() === 'meus'" (click)="setTab('meus')">
+            Meus chamados
+          </button>
+          <button type="button" [class.active]="activeTab() === 'todos'" (click)="setTab('todos')">
+            Todos
+          </button>
+          <button
+            type="button"
+            [class.active]="activeTab() === 'concluidos'"
+            (click)="setTab('concluidos')"
+          >
+            Concluídos
+          </button>
+        </div>
+      }
+
+      <div class="date-filters">
+        <label>
+          De
+          <input
+            type="date"
+            [value]="dateFrom()"
+            (input)="dateFrom.set($any($event.target).value)"
+          />
+        </label>
+        <label>
+          Ate
+          <input type="date" [value]="dateTo()" (input)="dateTo.set($any($event.target).value)" />
+        </label>
+        <button class="secondary" type="button" (click)="clearDateFilters()">Limpar período</button>
+      </div>
+
+      <div class="date-filters">
+        <label>
+          Ordenar
+          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
+            <option value="id">Número</option>
+            <option value="titulo">Título</option>
+            <option value="solicitante">Solicitante</option>
+            <option value="unidade">Unidade</option>
+            <option value="departamento">Departamento</option>
+            <option value="prioridade">Prioridade</option>
+            <option value="status">Status</option>
+            <option value="dataAbertura">Data</option>
+          </select>
+        </label>
+        <button class="secondary" type="button" (click)="setSort(sortField())">
+          {{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}
+        </button>
+      </div>
+
+      <div class="date-filters queue-filter-grid">
+        <label>
+          Responsável
+          <select [value]="responsibleFilter()" (change)="setResponsibleFilter($any($event.target).value)">
+            <option value="">Todos</option>
+            <option value="Sem responsavel">Sem responsável</option>
+            @for (responsavel of responsavelOptions(); track responsavel) {
+              <option [value]="responsavel">{{ responsavel }}</option>
+            }
+          </select>
+        </label>
+        <button class="secondary" type="button" (click)="clearQueueFilters()">Limpar filtros</button>
+      </div>
+
+      @if (createdTicketNumber()) {
+        <p class="notice">Chamado #{{ createdTicketNumber() }} criado com sucesso.</p>
+      }
+      @if (!canManage() && avaliacoesPendentes() > 0) {
+        <button
+          class="satisfaction-alert"
+          type="button"
+          (click)="focusPendingEvaluation(approvalModalTemplate, satisfactionModalTemplate)"
+        >
+          Você tem {{ avaliacoesPendentes() }} chamado(s) encerrado(s) para aprovar ou avaliar
+        </button>
+      }
+
+      @if (canManage()) {
+        <section class="report-panel">
+          <div>
+            <strong>Relatório de satisfação</strong>
+            <small
+              >{{ satisfactionReportCount() }} avaliações no período - média
+              {{ satisfactionReportAverage() }}</small
+            >
+          </div>
+          <div class="date-filters compact-report-filters">
+            <label>
+              De
+              <input
+                type="date"
+                [value]="reportDateFrom()"
+                (input)="reportDateFrom.set($any($event.target).value)"
+              />
+            </label>
+            <label>
+              Ate
+              <input
+                type="date"
+                [value]="reportDateTo()"
+                (input)="reportDateTo.set($any($event.target).value)"
+              />
+            </label>
+            <button
+              class="secondary"
+              type="button"
+              (click)="reportDateFrom.set(''); reportDateTo.set('')"
+            >
+              Limpar
+            </button>
+            <button
+              class="primary report-button"
+              type="button"
+              (click)="generateSatisfactionPdf()"
+              [disabled]="generatingReport()"
+            >
+              {{ generatingReport() ? 'Gerando...' : 'Salvar PDF' }}
+            </button>
+          </div>
+        </section>
+
+        <div class="tabs legacy-bottom-tabs" role="tablist" aria-label="Filtros de chamados de TI">
+          <button
+            type="button"
+            [class.active]="activeTab() === 'pendentes'"
+            (click)="setTab('pendentes')"
+          >
+            Pendentes
+          </button>
+          <button type="button" [class.active]="activeTab() === 'meus'" (click)="setTab('meus')">
+            Meus chamados
+          </button>
+          <button type="button" [class.active]="activeTab() === 'todos'" (click)="setTab('todos')">
+            Todos
+          </button>
+          <button
+            type="button"
+            [class.active]="activeTab() === 'concluidos'"
+            (click)="setTab('concluidos')"
+          >
+            Concluídos
+          </button>
+        </div>
+      }
+
+      @if (completedSearchHint()) {
+        <p class="completed-hint">{{ completedSearchHint() }}</p>
+      }
+
+      @if (movementAlerts().length > 0) {
+        <div class="response-alerts" aria-label="Chamados respondidos">
+          @for (alert of movementAlerts(); track alert.id) {
+            <button
+              class="request-card response-alert-card"
+              type="button"
+              (click)="openMovementAlert(alert)"
+            >
+              <span>Chamado respondido</span>
+              <strong>#{{ alert.ticketId }}</strong>
+              <small>{{ alert.title }}</small>
+            </button>
+          }
+        </div>
+      }
+
+      <div class="ticket-board">
+        @if (loading()) {
+          <p class="empty">Carregando...</p>
+        } @else if (filteredChamados().length === 0) {
+          <p class="empty">Nenhum chamado encontrado.</p>
+        } @else {
+          @for (column of ticketColumns(); track column.key) {
+            <section class="ticket-column">
+              <header>
+                <strong>{{ column.title }}</strong>
+                <small>{{ column.subtitle }}</small>
+              </header>
+              @if (column.items.length === 0) {
+                <p class="column-empty">Sem chamados</p>
+              } @else {
+                @for (item of column.items; track item.id) {
+                  <article
+                    class="request-card ticket-card"
+                    [class.active]="selected()?.id === item.id"
+                    [class.sla-expired]="slaClass(item) === 'expired'"
+                    (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate, approvalModalTemplate)"
+                  >
+                    <div class="ticket-card-header">
+                      <div>
+                        <h3>#{{ item.id }} - {{ item.titulo }}</h3>
+                        <p>{{ item.categoria }} - {{ item.departamento }}</p>
+                      </div>
+                      <span class="status">{{ item.status }}</span>
+                    </div>
+                    <div class="ticket-badges">
+                      <span
+                        class="priority-badge"
+                        [class.low]="priorityClass(item) === 'low'"
+                        [class.medium]="priorityClass(item) === 'medium'"
+                        [class.high]="priorityClass(item) === 'high'"
+                        [class.critical]="priorityClass(item) === 'critical'"
+                      >
+                        Prioridade {{ priorityLabel(item) }}
+                      </span>
+                      @if (item.reaberto) {
+                        <span class="reopen-alert">Reaberto</span>
+                      }
+                      @if (canApprove(item)) {
+                        <span class="approval-badge">Aguardando aprovação</span>
+                      }
+                      @if (canEvaluate(item)) {
+                        <span class="evaluation-badge">Aguardando avaliação</span>
+                      }
+                    </div>
+                    <div class="ticket-meta">
+                      <span>{{ item.solicitante }}</span>
+                      <span>{{ openedAgo(item) }}</span>
+                      <span>{{ item.responsavel || 'Sem responsavel' }}</span>
+                    </div>
+                    <div
+                      class="sla-widget"
+                      [class.ok]="slaClass(item) === 'ok'"
+                      [class.warning]="slaClass(item) === 'warning'"
+                      [class.expired]="slaClass(item) === 'expired'"
+                      [class.met]="slaClass(item) === 'met'"
+                    >
+                      <div>
+                        <span>{{ slaRemainingText(item) }}</span>
+                        <strong>{{ slaPercent(item) }}%</strong>
+                      </div>
+                      <div class="sla-track">
+                        <span [style.width.%]="slaPercent(item)"></span>
+                      </div>
+                    </div>
+                    <div class="ticket-actions">
+                      <button
+                        class="secondary"
+                        type="button"
+                        (click)="openTicketModal(item, ticketModalTemplate, satisfactionModalTemplate, approvalModalTemplate); $event.stopPropagation()"
+                      >
+                        Acessar
+                      </button>
+                      @if (item.anexoImagemUrl) {
+                        <button
+                          class="secondary"
+                          type="button"
+                          (click)="previewAttachment(item); $event.stopPropagation()"
+                        >
+                          Ver anexo
+                        </button>
+                      }
+                      @if (canManage()) {
+                        <button
+                          class="secondary remote-card-action"
+                          type="button"
+                          [disabled]="!item.equipamentoIp || !hasResponsible(item)"
+                          (click)="openRemoteAccess(item); $event.stopPropagation()"
+                        >
+                          Acesso remoto
+                        </button>
+                      }
+                    </div>
+                  </article>
+                }
+              }
+            </section>
+          }
+        }
+      </div>
+      @if (filteredChamados().length > pageSize()) {
+        <div class="date-filters pagination-controls">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">
+            Anterior
+          </button>
+          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <button
+            class="secondary"
+            type="button"
+            (click)="nextPage()"
+            [disabled]="page() >= totalPages()"
+          >
+            Próxima
+          </button>
+        </div>
+      }
+    </aside>
+
+    @if (!canManage()) {
+      <button
+        class="assistant-floating-button"
+        type="button"
+        aria-label="Abrir TI Assistant"
+        (click)="openTiAssistant()"
+      >
+        <span class="assistant-floating-icon">AI</span>
+        <strong>TI Assistant</strong>
+      </button>
+    }
+
+    <ng-template #createTicketModalTemplate>
+      <div class="modal-content uniflow-modal-content">
+        <div class="modal-header uniflow-modal-header">
+          <div>
+            <p class="system-name">UniFlowHub</p>
+            <h2>Abrir chamado</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Fechar modal"
+            (click)="closeCreateTicketModal()"
+            [disabled]="saving()"
+          >
+            x
+          </button>
+        </div>
+
+        <div class="modal-body uniflow-modal-body">
+          <form class="form-panel modal-form-panel" [formGroup]="form" (ngSubmit)="submit()">
+            <div class="grid two">
+              <label>
+                Categoria
+                <select formControlName="categoria">
+                  <option>Suporte</option>
+                  <option>Acesso</option>
+                  <option>Equipamento</option>
+                  <option>Sistema</option>
+                  <option>Rede</option>
+                </select>
+              </label>
+              <label>
+                Prioridade
+                <select formControlName="prioridade">
+                  <option>Baixa</option>
+                  <option>média</option>
+                  <option>Alta</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Título
+              <span class="assistant-title-field">
+                <input formControlName="titulo" placeholder="Ex: Sem acesso ao sistema" />
+                @if (showAssistantButton()) {
+                  <button
+                    class="assistant-trigger"
+                    type="button"
+                    aria-label="Abrir TI Assistant"
+                    title="TI Assistant"
+                    (click)="openTiAssistant()"
+                  >
+                    <span class="assistant-trigger-icon">AI</span>
+                    <span class="assistant-trigger-label">T.I Assistant</span>
+                  </button>
+                }
+              </span>
+            </label>
+
+            <div class="grid two">
+              <label>
+                Solicitante
+                <input formControlName="solicitante" />
+              </label>
+              <label>
+                Unidade
+                <select formControlName="unidade">
+                  <option value="">Selecione</option>
+                  @for (unidade of unidades(); track unidade.id) {
+                    <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                  }
+                </select>
+              </label>
+            </div>
+            <div class="grid two">
+              <label>
+                Departamento
+                <input formControlName="departamento" />
+              </label>
+              <span></span>
+            </div>
+
+            <label>
+              Descrição
+              <textarea
+                formControlName="descricao"
+                rows="5"
+                placeholder="Explique o impacto, quando comecou e tentativas realizadas"
+              ></textarea>
+            </label>
+
+            <label>
+              Observações
+              <textarea
+                formControlName="observacoes"
+                rows="3"
+                placeholder="Inclua detalhes adicionais, horarios ou restricoes"
+              ></textarea>
+            </label>
+
+            <section class="closure-notes">
+              <strong>Equipamento</strong>
+              <span
+                >Nome:
+                {{ form.controls.equipamentoNome.value || 'Não informado pelo navegador' }}</span
+              >
+              <span
+                >Sistema operacional:
+                {{ form.controls.equipamentoSistemaOperacional.value || 'Não identificado' }}</span
+              >
+              <small>O IP será registrado automaticamente ao enviar o chamado.</small>
+            </section>
+
+            <label>
+              Senha RealVNC
+              <input formControlName="acessoRemotoSenha" type="password" autocomplete="off" placeholder="Opcional" />
+            </label>
+
+            <label>
+              Anexo
+              <input
+                #anexoInput
+                type="file"
+                accept=".pdf,.doc,.docx,image/*"
+                (change)="onAttachmentSelected($event)"
+              />
+              @if (selectedFileName()) {
+                <small class="file-name">{{ selectedFileName() }}</small>
+              }
+            </label>
+
+            @if (selectedFilePreviewUrl()) {
+              <section class="attachment-preview">
+                <div>
+                  <strong>pré-visualização do anexo</strong>
+                  <small>{{ selectedFileName() }}</small>
+                </div>
+                @if (selectedFilePreviewType() === 'image') {
+                  <img [src]="selectedFilePreviewUrl()" alt="pré-visualização do anexo" />
+                } @else if (selectedFilePreviewType() === 'pdf') {
+                  <iframe [src]="selectedFilePreviewUrl()" title="pré-visualização do PDF"></iframe>
+                } @else {
+                  <p class="empty">
+                    Documentos DOC e DOCX Não possuem pré-visualização no navegador, mas serão
+                    enviados normalmente.
+                  </p>
+                }
+              </section>
+            }
+
+            <button class="primary" type="submit" [disabled]="saving()">
+              {{ saving() ? 'Abrindo...' : 'Abrir chamado' }}
+            </button>
+          </form>
+        </div>
+      </div>
+    </ng-template>
+
+    <ng-template #approvalModalTemplate>
+      <div class="modal-content uniflow-modal-content ti-approval-modal">
+        <div class="modal-header uniflow-modal-header">
+          <div>
+            <p class="system-name">Aprovação obrigatória</p>
+            <h2>Aprovar o chamado #{{ selected()?.id }}</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Fechar modal"
+            (click)="closeApprovalModal()"
+            [disabled]="approving()"
+          >
+            x
+          </button>
+        </div>
+
+        <div class="modal-body uniflow-modal-body">
+          <section class="approval-summary">
+            <div>
+              <span>Status</span>
+              <strong>{{ selected()?.status }}</strong>
+            </div>
+            <div>
+              <span>Encerrado em</span>
+              <strong>{{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</strong>
+            </div>
+            <div>
+              <span>Responsável</span>
+              <strong>{{ selected()?.responsavel || 'TI' }}</strong>
+            </div>
+          </section>
+
+          @if (selected()?.observacoesEncerramento) {
+            <section class="closure-notes">
+              <strong>Solução registrada</strong>
+              <p>{{ selected()?.observacoesEncerramento }}</p>
+            </section>
+          }
+
+          <form class="approval-form" [formGroup]="approvalForm" (ngSubmit)="submitApproval()">
+            <label>
+              Observações de aprovação
+              <textarea
+                formControlName="observacoesAprovacao"
+                rows="4"
+                placeholder="Informe se precisar de ajustes ou detalhes para o atendimento"
+              ></textarea>
+            </label>
+            <button class="primary" type="submit" [disabled]="approving()">
+              {{ approving() ? 'Aprovando...' : 'Aprovar e abrir pesquisa' }}
+            </button>
+          </form>
+        </div>
+      </div>
+    </ng-template>
+
+    <ng-template #satisfactionModalTemplate>
+      <div class="modal-content uniflow-modal-content ti-satisfaction-modal">
+        <div class="modal-header uniflow-modal-header">
+          <div>
+            <p class="system-name">Pesquisa obrigatória</p>
+            <h2>Avalie o chamado #{{ selected()?.id }}</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+        </div>
+
+        <div class="modal-body uniflow-modal-body">
+          <section class="satisfaction-summary">
+            <div>
+              <span>Status</span>
+              <strong>{{ selected()?.status }}</strong>
+            </div>
+            <div>
+              <span>Encerrado em</span>
+              <strong>{{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</strong>
+            </div>
+            <div>
+              <span>Responsável</span>
+              <strong>{{ selected()?.responsavel || 'TI' }}</strong>
+            </div>
+          </section>
+
+          @if (selected()?.observacoesEncerramento) {
+            <section class="closure-notes">
+              <strong>Solução registrada</strong>
+              <p>{{ selected()?.observacoesEncerramento }}</p>
+            </section>
+          }
+
+          <form
+            class="satisfaction-form required-satisfaction-form"
+            [formGroup]="satisfactionForm"
+            (ngSubmit)="submitSatisfaction()"
+          >
+            <strong>Como você avalia este atendimento?</strong>
+            <div
+              class="rating-buttons rating-buttons-large"
+              role="radiogroup"
+              aria-label="Nota de satisfação"
+            >
+              @for (star of [1, 2, 3, 4, 5]; track star) {
+                <button
+                  type="button"
+                  [class.active]="star <= satisfactionForm.controls.nota.value"
+                  [attr.aria-label]="
+                    star === 1 ? '1 estrela, muito insatisfeito' : star + ' estrelas'
+                  "
+                  (click)="setRating(star)"
+                >
+                  &#9733;
+                </button>
+              }
+            </div>
+            <small>Escolha uma nota de 1 a 5 para concluir a avaliação.</small>
+            <label>
+              Comentário
+              <textarea
+                formControlName="comentario"
+                rows="4"
+                placeholder="Conte rapidamente como foi o atendimento"
+              ></textarea>
+            </label>
+            <button class="primary" type="submit" [disabled]="rating()">
+              {{ rating() ? 'Enviando...' : 'Enviar avaliação' }}
+            </button>
+          </form>
+        </div>
+      </div>
+    </ng-template>
+
+    <ng-template #ticketModalTemplate>
+      <div class="modal-content uniflow-modal-content ti-ticket-modal">
+        <div class="modal-header uniflow-modal-header">
+          <div>
+            <p class="system-name">Chamado #{{ selected()?.id }}</p>
+            <h2>{{ canManage() ? 'Administrar chamado' : 'Detalhes do chamado' }}</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Fechar modal"
+            (click)="closeTicketModal()"
+            [disabled]="updating() || sendingMessage() || closing() || reopening() || rating()"
+          >
+            x
+          </button>
+        </div>
+
+        <div class="modal-body uniflow-modal-body">
+          <section class="detail-panel modal-detail-panel">
+            @if (selected()) {
+              <div class="detail-tabs" role="tablist" aria-label="Detalhes do chamado">
+                <button
+                  type="button"
+                  [class.active]="detailTab() === 'detalhes'"
+                  (click)="detailTab.set('detalhes')"
+                >
+                  Detalhes
+                </button>
+                <button
+                  type="button"
+                  [class.active]="detailTab() === 'comunicacao'"
+                  [disabled]="!hasResponsible()"
+                  (click)="openRemoteChat()"
+                >
+                  Chat
+                </button>
+              </div>
+
+              @if (detailTab() === 'detalhes') {
+                @if (canManage()) {
+                  <form class="admin-form" [formGroup]="adminForm" (ngSubmit)="update()">
+                    <label>
+                      Título
+                      <input formControlName="titulo" />
+                    </label>
+
+                    <div class="grid two">
+                      <label>
+                        Categoria
+                        <select formControlName="categoria">
+                          <option>Suporte</option>
+                          <option>Acesso</option>
+                          <option>Equipamento</option>
+                          <option>Sistema</option>
+                          <option>Rede</option>
+                        </select>
+                      </label>
+                      <label>
+                        Status
+                        <select formControlName="status">
+                          <option>Aberto</option>
+                          <option>Em analise</option>
+                          <option>Em atendimento</option>
+                          <option>Aguardando Usuário</option>
+                          <option>Concluído</option>
+                          <option>Cancelado</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <label>
+                      Descrição
+                      <textarea formControlName="descricao" rows="5"></textarea>
+                    </label>
+
+                    <div class="grid two">
+                      <label>
+                        Solicitante
+                        <input formControlName="solicitante" />
+                      </label>
+                      <label>
+                        Unidade
+                        <select formControlName="unidade">
+                          <option value="">Selecione</option>
+                          @for (unidade of unidades(); track unidade.id) {
+                            <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                          }
+                        </select>
+                      </label>
+                    </div>
+
+                    <label>
+                      Departamento
+                      <input formControlName="departamento" />
+                    </label>
+
+                    <label>
+                      Observações
+                      <textarea formControlName="observacoes" rows="3"></textarea>
+                    </label>
+
+                    <div class="grid two">
+                      <label>
+                        Prioridade
+                        <select formControlName="prioridade">
+                          <option>Baixa</option>
+                          <option>média</option>
+                          <option>Alta</option>
+                        </select>
+                      </label>
+                      <label>
+                        Responsável
+                        <select formControlName="responsavel">
+                          <option value="">Sem responsavel</option>
+                          @for (responsavel of responsaveis(); track responsavel.id) {
+                            <option [value]="responsavel.nome">{{ responsavel.nome }}</option>
+                          }
+                        </select>
+                      </label>
+                    </div>
+
+                    <section class="closure-notes equipment-card">
+                      <div class="info-card-heading">
+                        <strong>Equipamento que abriu o chamado</strong>
+                        <small>{{ equipmentSummary() }}</small>
+                      </div>
+                      <div class="ticket-dates equipment-meta">
+                        <span
+                          ><strong>Nome do computador:</strong>
+                          {{ selected()?.equipamentoNome || 'Não informado pelo navegador' }}</span
+                        >
+                        <span
+                          ><strong>IP:</strong>
+                          {{ selected()?.equipamentoIp || 'Não identificado' }}</span
+                        >
+                        <span
+                          ><strong>Sistema operacional:</strong>
+                          {{
+                            selected()?.equipamentoSistemaOperacional || 'Não identificado'
+                          }}</span
+                        >
+                      </div>
+                    </section>
+
+                    <section class="closure-notes remote-access-card">
+                      <div class="info-card-heading">
+                        <strong>Acesso remoto</strong>
+                        <small>RealVNC Viewer usando o IP capturado no chamado</small>
+                      </div>
+                      <div class="remote-device-info">
+                        <span>{{ selected()?.equipamentoIp ? 'IP pronto para conexão RealVNC.' : 'IP Não capturado para este chamado.' }}</span>
+                        @if (selected()?.equipamentoNome) {
+                          <small>Equipamento: {{ selected()?.equipamentoNome }}</small>
+                        }
+                        @if (selected()?.equipamentoIp) {
+                          <small>IP: {{ selected()?.equipamentoIp }}</small>
+                        }
+                      </div>
+                      <label>
+                        Senha RealVNC
+                        <input formControlName="acessoRemotoSenha" type="password" autocomplete="off" />
+                      </label>
+                      <div class="attachment-actions">
+                        <button
+                          class="primary remote-primary"
+                          type="button"
+                          [disabled]="!selected()?.equipamentoIp || !hasResponsible()"
+                          (click)="openRemoteAccess()"
+                        >
+                          Acesso remoto
+                        </button>
+                        <button class="secondary" type="button" (click)="copyRemoteAccessPassword()">
+                          Copiar senha
+                        </button>
+                        <button class="secondary" type="button" [disabled]="!hasResponsible()" (click)="openRemoteChat()">
+                          Abrir chat
+                        </button>
+                      </div>
+                    </section>
+
+                    <section class="closure-notes">
+                      <strong>Ações</strong>
+                      <div class="attachment-actions">
+                        <button class="secondary" type="button" (click)="previewAttachment()">
+                          Previsualizar anexo
+                        </button>
+                        <button class="secondary" type="button" (click)="downloadAttachment()">
+                          Baixar anexo
+                        </button>
+                      </div>
+                    </section>
+
+                    <div class="ticket-dates">
+                      <span
+                        >Criado em {{ selected()?.dataAbertura | date: 'dd/MM/yyyy HH:mm' }}</span
+                      >
+                      @if (selected()?.dataPrimeiroEncerramento) {
+                        <span
+                          >Primeiro fechamento em
+                          {{
+                            selected()?.dataPrimeiroEncerramento | date: 'dd/MM/yyyy HH:mm'
+                          }}</span
+                        >
+                      }
+                      @if (selected()?.dataReabertura) {
+                        <span
+                          >Reaberto em
+                          {{ selected()?.dataReabertura | date: 'dd/MM/yyyy HH:mm' }}</span
+                        >
+                      }
+                      @if (selected()?.dataEncerramento) {
+                        <span
+                          >{{
+                            selected()?.dataPrimeiroEncerramento
+                              ? 'Novo fechamento em'
+                              : 'Encerrado em'
+                          }}
+                          {{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</span
+                        >
+                      }
+                    </div>
+
+                    <section class="ticket-timeline">
+                      <strong>Timeline do chamado</strong>
+                      @for (event of ticketTimeline(selected()); track event.time + event.label) {
+                        <div>
+                          <time>{{ event.time }}</time>
+                          <span>{{ event.label }}</span>
+                        </div>
+                      }
+                    </section>
+
+                    @if (selected()?.observacoesEncerramento) {
+                      <section class="closure-notes">
+                        <strong>Observações de encerramento</strong>
+                        <p>{{ selected()?.observacoesEncerramento }}</p>
+                      </section>
+                    }
+
+                    @if (selected()?.satisfacaoNota) {
+                      <section class="satisfaction-view">
+                        <div>
+                          <strong>Satisfação do usuário</strong>
+                          <span>{{ selected()?.dataAvaliacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+                        </div>
+                        <p class="stars readonly-stars">
+                          @for (star of [1, 2, 3, 4, 5]; track star) {
+                            <span [class.filled]="star <= (selected()?.satisfacaoNota ?? 0)"
+                              >★</span
+                            >
+                          }
+                        </p>
+                        @if (selected()?.satisfacaoComentario) {
+                          <p>{{ selected()?.satisfacaoComentario }}</p>
+                        }
+                      </section>
+                    }
+
+                    @if (attachmentPreviewUrl()) {
+                      <section class="attachment-preview">
+                        <div>
+                          <strong>Anexo do chamado</strong>
+                          <small>{{
+                            selected()?.anexoImagemUrl
+                              ? attachmentFileName(selected()!.anexoImagemUrl)
+                              : ''
+                          }}</small>
+                        </div>
+                        @if (attachmentPreviewType() === 'image') {
+                          <img [src]="attachmentPreviewUrl()" alt="Anexo do chamado" />
+                        } @else if (attachmentPreviewType() === 'pdf') {
+                          <iframe
+                            [src]="attachmentPreviewUrl()"
+                            title="Anexo PDF do chamado"
+                          ></iframe>
+                        } @else {
+                          <p class="empty">
+                            Este documento Não possui pré-visualização no navegador. Use a opção
+                            baixar anexo.
+                          </p>
+                        }
+                      </section>
+                    }
+
+                    <div class="detail-actions">
+                      <button
+                        class="primary"
+                        type="submit"
+                        [disabled]="updating() || !!selected()?.dataEncerramento"
+                      >
+                        {{ updating() ? 'Salvando...' : 'Salvar chamado' }}
+                      </button>
+                      <button
+                        class="secondary"
+                        type="button"
+                        [disabled]="reopening() || !selected()?.dataEncerramento"
+                        (click)="reopenTicket()"
+                      >
+                        {{ reopening() ? 'Reabrindo...' : 'Reabrir chamado' }}
+                      </button>
+                    </div>
+
+                    @if (!selected()?.dataEncerramento) {
+                      <div class="close-form" [formGroup]="closeForm">
+                        <label>
+                          Observação de encerramento
+                          <textarea
+                            formControlName="observacoesEncerramento"
+                            rows="3"
+                            placeholder="Descreva a solução aplicada antes de encerrar"
+                          ></textarea>
+                        </label>
+                        <button
+                          class="danger"
+                          type="button"
+                          [disabled]="closing()"
+                          (click)="closeTicket()"
+                        >
+                          {{ closing() ? 'Encerrando...' : 'Encerrar chamado' }}
+                        </button>
+                      </div>
+                    }
+                  </form>
+                } @else {
+                  <div class="readonly-details">
+                    <strong>#{{ selected()?.id }} - {{ selected()?.titulo }}</strong>
+                    <span>Status: {{ selected()?.status }}</span>
+                    <span>Prioridade: {{ selected()?.prioridade }}</span>
+                    <span>Responsável: {{ selected()?.responsavel || 'Sem responsavel' }}</span>
+                    <span>Criado em {{ selected()?.dataAbertura | date: 'dd/MM/yyyy HH:mm' }}</span>
+                    @if (selected()?.dataPrimeiroEncerramento) {
+                      <span
+                        >Primeiro fechamento em
+                        {{ selected()?.dataPrimeiroEncerramento | date: 'dd/MM/yyyy HH:mm' }}</span
+                      >
+                    }
+                    @if (selected()?.dataReabertura) {
+                      <span
+                        >Reaberto em
+                        {{ selected()?.dataReabertura | date: 'dd/MM/yyyy HH:mm' }}</span
+                      >
+                    }
+                    @if (selected()?.dataEncerramento) {
+                      <span
+                        >{{
+                          selected()?.dataPrimeiroEncerramento
+                            ? 'Novo fechamento em'
+                            : 'Encerrado em'
+                        }}
+                        {{ selected()?.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</span
+                      >
+                    }
+                    <section class="closure-notes equipment-card readonly-equipment-card">
+                      <div class="info-card-heading">
+                        <strong>Equipamento que abriu o chamado</strong>
+                        <small>{{ equipmentSummary() }}</small>
+                      </div>
+                      <div class="ticket-dates equipment-meta">
+                        <span>
+                          <strong>Computador</strong>
+                          {{ selected()?.equipamentoNome || 'Não informado pelo navegador' }}
+                        </span>
+                        <span>
+                          <strong>IP capturado</strong>
+                          {{ selected()?.equipamentoIp || 'Não identificado' }}
+                        </span>
+                        <span>
+                          <strong>Sistema operacional</strong>
+                          {{ selected()?.equipamentoSistemaOperacional || 'Não identificado' }}
+                        </span>
+                      </div>
+                    </section>
+                    <p>{{ selected()?.descricao }}</p>
+                    <section class="ticket-timeline">
+                      <strong>Timeline do chamado</strong>
+                      @for (event of ticketTimeline(selected()); track event.time + event.label) {
+                        <div>
+                          <time>{{ event.time }}</time>
+                          <span>{{ event.label }}</span>
+                        </div>
+                      }
+                    </section>
+                    @if (selected()?.observacoes) {
+                      <span>Observações: {{ selected()?.observacoes }}</span>
+                    }
+                    @if (selected()?.observacoesEncerramento) {
+                      <span>Encerramento: {{ selected()?.observacoesEncerramento }}</span>
+                    }
+                    @if (selected()?.anexoImagemUrl) {
+                      <div class="attachment-actions">
+                        <button class="secondary" type="button" (click)="previewAttachment()">
+                          Previsualizar anexo
+                        </button>
+                        <button class="secondary" type="button" (click)="downloadAttachment()">
+                          Baixar anexo
+                        </button>
+                      </div>
+                    }
+                    @if (attachmentPreviewUrl()) {
+                      <section class="attachment-preview">
+                        @if (attachmentPreviewType() === 'image') {
+                          <img [src]="attachmentPreviewUrl()" alt="Anexo do chamado" />
+                        } @else if (attachmentPreviewType() === 'pdf') {
+                          <iframe
+                            [src]="attachmentPreviewUrl()"
+                            title="Anexo PDF do chamado"
+                          ></iframe>
+                        } @else {
+                          <p class="empty">
+                            Este documento Não possui pré-visualização no navegador. Use a opção
+                            baixar anexo.
+                          </p>
+                        }
+                      </section>
+                    }
+                    @if (canEvaluate(selected())) {
+                      <form
+                        class="satisfaction-form"
+                        [formGroup]="satisfactionForm"
+                        (ngSubmit)="submitSatisfaction()"
+                      >
+                        <strong>Avalie o atendimento deste chamado</strong>
+                        <div
+                          class="rating-buttons"
+                          role="radiogroup"
+                          aria-label="Nota de satisfação"
+                        >
+                          @for (star of [1, 2, 3, 4, 5]; track star) {
+                            <button
+                              type="button"
+                              [class.active]="star <= satisfactionForm.controls.nota.value"
+                              [attr.aria-label]="
+                                star === 1 ? '1 estrela, muito insatisfeito' : star + ' estrelas'
+                              "
+                              (click)="setRating(star)"
+                            >
+                              ★
+                            </button>
+                          }
+                        </div>
+                        <small>1 muito insatisfeito, 5 super satisfeito</small>
+                        <label>
+                          Comentário
+                          <textarea
+                            formControlName="comentario"
+                            rows="3"
+                            placeholder="Opcional"
+                          ></textarea>
+                        </label>
+                        <button class="primary" type="submit" [disabled]="rating()">
+                          {{ rating() ? 'Enviando...' : 'Enviar avaliação' }}
+                        </button>
+                      </form>
+                    }
+                    @if (canReopen(selected())) {
+                      <div class="detail-actions">
+                        <button
+                          class="secondary"
+                          type="button"
+                          [disabled]="reopening()"
+                          (click)="reopenTicket()"
+                        >
+                          {{ reopening() ? 'Reabrindo...' : 'Reabrir chamado' }}
+                        </button>
+                      </div>
+                    }
+                  </div>
+                }
+              } @else {
+                <section class="communication-panel">
+                  @if (canManage()) {
+                    <header class="closure-notes">
+                      <strong>Chat instantaneo do chamado</strong>
+                      <p>Mensagens em tempo real durante o acesso remoto</p>
+                    </header>
+                  }
+                  <div class="communication-list">
+                    @if (loadingComunicacoes()) {
+                      <p class="empty">Carregando chat...</p>
+                    } @else if (comunicacoes().length === 0) {
+                      <p class="empty">Nenhuma mensagem neste chamado.</p>
+                    } @else {
+                      @for (mensagem of comunicacoes(); track mensagem.id) {
+                        <article
+                          class="message-card"
+                          [class.own]="mensagem.autorUserId === user()?.id"
+                        >
+                          <div>
+                            <strong>{{ mensagem.autorNome }}</strong>
+                            <span
+                              >{{ mensagem.autorRole }} -
+                              {{ mensagem.dataCriacao | date: 'dd/MM/yyyy HH:mm' }}</span
+                            >
+                          </div>
+                          <p>{{ mensagem.mensagem }}</p>
+                          @if (mensagem.autorUserId === user()?.id) {
+                            <small>{{ mensagem.dataLeitura ? 'Lida' : 'Entregue' }}</small>
+                          }
+                        </article>
+                      }
+                    }
+                  </div>
+
+                  @if (
+                    selected()?.dataEncerramento ||
+                    selected()?.status === 'Concluído' ||
+                    selected()?.status === 'Cancelado'
+                  ) {
+                    <p class="notice">
+                      Chat bloqueado para chamados encerrados ou cancelados.
+                    </p>
+                  } @else if (!hasResponsible()) {
+                    <p class="notice">
+                      Defina um responsavel pelo chamado para liberar o chat.
+                    </p>
+                  } @else {
+                    <form class="message-form" [formGroup]="messageForm" (ngSubmit)="sendMessage()">
+                      <label>
+                        Nova mensagem
+                        <textarea
+                          formControlName="mensagem"
+                          rows="4"
+                          placeholder="Mensagem para o Usuário"
+                          (keydown.enter)="sendMessage()"
+                        ></textarea>
+                      </label>
+                      <div class="attachment-actions">
+                        <button class="primary" type="submit" [disabled]="sendingMessage()">
+                          {{ sendingMessage() ? 'Enviando...' : 'Enviar mensagem' }}
+                        </button>
+                        @if (canManage()) {
+                          <button class="secondary" type="button" (click)="downloadChatHistory()">
+                            Baixar historico
+                          </button>
+                        }
+                      </div>
+                    </form>
+                  }
+                </section>
+              }
+            } @else {
+              <p class="empty">Selecione um chamado para visualizar.</p>
+            }
+          </section>
+        </div>
+      </div>
+    </ng-template>
+  </section>
+
+  @if (assistantOpen()) {
+    <section class="assistant-backdrop" role="dialog" aria-modal="true" aria-label="TI Assistant" (click)="$event.stopPropagation()">
+      <div class="assistant-panel" (click)="$event.stopPropagation()">
+        <header>
+          <div>
+            <p class="system-name">TI Assistant</p>
+            <h2>Assistente de abertura</h2>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar TI Assistant" (click)="closeTiAssistant()">x</button>
+        </header>
+
+        <div class="assistant-chat">
+          @for (message of assistantMessages(); track $index) {
+            <article class="assistant-message" [class.user]="message.role === 'user'">
+              <p>{{ message.text }}</p>
+              @if (message.category || message.priority || message.technician) {
+                <div class="assistant-suggestion">
+                  @if (message.category) {
+                    <small>Categoria: {{ message.category }}</small>
+                  }
+                  @if (message.priority) {
+                    <small>Prioridade: {{ message.priority }}</small>
+                  }
+                  @if (message.technician) {
+                    <small>Técnico sugerido: {{ message.technician }}</small>
+                  }
+                </div>
+              }
+              @if (message.articleId) {
+                <small>Referencia da base #{{ message.articleId }}</small>
+              }
+              @if (message.suggestOpenTicket) {
+                <button class="secondary assistant-open-ticket-button" type="button" (click)="openTicketFromAssistant()">
+                  Abrir chamado
+                </button>
+              }
+            </article>
+          }
+          @if (assistantSearching()) {
+            <article class="assistant-message thinking">
+              <p>Consultando T.I Assistant...</p>
+            </article>
+          }
+        </div>
+
+        <div class="assistant-composer">
+          <input
+            type="text"
+            [value]="assistantQuestion()"
+            (input)="assistantQuestion.set($any($event.target).value)"
+            (keydown.enter)="$event.preventDefault(); sendAssistantQuestion()"
+            placeholder="Pergunte algo sobre o problema"
+          />
+          <button class="primary" type="button" [disabled]="assistantSearching()" (click)="sendAssistantQuestion()">
+            {{ assistantSearching() ? 'Buscando...' : 'Enviar' }}
+          </button>
+        </div>
+      </div>
+    </section>
+  }
+</main>
+
+

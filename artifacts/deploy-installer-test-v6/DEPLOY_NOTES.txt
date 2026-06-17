@@ -1,0 +1,19 @@
+DRFlowHub deploy v6
+
+Alteracao principal:
+- Inclui status Ativo/Inativo para usuarios.
+- Usuarios inativos nao conseguem efetuar login.
+- Inclui instalador de deploy com escolha da pasta de destino e migrations automaticas.
+
+Como usar:
+1. Extraia este pacote em uma pasta temporaria no servidor.
+2. Execute Install-DRFlowHub.cmd como Administrador.
+3. Informe a pasta de destino, por exemplo: C:\inetpub\drflowhub
+4. O instalador preserva drflowhub.db, drflowhub.db-wal e drflowhub.db-shm.
+5. O instalador cria backup do banco antes de aplicar migrations.
+6. Se existir appsettings.json no destino, o instalador pergunta se deve preservar.
+
+Banco de producao:
+- Nao substitua manualmente drflowhub.db, drflowhub.db-wal ou drflowhub.db-shm.
+- A migration e aplicada pelo comando DRFlowHub.exe --migrate.
+- O DEFAULT 1 mantem todos os usuarios existentes como ativos.

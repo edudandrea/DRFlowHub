@@ -1,0 +1,380 @@
+<main class="compras-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Compras</p>
+        <h1>Painel de Administração de compras</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <button class="secondary" type="button" (click)="openCreateModal()">Nova solicitação</button>
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article><span>Total</span><strong>{{ items().length }}</strong></article>
+    <article><span>Diretoria</span><strong>{{ aguardandoDiretoria() }}</strong></article>
+    <article><span>Compras</span><strong>{{ emCompras() }}</strong></article>
+    <article><span>Concluídas</span><strong>{{ concluidas() }}</strong></article>
+  </section>
+
+  <section class="compras-grid">
+    <div class="table-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Solicitações</h2>
+          <p>Fila de compras e aprovações</p>
+        </div>
+        <div class="filters">
+          <div class="tabs" role="tablist" aria-label="Fluxo de compras">
+            <button type="button" [class.active]="activeTab() === 'minhas'" (click)="setTab('minhas')">Minhas</button>
+            @if (canApprove()) {
+              <button type="button" [class.active]="activeTab() === 'aprovacao'" (click)="setTab('aprovacao')">Aprovação</button>
+            }
+            @if (canBuy()) {
+              <button type="button" [class.active]="activeTab() === 'compras'" (click)="setTab('compras')">Compras</button>
+            }
+            @if (canApprove() || canBuy()) {
+              <button type="button" [class.active]="activeTab() === 'todas'" (click)="setTab('todas')">Todas</button>
+            }
+          </div>
+          <input type="search" placeholder="Buscar" [value]="search()" (input)="search.set($any($event.target).value)" />
+          <select [value]="sortField()" (change)="setSort($any($event.target).value)">
+            <option value="id">Número</option>
+            <option value="titulo">Título</option>
+            <option value="solicitante">Solicitante</option>
+            <option value="unidade">Unidade</option>
+            <option value="departamento">Departamento</option>
+            <option value="valorEstimado">Valor</option>
+            <option value="status">Status</option>
+            <option value="dataSolicitacao">Data</option>
+          </select>
+          <button class="secondary" type="button" (click)="setSort(sortField())">{{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}</button>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Solicitante</th>
+              <th>Unidade</th>
+              <th>Departamento</th>
+              <th>Valor</th>
+              <th>Status</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (loading()) {
+              <tr>
+                <td colspan="7">Carregando...</td>
+              </tr>
+            } @else if (visibleItems().length === 0) {
+              <tr>
+                <td colspan="7">Nenhuma solicitação encontrada.</td>
+              </tr>
+            } @else {
+              @for (item of pagedItems(); track item.id) {
+                <tr [class.active]="selected()?.id === item.id" (click)="select(item)">
+                  <td>
+                    <strong>#{{ item.id }} - {{ item.titulo }}</strong>
+                    <small>{{ item.categoria }}</small>
+                  </td>
+                  <td>{{ item.solicitante }}</td>
+                  <td>{{ item.unidade || 'Não informada' }}</td>
+                  <td>{{ item.departamento }}</td>
+                  <td>{{ item.valorEstimado | currency: 'BRL' }}</td>
+                  <td><span class="status">{{ item.status }}</span></td>
+                  <td>{{ item.dataSolicitacao | date: 'dd/MM/yyyy' }}</td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (visibleItems().length > pageSize()) {
+        <div class="pagination">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Próxima</button>
+        </div>
+      }
+    </div>
+  </section>
+
+  @if (createModalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeCreateModal()">
+      <section class="modal-dialog create-dialog" role="dialog" aria-modal="true" aria-labelledby="compras-create-title" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <p class="system-name">Compras</p>
+            <h2 id="compras-create-title">Nova solicitação</h2>
+            <span>Preencha os dados para enviar a Diretoria.</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeCreateModal()" [disabled]="saving()">x</button>
+        </div>
+
+        <form class="form-panel modal-form" [formGroup]="form" (ngSubmit)="submit()">
+          <div class="grid two">
+            <label>
+              Categoria
+              <select formControlName="categoria">
+                <option>Material</option>
+                <option>Servico</option>
+                <option>Equipamento</option>
+                <option>Contrato</option>
+                <option>Outros</option>
+              </select>
+            </label>
+            <label>
+              Prioridade
+              <select formControlName="prioridade">
+                <option>Baixa</option>
+                <option>média</option>
+                <option>Alta</option>
+                <option>Critica</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Título
+            <input formControlName="titulo" placeholder="Ex: Compra de notebook para novo colaborador" />
+          </label>
+
+          <div class="grid two">
+            <label>Solicitante<input formControlName="solicitante" /></label>
+            <label>
+              Unidade
+              <select formControlName="unidade">
+                <option value="">Selecione</option>
+                @for (unidade of unidades(); track unidade.id) {
+                  <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                }
+              </select>
+            </label>
+          </div>
+
+          <div class="grid two">
+            <label>Departamento<input formControlName="departamento" /></label>
+            <label>Fornecedor sugerido<input formControlName="fornecedorSugerido" placeholder="Obrigatorio" /></label>
+          </div>
+
+          <label>
+            Descrição
+            <textarea formControlName="descricao" rows="5" placeholder="Descreva o item, quantidade, prazo e especificacoes"></textarea>
+          </label>
+
+          <label>
+            Justificativa
+            <textarea formControlName="justificativa" rows="3" placeholder="Explique a necessidade da compra"></textarea>
+          </label>
+
+          <div class="grid two">
+            <label>Valor estimado<input type="number" min="0" step="0.01" formControlName="valorEstimado" /></label>
+            <label>
+              Documento
+              <input #documentoInput type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" (change)="onFileSelected($event)" />
+              @if (selectedFileName()) {
+                <small class="file-name">{{ selectedFileName() }}</small>
+              }
+            </label>
+          </div>
+
+          <label>
+            Observações
+            <textarea formControlName="observacoes" rows="3" placeholder="Inclua dados adicionais para aprovação"></textarea>
+          </label>
+
+          <div class="modal-actions">
+            <button class="secondary" type="button" (click)="closeCreateModal()" [disabled]="saving()">Cancelar</button>
+            <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Enviando...' : 'Enviar para Diretoria' }}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (modalOpen() && selected()) {
+    <div class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
+      <section class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="compras-modal-title" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <p class="system-name">Solicitação #{{ selected()?.id }}</p>
+            <h2 id="compras-modal-title">Editar solicitação</h2>
+            <span>{{ selected()?.titulo }}</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar modal" (click)="closeModal()" [disabled]="approving() || updating()">x</button>
+        </div>
+
+        <div class="detail-panel modal-form">
+          <div class="detail-tabs" role="tablist" aria-label="Detalhes da solicitação de compra">
+            <button type="button" [class.active]="detailTab() === 'detalhes'" (click)="detailTab.set('detalhes')">Detalhes</button>
+            <button type="button" [class.active]="detailTab() === 'comunicacao'" (click)="detailTab.set('comunicacao')">Comunicação</button>
+          </div>
+
+          @if (detailTab() === 'detalhes') {
+          <div class="readonly-details">
+            <span>Solicitante: {{ selected()?.solicitante }}</span>
+            <span>Unidade: {{ selected()?.unidade || 'Não informada' }}</span>
+            <span>Departamento: {{ selected()?.departamento }}</span>
+            <span>Valor: {{ selected()?.valorEstimado | currency: 'BRL' }}</span>
+            <span>Fornecedor: {{ selected()?.fornecedorSugerido || 'Não informado' }}</span>
+            <span>Criada em {{ selected()?.dataSolicitacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+            <p>{{ selected()?.descricao }}</p>
+            <p>Justificativa: {{ selected()?.justificativa }}</p>
+            @if (selected()?.documentoUrl) {
+              <button class="secondary" type="button" (click)="downloadDocument()">Baixar documento</button>
+            }
+          </div>
+
+          @if (canApprove() && selected()?.status === 'Aguardando Diretoria') {
+            <form class="approval-panel" [formGroup]="approvalForm">
+              <label>
+                Observações da Diretoria
+                <textarea formControlName="observacoesAprovacao" rows="3"></textarea>
+              </label>
+              <div class="actions">
+                <button class="danger" type="button" [disabled]="approving()" (click)="approve(false)">Reprovar</button>
+                <button class="primary" type="button" [disabled]="approving()" (click)="approve(true)">Aprovar e enviar</button>
+              </div>
+            </form>
+          }
+
+          @if (selected()?.observacoesAprovacao) {
+            <section class="readonly-details">
+              <strong>Diretoria: {{ selected()?.aprovador }}</strong>
+              <p>{{ selected()?.observacoesAprovacao }}</p>
+            </section>
+          }
+
+          @if (canBuy()) {
+            <form class="buyer-form" [formGroup]="buyerForm" (ngSubmit)="updateBuyer()">
+              @if (isFinalized(selected())) {
+                <p class="notice">solicitação concluida ou cancelada. Edicao bloqueada.</p>
+              }
+              <label>
+                Título
+                <input formControlName="titulo" />
+              </label>
+
+              <div class="grid two">
+                <label>
+                  Categoria
+                  <select formControlName="categoria">
+                    <option>Material</option>
+                    <option>Servico</option>
+                    <option>Equipamento</option>
+                    <option>Contrato</option>
+                    <option>Outros</option>
+                  </select>
+                </label>
+                <label>
+                  Status
+                  <select formControlName="status">
+                    <option>Aprovada - Enviada para Compras</option>
+                    <option>Em compras</option>
+                    <option>Aguardando fornecedor</option>
+                    <option>Pedido emitido</option>
+                    <option>Concluída</option>
+                    <option>Cancelada</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="grid two">
+                <label>Solicitante<input formControlName="solicitante" /></label>
+                <label>
+                  Unidade
+                  <select formControlName="unidade">
+                    <option value="">Selecione</option>
+                    @for (unidade of unidades(); track unidade.id) {
+                      <option [value]="unidade.nome">{{ unidade.nome }}</option>
+                    }
+                  </select>
+                </label>
+              </div>
+
+              <div class="grid two">
+                <label>Departamento<input formControlName="departamento" /></label>
+                <label>Comprador<input formControlName="comprador" /></label>
+              </div>
+
+              <div class="grid two">
+                <label>Valor estimado<input type="number" min="0" step="0.01" formControlName="valorEstimado" /></label>
+                <label>Fornecedor sugerido<input formControlName="fornecedorSugerido" /></label>
+              </div>
+
+              <label>Descrição<textarea formControlName="descricao" rows="4"></textarea></label>
+              <label>Justificativa<textarea formControlName="justificativa" rows="3"></textarea></label>
+              <label>Observações da solicitação<textarea formControlName="observacoes" rows="3"></textarea></label>
+              <label>Observações de compras<textarea formControlName="observacoesCompras" rows="4"></textarea></label>
+
+              <div class="modal-actions">
+                <button class="secondary" type="button" (click)="closeModal()" [disabled]="updating()">Cancelar</button>
+                <button class="primary" type="submit" [disabled]="updating() || isFinalized(selected())">{{ updating() ? 'Salvando...' : 'Salvar etapa de compras' }}</button>
+              </div>
+            </form>
+          }
+          } @else {
+            <section class="communication-panel">
+              <div class="communication-list">
+                @if (loadingComunicacoes()) {
+                  <p class="empty">Carregando comunicação...</p>
+                } @else if (comunicacoes().length === 0) {
+                  <p class="empty">Nenhuma mensagem nesta solicitação.</p>
+                } @else {
+                  @for (mensagem of comunicacoes(); track mensagem.id) {
+                    <article class="message-card" [class.own]="mensagem.autorUserId === user()?.id">
+                      <div>
+                        <strong>{{ mensagem.autorNome }}</strong>
+                        <span>{{ mensagem.autorRole }} - {{ mensagem.dataCriacao | date: 'dd/MM/yyyy HH:mm' }}</span>
+                      </div>
+                      <p>{{ mensagem.mensagem }}</p>
+                    </article>
+                  }
+                }
+              </div>
+
+              @if (isFinalized(selected())) {
+                <p class="notice">Comunicação bloqueada para solicitações concludas ou canceladas.</p>
+              } @else {
+                <div class="message-form" [formGroup]="messageForm">
+                  <label>
+                    Nova mensagem
+                    <textarea formControlName="mensagem" rows="4" placeholder="Escreva uma atualização para esta solicitação"></textarea>
+                  </label>
+                  <button class="primary" type="button" [disabled]="sendingMessage()" (click)="sendMessage()">
+                    {{ sendingMessage() ? 'Enviando...' : 'Enviar mensagem' }}
+                  </button>
+                </div>
+              }
+            </section>
+          }
+        </div>
+      </section>
+    </div>
+  }
+</main>

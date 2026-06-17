@@ -1,0 +1,166 @@
+<main class="point-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Recursos Humanos</p>
+        <h1>Controle Cartao Ponto</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article><span>{{ canManage() ? 'Arquivos' : 'Folhas' }}</span><strong>{{ canManage() ? arquivos().length : folhasMensais().length }}</strong></article>
+    <article><span>{{ canManage() ? 'Funcionarios' : 'Meses' }}</span><strong>{{ canManage() ? funcionarios().length : folhasMensais().length }}</strong></article>
+    <article><span>Registros</span><strong>{{ canManage() ? (arquivos()[0]?.totalRegistros || 0) : registros().length }}</strong></article>
+    <article><span>Ajustes</span><strong>{{ ajustesPendentes() }}</strong></article>
+  </section>
+
+  <section class="point-grid">
+    <aside class="list-panel">
+      <div class="section-heading">
+        <div>
+          <h2>{{ canManage() ? 'Funcionarios importados' : 'Minhas folhas ponto' }}</h2>
+          <p>{{ canManage() ? filteredFuncionarios().length + ' registro(s)' : folhasMensais().length + ' mes(es)' }}</p>
+        </div>
+      </div>
+
+      @if (canManage()) {
+        <div class="toolbar">
+          <label>
+            Arquivo
+            <select [value]="selectedArquivoId() || ''" (change)="changeArquivo($any($event.target).value)">
+              @for (arquivo of arquivos(); track arquivo.id) {
+                <option [value]="arquivo.id">{{ arquivo.nomeArquivo }} - {{ arquivo.unidadeNome || arquivo.cnpjUnidade || 'Unidade Não identificada' }} - {{ arquivo.dataImportacao | date: 'dd/MM/yyyy HH:mm' }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            TXT Control iD
+            <input #arquivoInput type="file" accept=".txt,text/plain" (change)="onFileSelected($event)" />
+            @if (selectedFileName()) {
+              <small class="file-name">{{ selectedFileName() }}</small>
+            }
+          </label>
+          <button class="primary" type="button" [disabled]="importing()" (click)="importar()">
+            {{ importing() ? 'Importando...' : 'Importar TXT' }}
+          </button>
+        </div>
+        <input type="search" placeholder="Buscar por funcionario ou CPF" [value]="search()" (input)="search.set($any($event.target).value)" />
+      }
+
+      <div class="request-list">
+        @if (loading()) {
+          <p class="empty">Carregando...</p>
+        } @else if (canManage() && filteredFuncionarios().length === 0) {
+          <p class="empty">Nenhum cartao ponto encontrado.</p>
+        } @else if (!canManage() && folhasMensais().length === 0) {
+          <p class="empty">Nenhuma folha ponto mensal encontrada para o seu CPF.</p>
+        } @else if (canManage()) {
+          @for (funcionario of filteredFuncionarios(); track funcionario.cpf) {
+            <article class="request-card" (click)="openFuncionario(funcionario)">
+              <div>
+                <h3>{{ funcionario.nome }}</h3>
+                <p>{{ funcionario.unidadeNome || funcionario.cnpjUnidade || 'Unidade Não identificada' }} - {{ funcionario.cpf }}</p>
+              </div>
+              <span class="status">{{ funcionario.totalDias }} dia(s)</span>
+              <small>{{ funcionario.totalRegistros }} marcacao(oes)</small>
+              @if (funcionario.precisaAjuste) {
+                <span class="warning">Precisa de ajuste</span>
+              } @else if (funcionario.confirmadoPeloUsuario) {
+                <span class="success">Confirmado</span>
+              }
+            </article>
+          }
+        } @else {
+          @for (folha of folhasMensais(); track folha.mes) {
+            <article class="request-card" (click)="openFolhaMes(folha)">
+              <div>
+                <h3>{{ folha.label }}</h3>
+                <p>{{ folha.unidadeNome || folha.cnpjUnidade || 'Unidade Não identificada' }}</p>
+              </div>
+              <span class="status">{{ folha.totalDias }} dia(s)</span>
+              <small>{{ folha.totalRegistros }} marcacao(oes)</small>
+              @if (folha.precisaAjuste) {
+                <span class="warning">Precisa de ajuste</span>
+              } @else if (folha.confirmadoPeloUsuario) {
+                <span class="success">Confirmado</span>
+              }
+            </article>
+          }
+        }
+      </div>
+    </aside>
+  </section>
+
+  @if (modalOpen() && selectedFuncionario()) {
+    <section class="modal-backdrop" role="presentation" (click)="$event.target === $event.currentTarget && closeModal()">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="ponto-modal-title" (click)="$event.stopPropagation()">
+        <div class="section-heading modal-heading">
+          <div>
+            <h2 id="ponto-modal-title">{{ selectedFuncionario()?.nome }}</h2>
+            <p>
+              {{ selectedMonth() ? 'Folha ponto de ' + selectedMonth() : selectedFuncionario()?.cpf }}
+              @if (selectedFuncionario()?.unidadeNome || selectedFuncionario()?.cnpjUnidade) {
+                - {{ selectedFuncionario()?.unidadeNome || selectedFuncionario()?.cnpjUnidade }}
+              }
+            </p>
+          </div>
+          <button class="icon-button" type="button" aria-label="Fechar" (click)="closeModal()">x</button>
+        </div>
+
+        <div class="point-days">
+          @for (group of groupedRegistros(); track group.data) {
+            <section class="day-card">
+              <h3>{{ group.data | date: 'dd/MM/yyyy' }}</h3>
+              <div class="time-grid">
+                @for (registro of group.registros; track registro.id) {
+                  <label>
+                    Marcacao {{ registro.sequencia }}
+                    <input
+                      type="time"
+                      [value]="registro.horarioEditado"
+                      [readonly]="!canManage()"
+                      (change)="updateRegistro(registro, $any($event.target).value)"
+                    />
+                    @if (registro.horarioOriginal !== registro.horarioEditado) {
+                      <small>Original: {{ registro.horarioOriginal }}</small>
+                    }
+                  </label>
+                }
+              </div>
+            </section>
+          }
+        </div>
+
+        @if (!canManage()) {
+          <div class="modal-actions">
+            <button class="primary" type="button" (click)="confirmarUsuario()">OK</button>
+            <button class="secondary" type="button" (click)="solicitarAjuste()">Preciso de ajuste</button>
+          </div>
+        }
+      </div>
+    </section>
+  }
+</main>

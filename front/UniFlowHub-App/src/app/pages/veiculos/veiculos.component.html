@@ -1,0 +1,170 @@
+<main class="estoque-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Veículos</p>
+        <h1>Estoque</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article><span>Total em estoque</span><strong>{{ items().length }}</strong></article>
+    <article><span>Disponiveis</span><strong>{{ totalDisponiveis() }}</strong></article>
+    <article><span>Reservados</span><strong>{{ totalReservados() }}</strong></article>
+    <article><span>Perfil</span><strong>{{ canReserve() ? 'Operação' : 'Consulta' }}</strong></article>
+  </section>
+
+  <section class="content-grid">
+    <section class="list-panel">
+      <div class="section-heading">
+        <div>
+          <h2>Estoque de Veículos</h2>
+          <p>{{ filtered().length }} veículo(s)</p>
+        </div>
+        <div class="refresh-actions">
+          <app-auto-refresh-control
+            storageKey="uniflowhub.autoRefresh.estoque-Veículos"
+            [updatedAt]="atualizadoEm()"
+            [loading]="loading()"
+            (refresh)="load()"
+          />
+          <button class="primary" type="button" (click)="load()" [disabled]="loading()">{{ loading() ? 'Atualizando...' : 'Atualizar' }}</button>
+        </div>
+      </div>
+
+      <div class="filters">
+        <label>
+          Empresa
+          <select [ngModel]="empresaNumero()" (ngModelChange)="setEmpresa($event)">
+            <option [ngValue]="null">Selecione</option>
+            @for (empresa of empresas(); track empresa.id) {
+              <option [ngValue]="empresa.numero">{{ empresa.numero }} - {{ empresa.nome }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          Revenda
+          <select [ngModel]="revendaNumero()" (ngModelChange)="setRevenda($event)" [disabled]="!empresaNumero()">
+            <option [ngValue]="null">Todas</option>
+            @for (revenda of revendasDaEmpresa(); track revenda.id) {
+              <option [ngValue]="revenda.numeroRevenda">{{ revenda.numeroRevenda }} - {{ revenda.revenda }}</option>
+            }
+          </select>
+        </label>
+        <label>
+          Buscar
+          <input type="search" [ngModel]="busca()" (ngModelChange)="busca.set($event)" placeholder="Chassi, codigo, modelo ou cor" />
+        </label>
+        <label>
+          Status
+          <select [ngModel]="reservadoFilter()" (ngModelChange)="reservadoFilter.set($event)">
+            <option value="">Todos</option>
+            <option value="N">Disponíveis</option>
+            <option value="S">Reservados</option>
+          </select>
+        </label>
+        <label>
+          Ordenar
+          <select [ngModel]="sortField()" (ngModelChange)="setSort($any($event))">
+            <option value="codigoVeiculo">Código</option>
+            <option value="modelo">Modelo</option>
+            <option value="cor">Cor</option>
+            <option value="revenda">Revenda</option>
+            <option value="chassi">Chassi</option>
+            <option value="reservado">Reserva</option>
+          </select>
+        </label>
+        <button class="secondary" type="button" (click)="setSort(sortField())">{{ sortDirection() === 'asc' ? 'Crescente' : 'Decrescente' }}</button>
+        <button class="primary" type="button" (click)="load()" [disabled]="loading()">Pesquisar</button>
+        <button class="secondary" type="button" (click)="clearFilters()" [disabled]="loading()">Limpar</button>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th> Código </th>
+              <th>Modelo</th>
+              <th>Cor</th>
+              <th>Empresa</th>
+              <th>Revenda</th>
+              <th>Chassi</th>
+              <th>Reserva</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (loading()) {
+              <tr><td colspan="8">Carregando estoque...</td></tr>
+            } @else if (filtered().length === 0) {
+              <tr><td colspan="8">Nenhum veículo encontrado.</td></tr>
+            } @else {
+              @for (item of paged(); track item.chassi) {
+                <tr [class.active]="selected()?.chassi === item.chassi" (click)="select(item)">
+                  <td><strong>{{ item.codigoVeiculo || '-' }}</strong></td>
+                  <td>
+                    <strong>{{ item.modelo || '-' }}</strong>
+                    @if (item.descricaoModelo) {
+                      <span class="cell-subtitle">{{ item.descricaoModelo }}</span>
+                    }
+                  </td>
+                  <td>
+                    <strong>{{ item.cor || '-' }}</strong>
+                    @if (item.descricaoCor) {
+                      <span class="cell-subtitle">{{ item.descricaoCor }}</span>
+                    }
+                  </td>
+                  <td>{{ item.empresa || '-' }}</td>
+                  <td>{{ item.revenda || '-' }}</td>
+                  <td>{{ item.chassi || '-' }}</td>
+                  <td><span class="status-pill" [class.reserved]="item.reservado">{{ item.reservado ? 'Reservado' : 'Disponivel' }}</span></td>
+                  <td>
+                    @if (canReserve()) {
+                      <button class="secondary" type="button" (click)="updateReserva(item, !item.reservado); $event.stopPropagation()" [disabled]="updatingChassi() === item.chassi">
+                        {{ updatingChassi() === item.chassi ? 'Salvando...' : item.reservado ? 'Derrubar reserva' : 'Reservar' }}
+                      </button>
+                    } @else {
+                      <span class="muted">Somente leitura</span>
+                    }
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (filtered().length > pageSize()) {
+        <div class="pagination">
+          <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
+          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Próxima</button>
+        </div>
+      }
+    </section>
+  </section>
+</main>
