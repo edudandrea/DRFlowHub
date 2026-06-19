@@ -39,6 +39,9 @@ namespace UniFlowHub.Api.Services
             new() { Chave = "rh", Nome = "Solicitações do RH", Grupo = "Departamentos" },
             new() { Chave = "rh-admin", Nome = "Administrador do setor RH", Grupo = "Administradores de setor" },
             new() { Chave = "cartao-ponto", Nome = "Controle de cartão de ponto", Grupo = "Departamentos" },
+            new() { Chave = "rh-aprovacao", Nome = "Aprova solicitação do RH", Grupo = "Aprovações" },
+            new() { Chave = "gestao-pessoas", Nome = "Gestao de pessoas", Grupo = "Departamentos" },
+            new() { Chave = "gestao-pessoas-admin", Nome = "Administrador de gestao de pessoas", Grupo = "Administradores de setor" },
             new() { Chave = "ti", Nome = "Chamados de TI", Grupo = "Departamentos" },
             new() { Chave = "ti-admin", Nome = "Administrador do setor TI", Grupo = "Administradores de setor" },
             new() { Chave = "base-conhecimento-ti", Nome = "Base de conhecimento TI", Grupo = "Departamentos" },
@@ -75,7 +78,7 @@ namespace UniFlowHub.Api.Services
                 "empresas-revendas",
                 "perfis"
             },
-            ["RH"] = new[] { "dashboard-rh", "rh", "rh-admin", "cartao-ponto" },
+            ["RH"] = new[] { "dashboard-rh", "rh", "rh-admin", "cartao-ponto", "gestao-pessoas", "gestao-pessoas-admin" },
             ["Diretoria"] = new[] { "compras" },
             ["Compras"] = new[] { "compras", "compras-admin" },
             ["Controladoria"] = new[] { "controladoria" },

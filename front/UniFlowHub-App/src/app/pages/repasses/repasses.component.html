@@ -82,6 +82,12 @@
     </div>
   </section>
 
+  <nav class="repasse-tabs" role="tablist" aria-label="Areas de repasses">
+    <button type="button" role="tab" [class.active]="activeTab() === 'estoque'" (click)="setTab('estoque')">Estoque</button>
+    <button type="button" role="tab" [class.active]="activeTab() === 'vendas-vendedor'" (click)="setTab('vendas-vendedor')">Vendas por vendedor</button>
+  </nav>
+
+  @if (activeTab() === 'estoque') {
   <section class="kpi-grid">
     <article class="kpi-card">
       <span>Veículos em estoque</span>
@@ -414,11 +420,11 @@
 
     <div class="detail-totals">
       <div>
-        <span>Total contÃ¡bil filtrado</span>
+        <span>Total contábil filtrado</span>
         <strong>{{ formatMoney(custoTotalFiltrado()) }}</strong>
       </div>
       <div>
-        <span>Total de veÃ­culos filtrado</span>
+        <span>Total de veículos filtrado</span>
         <strong>{{ formatNumber(totalVeiculosFiltrado()) }}</strong>
       </div>
     </div>
@@ -463,4 +469,125 @@
     <div class="empty-state" *ngIf="!loading() && !veiculos().length">Nenhum veículo encontrado para os filtros selecionados.</div>
     <div class="empty-state" *ngIf="!loading() && veiculos().length && !veiculosFiltrados().length">Nenhum veículo encontrado na pesquisa do detalhamento.</div>
   </article>
+  }
+
+  @if (activeTab() === 'vendas-vendedor') {
+  <section class="kpi-grid">
+    <article class="kpi-card">
+      <span>Vendedores</span>
+      <strong>{{ formatNumber(vendedores().length) }}</strong>
+      <small>Encontrados no filtro atual</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Veículos vendidos</span>
+      <strong>{{ formatNumber(totalVendasVendedor()) }}</strong>
+      <small>Unidades usadas faturadas</small>
+    </article>
+
+    <article class="kpi-card">
+      <span>Total da venda</span>
+      <strong>{{ formatMoney(totalVendaVendedor()) }}</strong>
+      <small>Soma das notas no perÃ­odo</small>
+    </article>
+
+    <article class="kpi-card" [class.attention]="totalMargemVendedor() < 0">
+      <span>Margem</span>
+      <strong>{{ formatMoney(totalMargemVendedor()) }}</strong>
+      <small>{{ formatPercent(margemPercentualVendedor()) }} sobre vendas</small>
+    </article>
+  </section>
+
+  <section class="seller-filters">
+    <label>
+      Vendedor
+      <input type="search" [ngModel]="vendedorFiltro()" (ngModelChange)="setVendedorFiltro($event, true)" placeholder="Filtrar pelo nome do vendedor" />
+    </label>
+    <button class="secondary-button" type="button" (click)="clearVendedorFiltro()" [disabled]="loadingVendedores()">Limpar vendedor</button>
+  </section>
+
+  <section class="seller-sales-grid">
+    <article class="table-card sellers-card">
+      <div class="section-title">
+        <div>
+          <span class="eyebrow">Ranking</span>
+          <h2>Lista de vendedores</h2>
+        </div>
+        <span class="table-count">10 por página</span>
+      </div>
+
+      <div class="seller-list" *ngIf="pagedVendedores().length; else emptySellers">
+        <button
+          type="button"
+          class="seller-row"
+          *ngFor="let vendedor of pagedVendedores(); trackBy: trackByVendedor"
+          [class.active]="vendedor.vendedor === vendedorSelecionado()"
+          (click)="selectVendedor(vendedor.vendedor)"
+        >
+          <div>
+            <strong>{{ vendedor.vendedor }}</strong>
+            <small>{{ vendedor.filial || 'Sem filial' }}</small>
+          </div>
+          <span>{{ formatNumber(vendedor.quantidade) }}</span>
+          <span>{{ formatMoney(vendedor.totalVenda) }}</span>
+        </button>
+      </div>
+
+      <ng-template #emptySellers>
+        <div class="empty-state">Nenhum vendedor encontrado para os filtros selecionados.</div>
+      </ng-template>
+
+      <div class="pagination" *ngIf="vendedores().length > vendedorPageSize()">
+        <button class="secondary-button" type="button" (click)="previousVendedorPage()" [disabled]="vendedorPage() <= 1">Anterior</button>
+        <span>PÃ¡gina {{ vendedorPage() }} de {{ vendedorTotalPages() }}</span>
+        <button class="secondary-button" type="button" (click)="nextVendedorPage()" [disabled]="vendedorPage() >= vendedorTotalPages()">PrÃ³xima</button>
+      </div>
+    </article>
+
+    <article class="table-card">
+      <div class="section-title">
+        <div>
+          <span class="eyebrow">Detalhe</span>
+          <h2>{{ vendedorSelecionado() || 'Vendas' }}</h2>
+        </div>
+        <span class="table-count">{{ formatNumber(vendasDoVendedor(vendedorSelecionado()).length) }} vendas</span>
+      </div>
+
+      <div class="table-wrap" *ngIf="vendasDoVendedor(vendedorSelecionado()).length; else emptySales">
+        <table class="seller-sales-table">
+          <thead>
+            <tr>
+              <th>Veí­culo vendido</th>
+              <th>Nota fiscal</th>
+              <th>Total da venda</th>
+              <th>Margem</th>
+              <th>Data</th>
+              <th>Revenda</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let venda of vendasDoVendedor(vendedorSelecionado()); trackBy: trackByVendaVendedor">
+              <td>
+                <strong>{{ venda.veiculo }}</strong>
+                <small>{{ venda.placa || 'Sem placa' }}</small>
+              </td>
+              <td><span class="plate">{{ venda.numeroNotaFiscal || '-' }}</span></td>
+              <td>{{ formatMoney(venda.totalVenda) }}</td>
+              <td [class.positive-value]="venda.margem < 0">{{ formatMoney(venda.margem) }}</td>
+              <td>{{ venda.dataVenda | date:'dd/MM/yyyy' }}</td>
+              <td>
+                <strong>{{ venda.empresa }}.{{ venda.revenda }}</strong>
+                <small>{{ venda.nomeRevenda }}</small>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ng-template #emptySales>
+        <div class="empty-state">Selecione um vendedor para visualizar as vendas.</div>
+      </ng-template>
+    </article>
+  </section>
+  }
 </main>

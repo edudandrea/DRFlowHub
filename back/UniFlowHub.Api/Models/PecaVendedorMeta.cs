@@ -10,6 +10,8 @@ namespace UniFlowHub.Api.Models
         public int Id { get; set; }
         public string CpfVendedor { get; set; } = string.Empty;
         public string NomeVendedor { get; set; } = string.Empty;
+        public string Origem { get; set; } = "pecas";
+        public string TipoMeta { get; set; } = "valor";
         public decimal ValorMeta { get; set; }
         public DateTime? DataInicio { get; set; }
         public DateTime? DataFim { get; set; }

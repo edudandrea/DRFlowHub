@@ -16,7 +16,7 @@ import { VeiculosComponent } from './pages/veiculos/veiculos.component';
 import { VeiculosBiPage } from './pages/veiculos-bi/veiculos-bi';
 import { EmpresasRevendasPage } from './pages/empresas-revendas/empresas-revendas';
 import { PerfisPage } from './pages/perfis/perfis';
-import { RepassesComponent } from './pages/repasses/repasses.component';
+import { GestaoPessoasPage } from './pages/gestao-pessoas/gestao-pessoas';
 
 const PECAS_BI_ACCESSES = [
   'pecas-admin',
@@ -58,6 +58,11 @@ export const routes: Routes = [
     path: 'rh/cartao-ponto',
     component: CartaoPontoPage,
     canActivate: [accessGuard(['cartao-ponto'])],
+  },
+  {
+    path: 'gestao-pessoas',
+    component: GestaoPessoasPage,
+    canActivate: [accessGuard(['rh-admin'])],
   },
   {
     path: 'ti',
@@ -111,7 +116,7 @@ export const routes: Routes = [
   },
   {
     path: 'veiculos/repasses',
-    component: RepassesComponent,
+    loadComponent: () => import('./pages/repasses/repasses.component').then((m) => m.RepassesComponent),
     canActivate: [accessGuard(['veiculos-repasses'])],
   },
   {

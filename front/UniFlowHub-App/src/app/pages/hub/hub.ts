@@ -159,7 +159,7 @@ export class HubPage implements OnInit, OnDestroy {
       return 'admin';
     }
 
-    if (role === 'RH' || department === 'rh' || department.includes('recursos humanos')) {
+    if (this.isRhUser()) {
       return 'rh';
     }
 
@@ -247,6 +247,7 @@ export class HubPage implements OnInit, OnDestroy {
     const currentMonth = today.getMonth();
 
     return this.users()
+      .filter((user) => user.ativo)
       .map((user) => {
         const date = this.dateParts(user.dataNascimento);
         if (!date || date.month !== currentMonth) {
@@ -420,10 +421,11 @@ export class HubPage implements OnInit, OnDestroy {
     this.loadMonitoringLinks();
     this.loading.set(true);
     void this.spinner.show();
+    const canLoadEquipamentos = this.auth.hasAnyAccess(TI_CHILD_ACCESSES);
     forkJoin({
       rh: this.rhService.list().pipe(catchError(() => of([] as SolicitacaoRH[]))),
       ti: this.tiService.list().pipe(catchError(() => of([] as ChamadoTI[]))),
-      equipamentos: this.equipamentosService.list().pipe(catchError(() => of([] as EquipamentoTI[]))),
+      equipamentos: canLoadEquipamentos ? this.equipamentosService.list().pipe(catchError(() => of([] as EquipamentoTI[]))) : of([] as EquipamentoTI[]),
       compras: this.comprasService.list().pipe(catchError(() => of([] as SolicitacaoCompra[]))),
       users: this.auth.listUsers().pipe(catchError(() => of([] as User[]))),
     }).subscribe({
@@ -466,6 +468,59 @@ export class HubPage implements OnInit, OnDestroy {
     }
 
     void this.router.navigateByUrl(metric.route);
+  }
+
+  printBirthdaysPdf(): void {
+    const popup = window.open('', '_blank', 'width=960,height=720');
+    if (!popup) {
+      this.toastr.warning('Permita pop-ups para gerar o PDF.', 'Aniversariantes');
+      return;
+    }
+
+    const monthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date());
+    const rows = this.monthBirthdays()
+      .map((birthday) => `
+        <tr>
+          <td>${String(birthday.day).padStart(2, '0')}</td>
+          <td>${this.escapeHtml(birthday.nome)}</td>
+          <td>${this.escapeHtml(birthday.departamento || '-')}</td>
+          <td>${this.escapeHtml(birthday.cargo || '-')}</td>
+        </tr>
+      `)
+      .join('');
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Aniversariantes do mes</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
+            h1 { margin: 0 0 6px; font-size: 24px; }
+            p { margin: 0 0 20px; color: #4b5563; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 10px 12px; border: 1px solid #d1d5db; text-align: left; font-size: 13px; }
+            th { background: #eef2ff; color: #1f2937; }
+          </style>
+        </head>
+        <body>
+          <h1>Aniversariantes de ${this.escapeHtml(monthName)}</h1>
+          <p>Emitido em ${new Date().toLocaleDateString('pt-BR')}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Dia</th>
+                <th>Nome</th>
+                <th>Departamento</th>
+                <th>Cargo</th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="4">Nenhum aniversariante no mes.</td></tr>'}</tbody>
+          </table>
+          <script>window.onload = () => { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    popup.document.close();
   }
 
   faviconUrl(link: UsefulLink): string {
@@ -586,6 +641,19 @@ export class HubPage implements OnInit, OnDestroy {
       || department.includes('tecnologia ')
       || department.includes('informatica')
       || department.includes('suporte ti');
+  }
+
+  private isRhUser(): boolean {
+    const user = this.user();
+    const role = this.normalize(user?.role);
+    const department = this.normalize(user?.departamento);
+    const perfis = (user?.perfis ?? []).map((perfil) => this.normalize(perfil));
+    return role === 'rh'
+      || role === 'recursos humanos'
+      || department === 'rh'
+      || department.includes('recursos humanos')
+      || perfis.some((perfil) => perfil === 'rh' || perfil === 'recursos humanos')
+      || this.auth.hasAnyAccess(['rh-admin', 'dashboard-rh']);
   }
 
   private loadUsefulLinks(): void {
@@ -1106,5 +1174,14 @@ export class HubPage implements OnInit, OnDestroy {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim();
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

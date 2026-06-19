@@ -24,6 +24,14 @@ const ALLOWED_ATTACHMENT_TYPES = [
 ];
 const ALLOWED_ATTACHMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
 type SolicitacaoSortField = 'id' | 'titulo' | 'tipoSolicitacao' | 'departamento' | 'status' | 'dataSolicitacao';
+type RhColumnKey = 'pendentes' | 'atendimento' | 'concluidos';
+
+interface RhColumn {
+  key: RhColumnKey;
+  title: string;
+  subtitle: string;
+  items: SolicitacaoRH[];
+}
 
 @Component({
   selector: 'app-solicitacoes',
@@ -62,16 +70,50 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
   readonly pageSize = signal(10);
   readonly sortField = signal<SolicitacaoSortField>('id');
   readonly sortDirection = signal<'asc' | 'desc'>('desc');
+  readonly draggingSolicitacaoId = signal<number | null>(null);
+  readonly dragTargetColumn = signal<RhColumnKey | null>(null);
   readonly user = computed(() => this.auth.user());
+  readonly canManageRh = computed(() => this.auth.hasAccess('rh-admin'));
+  readonly canApproveRh = computed(() => this.auth.hasAccess('rh-aprovacao'));
   readonly minhasSolicitacoes = computed(() => {
     const currentUserId = this.user()?.id;
-    return this.sortItems(this.solicitacoes().filter((item) => !currentUserId || item.userid === currentUserId));
+    const items = this.canManageRh() || this.canApproveRh()
+      ? this.solicitacoes()
+      : this.solicitacoes().filter((item) => !currentUserId || item.userid === currentUserId);
+    return this.sortItems(items);
   });
-  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.minhasSolicitacoes().length / this.pageSize())));
-  readonly pagedSolicitacoes = computed(() => this.minhasSolicitacoes().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
-  readonly avaliacoesPendentes = computed(() => this.minhasSolicitacoes().filter((item) => this.canEvaluate(item)).length);
-  readonly abertas = computed(() => this.minhasSolicitacoes().filter((item) => item.status === 'Aberta').length);
-  readonly encerradas = computed(() => this.minhasSolicitacoes().filter((item) => !!item.dataEncerramento).length);
+  readonly solicitacoesVisiveis = computed(() => this.minhasSolicitacoes().filter((item) => this.isInVisibleDateWindow(item)));
+  readonly rhColumns = computed<RhColumn[]>(() => {
+    const items = this.pagedSolicitacoes();
+    const columns: Omit<RhColumn, 'subtitle'>[] = [
+      {
+        key: 'pendentes',
+        title: 'Pendente',
+        items: items.filter((item) => this.columnForSolicitacao(item) === 'pendentes'),
+      },
+      {
+        key: 'atendimento',
+        title: 'Em atendimento',
+        items: items.filter((item) => this.columnForSolicitacao(item) === 'atendimento'),
+      },
+      {
+        key: 'concluidos',
+        title: 'Concluidos',
+        items: items.filter((item) => this.columnForSolicitacao(item) === 'concluidos'),
+      },
+    ];
+
+    return columns.map((column) => ({
+      ...column,
+      subtitle: `${column.items.length} solicitacao(oes)`,
+    }));
+  });
+  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.solicitacoesVisiveis().length / this.pageSize())));
+  readonly currentPage = computed(() => this.safePage());
+  readonly pagedSolicitacoes = computed(() => this.solicitacoesVisiveis().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
+  readonly avaliacoesPendentes = computed(() => this.solicitacoesVisiveis().filter((item) => this.canEvaluate(item)).length);
+  readonly abertas = computed(() => this.solicitacoesVisiveis().filter((item) => item.status === 'Aberta').length);
+  readonly encerradas = computed(() => this.solicitacoesVisiveis().filter((item) => !!item.dataEncerramento).length);
   private selectedFile: File | null = null;
   private communicationRefreshId: ReturnType<typeof setInterval> | null = null;
 
@@ -113,6 +155,9 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
 
   readonly messageForm = this.fb.nonNullable.group({
     mensagem: ['', Validators.required],
+  });
+  readonly approvalForm = this.fb.nonNullable.group({
+    observacoesAprovacao: [''],
   });
 
   setSort(field: SolicitacaoSortField): void {
@@ -195,6 +240,7 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
     this.service.list().subscribe({
       next: (items) => {
         this.solicitacoes.set(items);
+        this.page.set(1);
         this.loading.set(false);
         void this.spinner.hide();
       },
@@ -237,15 +283,12 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
     } else {
       this.editForm.disable({ emitEvent: false });
     }
-    this.messageForm.reset({ mensagem: '' });
-    this.loadComunicacoes(item.id);
+    this.approvalForm.reset({ observacoesAprovacao: item.observacoesAprovacao || '' });
     this.editModalOpen.set(true);
-    this.startCommunicationRefresh();
   }
 
   closeEditModal(): void {
     if (!this.updating()) {
-      this.stopCommunicationRefresh();
       this.editModalOpen.set(false);
       this.selected.set(null);
     }
@@ -262,13 +305,7 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
     }
 
     this.updating.set(true);
-    this.service.update(selected.id, {
-      ...this.editForm.getRawValue(),
-      dataAprovacao: selected.dataAprovacao ?? null,
-      aprovada: selected.aprovada ?? null,
-      observacoesAprovacao: selected.observacoesAprovacao ?? '',
-      aprovacaoPendente: selected.aprovacaoPendente,
-    }).subscribe({
+    this.service.update(selected.id, this.editForm.getRawValue()).subscribe({
       next: (updated) => {
         this.solicitacoes.set(this.solicitacoes().map((item) => item.id === updated.id ? updated : item));
         this.updating.set(false);
@@ -280,6 +317,60 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
         this.toastr.error(this.getErrorMessage('Não foi possível atualizar a solicitação.', error), 'Erro');
       },
     });
+  }
+
+  onSolicitacaoDragStart(event: DragEvent, item: SolicitacaoRH): void {
+    if (!this.canMoveSolicitacao(item) || this.updating()) {
+      event.preventDefault();
+      return;
+    }
+
+    this.draggingSolicitacaoId.set(item.id);
+    event.dataTransfer?.setData('text/plain', String(item.id));
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onSolicitacaoDragEnd(): void {
+    this.draggingSolicitacaoId.set(null);
+    this.dragTargetColumn.set(null);
+  }
+
+  onSolicitacaoDragOver(event: DragEvent, columnKey: RhColumnKey): void {
+    if (!this.canManageRh() || this.updating() || this.draggingSolicitacaoId() === null) {
+      return;
+    }
+
+    event.preventDefault();
+    this.dragTargetColumn.set(columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onSolicitacaoDragLeave(columnKey: RhColumnKey): void {
+    if (this.dragTargetColumn() === columnKey) {
+      this.dragTargetColumn.set(null);
+    }
+  }
+
+  onSolicitacaoDrop(event: DragEvent, columnKey: RhColumnKey): void {
+    event.preventDefault();
+    if (!this.canManageRh() || this.updating()) {
+      this.onSolicitacaoDragEnd();
+      return;
+    }
+
+    const draggedId = Number(event.dataTransfer?.getData('text/plain') || this.draggingSolicitacaoId());
+    const item = this.solicitacoes().find((solicitacao) => solicitacao.id === draggedId);
+    this.onSolicitacaoDragEnd();
+
+    if (!item || this.columnForSolicitacao(item) === columnKey) {
+      return;
+    }
+
+    this.moveSolicitacao(item, columnKey);
   }
 
   sendMessage(): void {
@@ -371,10 +462,6 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
 
     const payload: SolicitacaoPayload = {
       ...this.form.getRawValue(),
-      dataAprovacao: null,
-      aprovada: null,
-      observacoesAprovacao: '',
-      aprovacaoPendente: false,
       userid: this.user()?.id ?? 0,
     };
 
@@ -396,7 +483,7 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
           this.anexoInput.nativeElement.value = '';
         }
         this.closeCreateModal();
-        this.toastr.success('Solicitacao enviada para acompanhamento.', 'Enviado');
+        this.toastr.success('Solicitacao enviada para aprovacao do gestor.', 'Enviado');
         this.saving.set(false);
       },
       error: (error) => {
@@ -449,12 +536,193 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
   canEdit(item: SolicitacaoRH): boolean {
     const current = this.user();
     return !!current
-      && item.userid === current.id
-      && !this.isFinalized(item);
+      && !this.isApprovalPending(item)
+      && !this.isFinalized(item)
+      && (this.canManageRh() || item.userid === current.id);
+  }
+
+  canMoveSolicitacao(item: SolicitacaoRH): boolean {
+    return this.canManageRh() && !this.isApprovalPending(item) && !this.isFinalized(item) && !this.updating();
+  }
+
+  canApprove(item: SolicitacaoRH | null): boolean {
+    return !!item && this.canApproveRh() && this.isApprovalPending(item) && !this.isFinalized(item);
+  }
+
+  approveSolicitacao(aprovada: boolean): void {
+    const selected = this.selected();
+    if (!selected || !this.canApprove(selected) || this.updating()) {
+      return;
+    }
+
+    this.updating.set(true);
+    this.service.approve(selected.id, aprovada, this.approvalForm.controls.observacoesAprovacao.value).subscribe({
+      next: (updated) => {
+        this.solicitacoes.set(this.solicitacoes().map((item) => item.id === updated.id ? updated : item));
+        this.selected.set(updated);
+        this.updating.set(false);
+        this.closeEditModal();
+        this.toastr.success(aprovada ? 'Solicitacao aprovada e enviada para o RH.' : 'Solicitacao reprovada.', 'Aprovacao');
+      },
+      error: (error) => {
+        this.updating.set(false);
+        this.toastr.error(this.getErrorMessage('Nao foi possivel registrar a aprovacao.', error), 'Erro');
+      },
+    });
   }
 
   isFinalized(item: SolicitacaoRH | null): boolean {
-    return !!item && (!!item.dataEncerramento || item.status === 'Concluida' || item.status === 'Cancelada');
+    return !!item && (
+      !!item.dataEncerramento
+      || item.status === 'Concluida'
+      || item.status === 'Cancelada'
+      || item.status === 'Reprovada pelo gestor'
+    );
+  }
+
+  isApprovalPending(item: SolicitacaoRH | null): boolean {
+    return !!item
+      && !this.isFinalized(item)
+      && (item.aprovacaoPendente || (!item.aprovada && this.normalize(item.status).includes('aguardando aprovacao')));
+  }
+
+  private moveSolicitacao(item: SolicitacaoRH, columnKey: RhColumnKey): void {
+    if (columnKey === 'concluidos') {
+      this.closeSolicitacaoFromBoard(item);
+      return;
+    }
+
+    if (this.isFinalized(item)) {
+      this.reopenSolicitacaoFromBoard(item, this.statusForColumn(columnKey));
+      return;
+    }
+
+    this.updateSolicitacaoStatusFromBoard(item, this.statusForColumn(columnKey));
+  }
+
+  private updateSolicitacaoStatusFromBoard(item: SolicitacaoRH, status: string): void {
+    this.updating.set(true);
+    this.service.update(item.id, this.solicitacaoUpdatePayload(item, status)).subscribe({
+      next: (updated) => {
+        this.solicitacoes.set(this.solicitacoes().map((solicitacao) => solicitacao.id === updated.id ? updated : solicitacao));
+        if (this.selected()?.id === updated.id) {
+          this.selected.set(updated);
+          this.editForm.patchValue({ status: updated.status });
+        }
+        this.updating.set(false);
+        this.toastr.success(`Solicitacao #${updated.id} movida para ${updated.status}.`, 'RH');
+      },
+      error: (error) => {
+        this.updating.set(false);
+        this.toastr.error(this.getErrorMessage('Nao foi possivel alterar o status da solicitacao.', error), 'Erro');
+      },
+    });
+  }
+
+  private closeSolicitacaoFromBoard(item: SolicitacaoRH): void {
+    this.updating.set(true);
+    this.service.close(item.id, 'Concluida pelo quadro Kanban do RH.').subscribe({
+      next: (updated) => {
+        this.solicitacoes.set(this.solicitacoes().map((solicitacao) => solicitacao.id === updated.id ? updated : solicitacao));
+        if (this.selected()?.id === updated.id) {
+          this.selected.set(updated);
+          this.editForm.patchValue({ status: updated.status });
+        }
+        this.updating.set(false);
+        this.toastr.success(`Solicitacao #${updated.id} concluida.`, 'RH');
+      },
+      error: (error) => {
+        this.updating.set(false);
+        this.toastr.error(this.getErrorMessage('Nao foi possivel concluir a solicitacao.', error), 'Erro');
+      },
+    });
+  }
+
+  private reopenSolicitacaoFromBoard(item: SolicitacaoRH, status: string): void {
+    this.updating.set(true);
+    this.service.reopen(item.id).subscribe({
+      next: (reopened) => {
+        if (this.normalize(reopened.status) === this.normalize(status)) {
+          this.solicitacoes.set(this.solicitacoes().map((solicitacao) => solicitacao.id === reopened.id ? reopened : solicitacao));
+          this.updating.set(false);
+          this.toastr.success(`Solicitacao #${reopened.id} reaberta.`, 'RH');
+          return;
+        }
+
+        this.service.update(reopened.id, this.solicitacaoUpdatePayload(reopened, status)).subscribe({
+          next: (updated) => {
+            this.solicitacoes.set(this.solicitacoes().map((solicitacao) => solicitacao.id === updated.id ? updated : solicitacao));
+            this.updating.set(false);
+            this.toastr.success(`Solicitacao #${updated.id} movida para ${updated.status}.`, 'RH');
+          },
+          error: (error) => {
+            this.updating.set(false);
+            this.toastr.error(this.getErrorMessage('Nao foi possivel alterar o status da solicitacao.', error), 'Erro');
+          },
+        });
+      },
+      error: (error) => {
+        this.updating.set(false);
+        this.toastr.error(this.getErrorMessage('Nao foi possivel reabrir a solicitacao.', error), 'Erro');
+      },
+    });
+  }
+
+  private solicitacaoUpdatePayload(item: SolicitacaoRH, status: string): Omit<SolicitacaoPayload, 'userid'> {
+    return {
+      unidade: item.unidade,
+      titulo: item.titulo,
+      tipoSolicitacao: item.tipoSolicitacao,
+      solicitante: item.solicitante,
+      departamento: item.departamento,
+      descricao: item.descricao,
+      anexossUrl: item.anexossUrl,
+      prioridade: item.prioridade,
+      responsavel: item.responsavel,
+      status,
+      observacoes: item.observacoes,
+    };
+  }
+
+  private statusForColumn(columnKey: RhColumnKey): string {
+    const statuses: Record<RhColumnKey, string> = {
+      pendentes: 'Pendente',
+      atendimento: 'Em atendimento',
+      concluidos: 'Concluida',
+    };
+
+    return statuses[columnKey];
+  }
+
+  private columnForSolicitacao(item: SolicitacaoRH): RhColumnKey {
+    if (this.isFinalized(item)) {
+      return 'concluidos';
+    }
+
+    const status = this.normalize(item.status);
+    if (status.includes('atendimento') || status.includes('andamento')) {
+      return 'atendimento';
+    }
+
+    return 'pendentes';
+  }
+
+  private isInVisibleDateWindow(item: SolicitacaoRH): boolean {
+    const createdAt = new Date(item.dataSolicitacao);
+    if (Number.isNaN(createdAt.getTime())) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    return createdAt >= yesterday && createdAt < tomorrow;
   }
 
   isUserUnidadeLocked(): boolean {
@@ -485,6 +753,14 @@ export class SolicitacoesPage implements OnInit, OnDestroy {
         : String(aValue ?? '').localeCompare(String(bValue ?? ''));
       return result * direction;
     });
+  }
+
+  private normalize(value: string | null | undefined): string {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
   }
 
   private getErrorMessage(fallback: string, error?: unknown): string {

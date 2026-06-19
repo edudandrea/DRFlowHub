@@ -213,6 +213,61 @@ textarea {
   gap: 12px;
 }
 
+.rh-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.rh-board > .empty {
+  grid-column: 1 / -1;
+}
+
+.rh-column {
+  display: grid;
+  gap: 12px;
+  min-height: 280px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.rh-column.drag-over {
+  border-color: var(--color-brand-green-strong);
+  background: var(--color-brand-green-soft);
+}
+
+.rh-column header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+}
+
+.rh-column header strong {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.rh-column header small,
+.column-empty {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.column-empty {
+  align-self: center;
+  justify-self: center;
+  margin: 32px 0;
+}
+
 .request-card {
   display: grid;
   gap: 10px;
@@ -228,6 +283,14 @@ textarea {
 
 .request-card.editable:hover {
   border-color: var(--color-brand-green-strong);
+}
+
+.request-card[draggable='true'] {
+  cursor: grab;
+}
+
+.request-card.dragging {
+  opacity: 0.55;
 }
 
 .request-card h3 {
@@ -250,6 +313,17 @@ textarea {
   font-weight: 800;
   line-height: 1.15;
   white-space: nowrap;
+}
+
+.approval-chip {
+  justify-self: start;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .modal-backdrop {
@@ -344,6 +418,48 @@ textarea {
   background: var(--color-brand-green-soft);
   color: var(--color-text);
   font-weight: 800;
+}
+
+.approval-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card-alt);
+}
+
+.approval-panel strong {
+  color: var(--color-brand-blue);
+  font-size: 15px;
+}
+
+.approval-panel p {
+  color: var(--color-muted);
+}
+
+.approval-panel.approved {
+  border-color: var(--color-brand-green-strong);
+  background: var(--color-brand-green-soft);
+}
+
+.danger {
+  min-width: 130px;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.danger:disabled,
+.primary:disabled,
+.secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .communication-panel,
@@ -445,7 +561,8 @@ textarea {
   }
 
   .metrics,
-  .two {
+  .two,
+  .rh-board {
     grid-template-columns: 1fr;
   }
 

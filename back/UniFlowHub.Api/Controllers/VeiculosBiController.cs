@@ -53,5 +53,26 @@ namespace UniFlowHub.Api.Controllers
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
         }
+
+        [HttpPut("vendedores/meta")]
+        public async Task<IActionResult> SaveMeta([FromBody] VeiculoVendedorMetaDto dto)
+        {
+            try
+            {
+                var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                return Ok(await _service.SaveMetaAsync(role, GetCurrentUserId(), dto));
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
+        }
+
+        private int GetCurrentUserId()
+        {
+            var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (int.TryParse(value, out var userId))
+                return userId;
+
+            throw new UnauthorizedAccessException("Usuario invalido.");
+        }
     }
 }

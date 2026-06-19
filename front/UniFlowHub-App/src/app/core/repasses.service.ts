@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { RepasseDashboard } from './models';
+import { RepasseDashboard, RepasseVendasVendedor } from './models';
 
 const API_URL = '/api';
 
@@ -12,11 +12,25 @@ export interface RepasseDashboardFilter {
   dataFim?: string | null;
 }
 
+export interface RepasseVendasVendedorFilter extends RepasseDashboardFilter {
+  vendedor?: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class RepassesService {
   constructor(private readonly http: HttpClient) {}
 
   dashboard(filter: RepasseDashboardFilter): Observable<RepasseDashboard> {
+    const params = this.buildParams(filter);
+    return this.http.get<RepasseDashboard>(`${API_URL}/repasses/dashboard`, { params });
+  }
+
+  vendasPorVendedor(filter: RepasseVendasVendedorFilter): Observable<RepasseVendasVendedor> {
+    const params = this.buildParams(filter);
+    return this.http.get<RepasseVendasVendedor>(`${API_URL}/repasses/vendas-vendedor`, { params });
+  }
+
+  private buildParams(filter: RepasseVendasVendedorFilter): HttpParams {
     let params = new HttpParams();
 
     if (filter.empresa) {
@@ -35,6 +49,10 @@ export class RepassesService {
       params = params.set('dataFim', filter.dataFim);
     }
 
-    return this.http.get<RepasseDashboard>(`${API_URL}/repasses/dashboard`, { params });
+    if (filter.vendedor?.trim()) {
+      params = params.set('vendedor', filter.vendedor.trim());
+    }
+
+    return params;
   }
 }

@@ -126,6 +126,7 @@ builder.Services.AddScoped<PecasBiService>();
 builder.Services.AddScoped<PerfisService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<RepassesService>();
+builder.Services.AddScoped<GestaoPessoasService>();
 
 var app = builder.Build();
 

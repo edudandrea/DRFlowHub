@@ -79,11 +79,12 @@ export class App {
   readonly shellLinks: ShellLink[] = [
     { label: 'Dashboard', description: 'Visão inicial', route: '/hub', enabled: true },
     {
-      label: 'Recursos Humanos',
-      description: 'Solicitações e ponto',
+      label: 'Gestão de Pessoas',
+      description: 'Admissão, demissão e RH',
       route: '/rh',
       enabled: true,
       children: [
+        { label: 'Admissão e Demissão', description: 'Fluxo direto do RH', route: '/gestao-pessoas', enabled: true, access: 'rh-admin' },
         { label: 'Solicitações do RH', description: 'Atendimento e demandas', route: '/rh', userRoute: '/solicitacoes', enabled: true, access: 'rh', adminAccess: 'rh-admin' },
         { label: 'Controle Cartão Ponto', description: 'Espelho e ajustes', route: '/rh/cartao-ponto', enabled: true, access: 'cartao-ponto' },
       ],

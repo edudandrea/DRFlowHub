@@ -56,8 +56,8 @@
             <button type="button" (click)="clearRevendas()">Todas as revendas</button>
             @for (revenda of revendasDaEmpresa(); track revenda.id) {
               <label>
-                <input type="checkbox" [checked]="isRevendaSelected(revenda.numeroRevenda)" (change)="toggleRevenda(revenda.numeroRevenda)" />
-                {{ revenda.numeroRevenda }} - {{ revenda.revenda }}
+                <input type="checkbox" [checked]="isRevendaSelected(revendaKey(revenda))" (change)="toggleRevenda(revendaKey(revenda))" />
+                {{ revenda.empresaNumero }}.{{ revenda.numeroRevenda }} - {{ revenda.revenda }}
               </label>
             }
           </div>
@@ -161,11 +161,13 @@
                 [attr.transform]="sliceTransform(mixRealizado(), index, 'mix-' + index)"
                 (mouseenter)="hoveredSlice.set('mix-' + index)"
                 (focus)="hoveredSlice.set('mix-' + index)"
+                (click)="selectVendaDetalhe(slice)"
+                (keydown.enter)="selectVendaDetalhe(slice)"
                 tabindex="0"
               >
                 <path class="donut-slice" [attr.d]="slicePath(mixRealizado(), index)" [style.fill]="slice.color"></path>
                 @if (slicePercent(mixRealizado(), slice.value) >= 7) {
-                  <foreignObject [attr.x]="sliceLabelX(mixRealizado(), index) - 18" [attr.y]="sliceLabelY(mixRealizado(), index) - 9" width="36" height="18">
+                  <foreignObject [attr.x]="sliceLabelX(mixRealizado(), index) - 28" [attr.y]="sliceLabelY(mixRealizado(), index) - 10" width="56" height="20">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(mixRealizado(), slice.value)) }}</div>
                   </foreignObject>
                 }
@@ -198,6 +200,7 @@
             <div class="tower-bars">
               <span class="tower-meta" [style.height.%]="item.meta ? percent(item.meta, maxMixTower()) : 0"></span>
               <span class="tower-done" [style.height.%]="percent(item.realizado, maxMixTower())" [style.background]="item.color"></span>
+              <b [style.color]="item.color">{{ towerShortLabel(item.label) }}</b>
             </div>
             <strong>{{ item.label }}</strong>
             <small>
@@ -235,6 +238,8 @@
                     [attr.transform]="sliceTransform(item.slices, index, item.data + '-' + index)"
                     (mouseenter)="hoveredSlice.set(item.data + '-' + index)"
                     (focus)="hoveredSlice.set(item.data + '-' + index)"
+                    (click)="selectVendaDetalhe(slice, item.data)"
+                    (keydown.enter)="selectVendaDetalhe(slice, item.data)"
                     tabindex="0"
                   >
                     <path class="donut-slice" [attr.d]="slicePath(item.slices, index)" [style.fill]="slice.color"></path>
@@ -249,7 +254,41 @@
       </div>
     </article>
 
-    <article class="panel">
+    @if (selectedDetail()) {
+      <article class="panel sales-detail-panel">
+        <header>
+          <div>
+            <p class="system-name">Detalhamento</p>
+            <h2>{{ selectedDetail()!.titulo }}</h2>
+          </div>
+          <button class="secondary" type="button" (click)="closeVendaDetalhe()">Fechar</button>
+        </header>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Nota fiscal</th>
+                <th>Veiculo</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of vendasDetalhesSelecionadas(); track item.data + '-' + item.notaFiscal + '-' + item.veiculo) {
+                <tr>
+                  <td><strong>{{ item.cliente }}</strong></td>
+                  <td>{{ item.notaFiscal }}</td>
+                  <td>{{ item.veiculo }}</td>
+                  <td>{{ formatMoney(item.valor) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </article>
+    }
+
+    <article class="panel ranking-panel">
       <header>
         <div>
           <p class="system-name">Modelos</p>
@@ -271,7 +310,7 @@
       </div>
     </article>
 
-    <article class="panel">
+    <article class="panel seller-goals-panel">
       <header>
         <div>
           <p class="system-name">Vendedores</p>
@@ -279,23 +318,28 @@
         </div>
       </header>
       <div class="seller-list">
-        @for (item of vendedoresFiltrados(); track item.vendedor) {
+        @for (item of vendedoresFiltrados(); track item.cpfVendedor || item.vendedor) {
           <div>
             <header>
               <strong>{{ item.vendedor }}</strong>
               <span>{{ item.filial }}</span>
             </header>
-            <p><i [style.width.%]="percent(item.realizado, item.meta)"></i></p>
+            <p><i [style.width.%]="sellerGoalProgressWidth(item)" [style.background]="sellerGoalColor(item)"></i></p>
             <footer>
-              <span>{{ formatNumber(item.realizado) }} de {{ formatNumber(item.meta) }} un.</span>
-              <strong>{{ formatPercent(metaPercentual(item)) }}</strong>
+              <span>{{ metaGoalLabel(item.tipoMeta, item.meta, item.realizado, item.faturamento) }}</span>
+              <strong [class]="sellerGoalClass(item)">{{ item.meta > 0 ? formatPercent(sellerGoalPercent(item)) : 'Meta' }}</strong>
+            </footer>
+            <footer>
+              <span>{{ formatNumber(item.realizado) }} unidades vendidas</span>
+              <button class="seller-meta-action" type="button" (click)="openMetaModal(item)">Editar meta</button>
             </footer>
           </div>
         }
       </div>
     </article>
 
-    <article class="panel funnel-panel">
+    <div class="funnel-period-row">
+    <article class="panel funnel-panel compact-funnel">
       <header>
         <div>
           <p class="system-name">Funil</p>
@@ -316,7 +360,7 @@
               >
                 <path class="donut-slice" [attr.d]="slicePath(funilSlices(), index)" [style.fill]="slice.color"></path>
                 @if (slicePercent(funilSlices(), slice.value) >= 7) {
-                  <foreignObject [attr.x]="sliceLabelX(funilSlices(), index) - 18" [attr.y]="sliceLabelY(funilSlices(), index) - 9" width="36" height="18">
+                  <foreignObject [attr.x]="sliceLabelX(funilSlices(), index) - 28" [attr.y]="sliceLabelY(funilSlices(), index) - 10" width="56" height="20">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(funilSlices(), slice.value)) }}</div>
                   </foreignObject>
                 }
@@ -336,7 +380,7 @@
       </div>
     </article>
 
-    <article class="panel table-panel">
+    <article class="panel table-panel period-panel">
       <header>
         <div>
           <p class="system-name">Vendas por periodo</p>
@@ -382,6 +426,7 @@
         <button class="secondary" type="button" (click)="nextVendasPeriodoPage()" [disabled]="vendasPeriodoPage() >= vendasPeriodoTotalPages()">Proxima</button>
       </div>
     </article>
+    </div>
   </section>
   }
 
@@ -390,7 +435,7 @@
     <article>
       <span>Faturamento acessorios</span>
       <strong>{{ formatMoney(acessoriosFaturamentoTotal()) }}</strong>
-      <p>{{ formatNumber(acessoriosQuantidadeTotal()) }} itens no periodo</p>
+      <p>{{ formatNumber(acessoriosQuantidadeTotal()) }} notas no periodo</p>
     </article>
     <article>
       <span>Rentabilidade</span>
@@ -400,41 +445,16 @@
     <article>
       <span>Ticket medio</span>
       <strong>{{ formatMoney(acessoriosTicketMedio()) }}</strong>
-      <p>Por item vendido</p>
+      <p>Por nota</p>
     </article>
     <article>
-      <span>Itens ranqueados</span>
-      <strong>{{ formatNumber(acessorios().length) }}</strong>
-      <p>Departamento 7</p>
+      <span>Rentabilidade percentual</span>
+      <strong>{{ formatPercent(acessoriosMargemPercentual()) }}</strong>
+      <p>{{ formatMoney(acessoriosRentabilidadeTotal()) }} de margem</p>
     </article>
   </section>
 
   <section class="bi-grid accessories-grid">
-    <article class="panel revenue-panel">
-      <header>
-        <div>
-          <p class="system-name">Acessorios</p>
-          <h2>Top itens por faturamento</h2>
-        </div>
-        <span>Atualizado {{ atualizadoEm() | date: 'dd/MM/yyyy HH:mm' }}</span>
-      </header>
-      <div class="accessory-bars">
-        @for (item of acessorios(); track item.codigo) {
-          <div>
-            <header>
-              <strong>{{ item.nome }}</strong>
-              <span>{{ item.codigo }} - {{ item.categoria }}</span>
-            </header>
-            <p><i [style.width.%]="percent(item.faturamento, maxAcessorioFaturamento())"></i></p>
-            <footer>
-              <span>{{ formatNumber(item.quantidade) }} itens</span>
-              <strong>{{ formatMoney(item.faturamento) }}</strong>
-            </footer>
-          </div>
-        }
-      </div>
-    </article>
-
     <article class="panel composition-panel">
       <header>
         <div>
@@ -457,11 +477,40 @@
       </div>
     </article>
 
+    <article class="panel revenue-panel">
+      <header>
+        <div>
+          <p class="system-name">Acessorios</p>
+          <h2>Vendas por vendedor</h2>
+        </div>
+        <span>Atualizado {{ atualizadoEm() | date: 'dd/MM/yyyy HH:mm' }}</span>
+      </header>
+      <div class="accessory-bars">
+        @for (item of acessorios(); track item.codigo + '-' + item.categoria) {
+          <div>
+            <header>
+              <strong>{{ item.nome }}</strong>
+              <span>{{ item.categoria }} - vendedor {{ item.codigo }}</span>
+            </header>
+            <p><i [style.width.%]="percent(item.faturamento, maxAcessorioFaturamento())"></i></p>
+            <footer>
+              <span>{{ formatNumber(item.quantidade) }} notas</span>
+              <strong>{{ formatMoney(item.faturamento) }}</strong>
+            </footer>
+            <footer>
+              <span>{{ metaGoalLabel(item.tipoMeta, item.meta, item.quantidade, item.faturamento, 'notas') }}</span>
+              <button class="seller-meta-action" type="button" (click)="openAcessorioMetaModal(item)">Editar meta</button>
+            </footer>
+          </div>
+        }
+      </div>
+    </article>
+
     <article class="panel table-panel">
       <header>
         <div>
           <p class="system-name">Detalhamento</p>
-          <h2>Acessorios vendidos</h2>
+          <h2>Acessorios por vendedor</h2>
         </div>
       </header>
       <div class="table-scroll">
@@ -469,16 +518,17 @@
           <thead>
             <tr>
               <th>Codigo</th>
-              <th>Acessorio</th>
-              <th>Categoria</th>
-              <th>Quantidade</th>
+              <th>Vendedor</th>
+              <th>Empresa/Revenda</th>
+              <th>Notas</th>
               <th>Faturamento</th>
               <th>Rentabilidade</th>
               <th>Margem</th>
+              <th>Meta</th>
             </tr>
           </thead>
           <tbody>
-            @for (item of acessorios(); track item.codigo) {
+            @for (item of acessorios(); track item.codigo + '-' + item.categoria) {
               <tr>
                 <td>{{ item.codigo }}</td>
                 <td><strong>{{ item.nome }}</strong></td>
@@ -487,6 +537,7 @@
                 <td>{{ formatMoney(item.faturamento) }}</td>
                 <td>{{ formatMoney(item.rentabilidade) }}</td>
                 <td>{{ formatPercent(item.margemPercentual) }}</td>
+                <td><button class="seller-meta-action" type="button" (click)="openAcessorioMetaModal(item)">Definir</button></td>
               </tr>
             }
           </tbody>
@@ -591,7 +642,7 @@
               >
                 <path class="donut-slice" [attr.d]="slicePath(retornoFinanceiroSlices(), index)" [style.fill]="slice.color"></path>
                 @if (slicePercent(retornoFinanceiroSlices(), slice.value) >= 7) {
-                  <foreignObject [attr.x]="sliceLabelX(retornoFinanceiroSlices(), index) - 18" [attr.y]="sliceLabelY(retornoFinanceiroSlices(), index) - 9" width="36" height="18">
+                  <foreignObject [attr.x]="sliceLabelX(retornoFinanceiroSlices(), index) - 28" [attr.y]="sliceLabelY(retornoFinanceiroSlices(), index) - 10" width="56" height="20">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(retornoFinanceiroSlices(), slice.value)) }}</div>
                   </foreignObject>
                 }
@@ -628,7 +679,7 @@
               >
                 <path class="donut-slice" [attr.d]="slicePath(retornoParcelasSlices(), index)" [style.fill]="slice.color"></path>
                 @if (slicePercent(retornoParcelasSlices(), slice.value) >= 7) {
-                  <foreignObject [attr.x]="sliceLabelX(retornoParcelasSlices(), index) - 18" [attr.y]="sliceLabelY(retornoParcelasSlices(), index) - 9" width="36" height="18">
+                  <foreignObject [attr.x]="sliceLabelX(retornoParcelasSlices(), index) - 28" [attr.y]="sliceLabelY(retornoParcelasSlices(), index) - 10" width="56" height="20">
                     <div xmlns="http://www.w3.org/1999/xhtml" class="donut-percent-html">{{ formatPercent(slicePercent(retornoParcelasSlices(), slice.value)) }}</div>
                   </foreignObject>
                 }
@@ -655,5 +706,46 @@
       </div>
     </article>
   </section>
+  }
+
+  @if (metaModalTarget()) {
+    <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && closeMetaModal()">
+      <form class="goal-modal" (click)="$event.stopPropagation()" (ngSubmit)="saveMeta()">
+        <header>
+          <div>
+            <p class="system-name">{{ metaModalTarget()!.origem === 'acessorios' ? 'Meta de acessorios' : 'Meta de vendas' }}</p>
+            <h2>{{ metaModalTarget()!.nome }}</h2>
+          </div>
+          <button type="button" (click)="closeMetaModal()" aria-label="Fechar">x</button>
+        </header>
+        <label>
+          Tipo da meta
+          <select [ngModel]="metaTipoDraft()" (ngModelChange)="setMetaTipo($event)" name="metaTipo">
+            <option value="valor">Valor vendido</option>
+            <option value="quantidade">Numero de {{ metaModalTarget()!.origem === 'acessorios' ? 'notas' : 'veiculos' }}</option>
+          </select>
+        </label>
+        <label>
+          {{ metaTipoDraft() === 'quantidade' ? 'Quantidade da meta' : 'Valor da meta' }}
+          <input type="number" min="0" [step]="metaTipoDraft() === 'quantidade' ? 1 : 1000" [ngModel]="metaDraft()" (ngModelChange)="metaDraft.set($event)" name="metaVendas" />
+        </label>
+        <div class="grid two">
+          <label>
+            Data inicial
+            <input type="date" [ngModel]="metaDataInicioDraft()" (ngModelChange)="metaDataInicioDraft.set($event)" name="metaDataInicio" />
+          </label>
+          <label>
+            Data final
+            <input type="date" [ngModel]="metaDataFimDraft()" (ngModelChange)="metaDataFimDraft.set($event)" name="metaDataFim" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary" type="button" (click)="closeMetaModal()">Cancelar</button>
+          <button class="secondary filter-action" type="submit" [disabled]="savingMeta()">
+            {{ savingMeta() ? 'Salvando...' : 'Salvar meta' }}
+          </button>
+        </div>
+      </form>
+    </section>
   }
 </main>

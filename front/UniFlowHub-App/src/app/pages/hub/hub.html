@@ -236,6 +236,9 @@
               <p class="system-name">Aniversariantes</p>
               <h2>Aniversariantes do mes</h2>
             </div>
+            <button class="panel-action" type="button" (click)="printBirthdaysPdf()" [disabled]="!monthBirthdays().length">
+              Baixar PDF
+            </button>
           </header>
 
           @if (monthBirthdays().length) {

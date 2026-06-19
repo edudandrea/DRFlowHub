@@ -612,6 +612,8 @@ namespace UniFlowHub.Api.Services
 
             var meta = await _context.PecaVendedorMeta.FirstOrDefaultAsync(item =>
                 item.CpfVendedor == cpf
+                && item.Origem == "pecas"
+                && item.TipoMeta == "valor"
                 && item.DataInicio == dataInicio
                 && item.DataFim == dataFim);
             if (meta is null)
@@ -621,6 +623,8 @@ namespace UniFlowHub.Api.Services
             }
 
             meta.NomeVendedor = dto.NomeVendedor?.Trim() ?? string.Empty;
+            meta.Origem = "pecas";
+            meta.TipoMeta = "valor";
             meta.ValorMeta = dto.ValorMeta;
             meta.DataInicio = dataInicio;
             meta.DataFim = dataFim;
@@ -835,6 +839,8 @@ namespace UniFlowHub.Api.Services
 
             var metas = await _context.PecaVendedorMeta
                 .Where(meta => cpfs.Contains(meta.CpfVendedor))
+                .Where(meta => meta.Origem == "pecas")
+                .Where(meta => meta.TipoMeta == "valor")
                 .ToListAsync();
 
             var inicioMesAtual = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -917,6 +923,8 @@ namespace UniFlowHub.Api.Services
 
             var meta = await _context.PecaVendedorMeta
                 .Where(meta => meta.CpfVendedor == cpf)
+                .Where(meta => meta.Origem == "pecas")
+                .Where(meta => meta.TipoMeta == "valor")
                 .FirstOrDefaultAsync();
 
             if (meta is null || !meta.DataInicio.HasValue || !meta.DataFim.HasValue)

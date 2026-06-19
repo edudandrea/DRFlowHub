@@ -123,8 +123,11 @@ namespace UniFlowHub.Api.Services
 
         private List<string> BuildAcessos(Users user, List<string> perfis)
         {
+            var userPerfis = perfis.ToHashSet(StringComparer.OrdinalIgnoreCase);
             var acessos = _context.PerfilSistema
-                .Where(p => perfis.Contains(p.Nome))
+                .Include(p => p.Acessos)
+                .AsEnumerable()
+                .Where(p => userPerfis.Contains(p.Nome))
                 .SelectMany(p => p.Acessos.Select(a => a.Chave))
                 .Distinct()
                 .ToList();
@@ -310,6 +313,8 @@ namespace UniFlowHub.Api.Services
             if (isRh)
             {
                 acessos.Add("rh-admin");
+                acessos.Add("gestao-pessoas");
+                acessos.Add("gestao-pessoas-admin");
             }
 
             return acessos.ToList();
@@ -390,7 +395,7 @@ namespace UniFlowHub.Api.Services
                     "empresas-revendas",
                     "perfis"
                 },
-                ["RH"] = new[] { "dashboard-rh", "rh", "rh-admin", "cartao-ponto" },
+                ["RH"] = new[] { "dashboard-rh", "rh", "rh-admin", "cartao-ponto", "gestao-pessoas", "gestao-pessoas-admin" },
                 ["Diretoria"] = new[] { "compras" },
                 ["Compras"] = new[] { "compras", "compras-admin" },
                 ["Controladoria"] = new[] { "controladoria" },

@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Globalization;
 using UniFlowHub.Api.Data;
 using UniFlowHub.Api.Dtos.VeiculosBi;
+using UniFlowHub.Api.Models;
 using UniFlowHub.Api.Security;
 using Microsoft.EntityFrameworkCore;
 using Oracle.ManagedDataAccess.Client;
@@ -16,24 +17,27 @@ namespace UniFlowHub.Api.Services
         private readonly string _connectionString;
 
         private const string AcessoriosSql = @"
-            SELECT *
-            FROM (
+            WITH ITENS_NOTA AS (
                 SELECT
-                    COALESCE(TO_CHAR(PIE.ITEM_ESTOQUE_PUB), TO_CHAR(FMI.ITEM_ESTOQUE)) AS CODIGO,
-                    COALESCE(PIE.DES_ITEM_ESTOQUE, 'Acessorio ' || TO_CHAR(FMI.ITEM_ESTOQUE)) AS NOME,
-                    COALESCE(TO_CHAR(PIE.GRUPO), 'Acessorios') AS CATEGORIA,
-                    SUM(CASE WHEN TT.TIPO = 'E' THEN -1 ELSE 1 END * COALESCE(FMI.QUANTIDADE, 0)) AS QUANTIDADE,
-                    SUM(CASE WHEN TT.TIPO = 'E' THEN -1 ELSE 1 END * (
-                        COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
-                        - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
-                        + COALESCE(FMI.VAL_FRETE, 0)
-                    )) AS FATURAMENTO,
-                    SUM(CASE WHEN TT.TIPO = 'E' THEN -1 ELSE 1 END * (
-                        COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0)
-                        - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
-                        + COALESCE(FMI.VAL_FRETE, 0)
-                        - COALESCE(FMI.VAL_CUSTO_MEDIO, 0)
-                    )) AS RENTABILIDADE
+                    FMC.EMPRESA,
+                    FMC.REVENDA,
+                    FMC.NUMERO_NOTA_FISCAL,
+                    FMC.SERIE_NOTA_FISCAL,
+                    FMC.TIPO_TRANSACAO,
+                    FMC.CONTADOR,
+                    1 AS QUANTIDADE_NOTA,
+                    SUM(CASE
+                        WHEN TT.TIPO_TRANSACAO = 'P07' THEN -ABS(COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0) - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0)))
+                        ELSE COALESCE(FMI.VAL_TOTAL_REAL_ITEM, 0) - (COALESCE(FMI.VAL_DESCONTO, 0) - COALESCE(FMI.VAL_DESCONTO_FRANQUIA, 0))
+                    END) AS VALOR_VENDA,
+                    SUM(CASE WHEN TT.TIPO_TRANSACAO = 'P07' THEN -ABS(COALESCE(FMI.VAL_CUSTO_MEDIO, 0)) ELSE COALESCE(FMI.VAL_CUSTO_MEDIO, 0) END) AS CUSTO,
+                    SUM(CASE
+                        WHEN TT.TIPO_TRANSACAO = 'P07' THEN -ABS((COALESCE(FMI.BASE_ICMS, 0) * COALESCE(FMI.ALIQUOTA_ICMS, 0) / 100) - COALESCE(FMI.VAL_ICMS_DIFERIDO, 0))
+                        ELSE (COALESCE(FMI.BASE_ICMS, 0) * COALESCE(FMI.ALIQUOTA_ICMS, 0) / 100) - COALESCE(FMI.VAL_ICMS_DIFERIDO, 0)
+                    END) AS VAL_ICMS,
+                    SUM(CASE WHEN TT.TIPO_TRANSACAO = 'P07' THEN -ABS(COALESCE(FMI.VAL_PIS, 0)) ELSE COALESCE(FMI.VAL_PIS, 0) END) AS VAL_PIS,
+                    SUM(CASE WHEN TT.TIPO_TRANSACAO = 'P07' THEN -ABS(COALESCE(FMI.VAL_COFINS, 0)) ELSE COALESCE(FMI.VAL_COFINS, 0) END) AS VAL_COFINS,
+                    SUM(CASE WHEN TT.TIPO_TRANSACAO = 'P07' THEN -ABS(COALESCE(FMI.VAL_DESPESA_RENTABILIDADE, 0)) ELSE COALESCE(FMI.VAL_DESPESA_RENTABILIDADE, 0) END) AS DESPESA_RENTABILIDADE
                 FROM FAT_MOVIMENTO_CAPA FMC
                 INNER JOIN FAT_MOVIMENTO_ITEM FMI
                    ON FMI.EMPRESA = FMC.EMPRESA
@@ -42,20 +46,105 @@ namespace UniFlowHub.Api.Services
                   AND FMI.SERIE_NOTA_FISCAL = FMC.SERIE_NOTA_FISCAL
                   AND FMI.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
                   AND FMI.CONTADOR = FMC.CONTADOR
+                INNER JOIN PEC_ITEM_REVENDA PIR
+                   ON FMI.EMPRESA = PIR.EMPRESA
+                  AND FMI.REVENDA = PIR.REVENDA
+                  AND FMI.ITEM_ESTOQUE = PIR.ITEM_ESTOQUE
+                INNER JOIN PEC_ITEM_ESTOQUE PIE
+                   ON PIR.EMPRESA = PIE.EMPRESA
+                  AND PIR.ITEM_ESTOQUE = PIE.ITEM_ESTOQUE
                 INNER JOIN FAT_TIPO_TRANSACAO TT
-                   ON TT.TIPO_TRANSACAO = FMC.TIPO_TRANSACAO
-                LEFT JOIN PEC_ITEM_ESTOQUE PIE
-                   ON PIE.EMPRESA = FMI.EMPRESA
-                  AND PIE.ITEM_ESTOQUE = FMI.ITEM_ESTOQUE
-                WHERE TO_CHAR(FMC.DEPARTAMENTO) = '7'
-                  AND COALESCE(FMC.NFE_SITUACAO, ' ') <> 'D'
+                   ON FMC.TIPO_TRANSACAO = TT.TIPO_TRANSACAO
+                WHERE FMC.STATUS = 'F'
+                  AND FMC.DEPARTAMENTO = 7
+                  AND PIE.TIPO_INDUSTRIALIZACAO IS NULL
                   AND FMC.DTA_ENTRADA_SAIDA BETWEEN :DATA_INICIO AND :DATA_FIM
                   AND (:EMPRESA IS NULL OR INSTR(',' || :EMPRESA || ',', ',' || TO_CHAR(FMC.EMPRESA) || ',') > 0)
-                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(FMC.REVENDA) || ',') > 0)
-                GROUP BY FMI.ITEM_ESTOQUE, PIE.ITEM_ESTOQUE_PUB, PIE.DES_ITEM_ESTOQUE, PIE.GRUPO
-                ORDER BY FATURAMENTO DESC
+                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(FMC.EMPRESA) || ':' || TO_CHAR(FMC.REVENDA) || ',') > 0 OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(FMC.REVENDA) || ',') > 0)
+                  AND (
+                    (TT.TIPO = 'S' AND TT.SUBTIPO_TRANSACAO = 'N' AND TT.TIPO_TRANSACAO = 'O21')
+                    OR (TT.TIPO = 'E' AND TT.SUBTIPO_TRANSACAO = 'D' AND TT.TIPO_TRANSACAO = 'P07')
+                  )
+                GROUP BY
+                    FMC.EMPRESA,
+                    FMC.REVENDA,
+                    FMC.NUMERO_NOTA_FISCAL,
+                    FMC.SERIE_NOTA_FISCAL,
+                    FMC.TIPO_TRANSACAO,
+                    FMC.CONTADOR,
+                    TT.TIPO_TRANSACAO
+            ),
+            NOTAS AS (
+                SELECT
+                    IT.EMPRESA,
+                    IT.REVENDA,
+                    IT.NUMERO_NOTA_FISCAL,
+                    IT.SERIE_NOTA_FISCAL,
+                    IT.TIPO_TRANSACAO,
+                    IT.CONTADOR,
+                    TO_CHAR(VEN.VENDEDOR) AS CODIGO,
+                    TO_CHAR(VEN.CPF) AS CPF_VENDEDOR,
+                    COALESCE(VEN.NOME, 'Sem vendedor') AS NOME,
+                    TO_CHAR(IT.EMPRESA) || '.' || TO_CHAR(IT.REVENDA) AS CATEGORIA,
+                    IT.QUANTIDADE_NOTA,
+                    IT.VALOR_VENDA,
+                    IT.CUSTO,
+                    IT.VAL_ICMS + IT.VAL_PIS + IT.VAL_COFINS + IT.DESPESA_RENTABILIDADE AS IMPOSTOS
+                FROM ITENS_NOTA IT
+                INNER JOIN FAT_MOVIMENTO_CAPA FMC
+                   ON FMC.EMPRESA = IT.EMPRESA
+                  AND FMC.REVENDA = IT.REVENDA
+                  AND FMC.NUMERO_NOTA_FISCAL = IT.NUMERO_NOTA_FISCAL
+                  AND FMC.SERIE_NOTA_FISCAL = IT.SERIE_NOTA_FISCAL
+                  AND FMC.TIPO_TRANSACAO = IT.TIPO_TRANSACAO
+                  AND FMC.CONTADOR = IT.CONTADOR
+                LEFT JOIN FAT_MOVIMENTO_CAPA FMCORI
+                   ON IT.TIPO_TRANSACAO = 'P07'
+                  AND FMCORI.EMPRESA = FMC.EMPRESA
+                  AND FMCORI.REVENDA = FMC.REVENDA
+                  AND FMCORI.FATOPERACAO = FMC.FATOPERACAO_ORIGINAL
+                INNER JOIN FAT_NOTAS_VENDEDOR FNV
+                   ON FNV.EMPRESA = CASE WHEN IT.TIPO_TRANSACAO = 'P07' THEN FMCORI.EMPRESA ELSE IT.EMPRESA END
+                  AND FNV.REVENDA = CASE WHEN IT.TIPO_TRANSACAO = 'P07' THEN FMCORI.REVENDA ELSE IT.REVENDA END
+                  AND FNV.NUMERO_NOTA_FISCAL = CASE WHEN IT.TIPO_TRANSACAO = 'P07' THEN FMCORI.NUMERO_NOTA_FISCAL ELSE IT.NUMERO_NOTA_FISCAL END
+                  AND FNV.SERIE_NOTA_FISCAL = CASE WHEN IT.TIPO_TRANSACAO = 'P07' THEN FMCORI.SERIE_NOTA_FISCAL ELSE IT.SERIE_NOTA_FISCAL END
+                  AND FNV.TIPO_TRANSACAO = CASE WHEN IT.TIPO_TRANSACAO = 'P07' THEN FMCORI.TIPO_TRANSACAO ELSE IT.TIPO_TRANSACAO END
+                  AND FNV.CONTADOR = CASE WHEN IT.TIPO_TRANSACAO = 'P07' THEN FMCORI.CONTADOR ELSE IT.CONTADOR END
+                  AND (FNV.TIPO_VENDEDOR = 'N' OR FNV.TIPO_VENDEDOR IS NULL)
+                INNER JOIN FAT_VENDEDOR VEN
+                   ON FNV.EMPRESA = VEN.EMPRESA
+                  AND FNV.REVENDA = VEN.REVENDA
+                  AND FNV.VENDEDOR = VEN.VENDEDOR
+                WHERE IT.TIPO_TRANSACAO <> 'P07' OR FMCORI.TIPO_TRANSACAO = 'O21'
+                GROUP BY
+                    IT.EMPRESA,
+                    IT.REVENDA,
+                    IT.NUMERO_NOTA_FISCAL,
+                    IT.SERIE_NOTA_FISCAL,
+                    IT.TIPO_TRANSACAO,
+                    IT.CONTADOR,
+                    VEN.VENDEDOR,
+                    VEN.CPF,
+                    VEN.NOME,
+                    IT.QUANTIDADE_NOTA,
+                    IT.VALOR_VENDA,
+                    IT.CUSTO,
+                    IT.VAL_ICMS,
+                    IT.VAL_PIS,
+                    IT.VAL_COFINS,
+                    IT.DESPESA_RENTABILIDADE
             )
-            WHERE ROWNUM <= 10";
+            SELECT
+                CODIGO,
+                CPF_VENDEDOR,
+                NOME,
+                CATEGORIA,
+                SUM(QUANTIDADE_NOTA) AS QUANTIDADE,
+                SUM(VALOR_VENDA) AS FATURAMENTO,
+                SUM(VALOR_VENDA - CUSTO - IMPOSTOS) AS RENTABILIDADE
+            FROM NOTAS
+            GROUP BY CODIGO, CPF_VENDEDOR, NOME, CATEGORIA
+            ORDER BY FATURAMENTO DESC";
 
         private const string BaseVeiculosVendidosFromSql = @"
                 FROM VEI_VEICULO VEI
@@ -74,7 +163,7 @@ namespace UniFlowHub.Api.Services
                 )
                   AND VEI.DTA_VENDA BETWEEN :DATA_INICIO AND :DATA_FIM
                   AND (:EMPRESA IS NULL OR INSTR(',' || :EMPRESA || ',', ',' || TO_CHAR(VEI.EMPRESA) || ',') > 0)
-                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0)";
+                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.EMPRESA) || ':' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0 OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0)";
 
         private const string ValorVendaExpression = @"
             COALESCE(
@@ -103,7 +192,9 @@ namespace UniFlowHub.Api.Services
                 SUM(CASE WHEN VEI.NOVO_USADO = 'N' AND COALESCE(VEI.TIPO_VENDA, ' ') IN ('F', 'D') THEN 1 ELSE 0 END) AS FATURADOS_DIRETA,
                 SUM(CASE WHEN VEI.NOVO_USADO <> 'N' THEN 1 ELSE 0 END) AS SEMINOVOS,
                 SUM(" + ValorVendaExpression + @") AS FATURAMENTO,
-                SUM(" + ValorVendaExpression + @" - COALESCE(VEI.VAL_CUSTO_CONTABIL, VEI.VAL_COMPRA, 0)) AS MARGEM
+                SUM(" + ValorVendaExpression + @" - COALESCE(VEI.VAL_CUSTO_CONTABIL, VEI.VAL_COMPRA, 0)) AS MARGEM,
+                SUM(CASE WHEN VEI.NOVO_USADO = 'N' AND COALESCE(VEI.TIPO_VENDA, ' ') IN ('F', 'D') THEN 0 ELSE " + ValorVendaExpression + @" END) AS FATURAMENTO_SEM_DIRETA,
+                SUM(CASE WHEN VEI.NOVO_USADO = 'N' AND COALESCE(VEI.TIPO_VENDA, ' ') IN ('F', 'D') THEN 0 ELSE " + ValorVendaExpression + @" - COALESCE(VEI.VAL_CUSTO_CONTABIL, VEI.VAL_COMPRA, 0) END) AS MARGEM_SEM_DIRETA
             " + BaseVeiculosVendidosFromSql + @"
             GROUP BY VEI.EMPRESA, VEI.REVENDA_ORIGEM
             ORDER BY VEI.EMPRESA, VEI.REVENDA_ORIGEM";
@@ -117,6 +208,46 @@ namespace UniFlowHub.Api.Services
             " + BaseVeiculosVendidosFromSql + @"
             GROUP BY TRUNC(VEI.DTA_VENDA)
             ORDER BY TRUNC(VEI.DTA_VENDA)";
+
+        private const string VendasDetalhesSql = @"
+            SELECT
+                VEI.DTA_VENDA AS DATA_VENDA,
+                CASE
+                    WHEN VEI.NOVO_USADO = 'N' AND COALESCE(VEI.TIPO_VENDA, ' ') IN ('F', 'D') THEN 'Direta'
+                    WHEN VEI.NOVO_USADO = 'N' THEN 'Novos'
+                    ELSE 'Seminovos'
+                END AS TIPO,
+                COALESCE(FCL.NOME, 'Cliente ' || TO_CHAR(FMC.CLIENTE), 'Sem cliente') AS CLIENTE,
+                COALESCE(TO_CHAR(VEI.NUMERO_NOTA_NFSAIDA), '') AS NOTA_FISCAL,
+                MOD.DES_MODELO AS VEICULO,
+                " + ValorVendaExpression + @" AS VALOR
+            FROM VEI_VEICULO VEI
+            INNER JOIN OFI_FICHA_SEGUIMENTO FIC ON VEI.CHASSI = FIC.CHASSI
+            INNER JOIN VEI_MODELO MOD ON VEI.EMPRESA = MOD.EMPRESA AND VEI.MODELO = MOD.MODELO
+            INNER JOIN VEI_FAMILIA FAM ON MOD.EMPRESA = FAM.EMPRESA AND MOD.FAMILIA = FAM.FAMILIA
+            INNER JOIN (
+                SELECT EMPRESA, REVENDA, NOME_FANTASIA, MARCA
+                FROM GER_REVENDA
+            ) REV ON VEI.EMPRESA = REV.EMPRESA AND VEI.REVENDA_ORIGEM = REV.REVENDA
+            LEFT JOIN FAT_MOVIMENTO_CAPA FMC
+               ON VEI.EMPRESA_NFSAIDA = FMC.EMPRESA
+              AND VEI.REVENDA_NFSAIDA = FMC.REVENDA
+              AND VEI.NUMERO_NOTA_NFSAIDA = FMC.NUMERO_NOTA_FISCAL
+              AND VEI.SERIE_NOTA_FISCAL_NFSAIDA = FMC.SERIE_NOTA_FISCAL
+              AND VEI.TIPO_TRANSACAO_NFSAIDA = FMC.TIPO_TRANSACAO
+              AND VEI.CONTADOR_NFSAIDA = FMC.CONTADOR
+            LEFT JOIN FAT_CLIENTE FCL
+               ON FCL.CLIENTE = FMC.CLIENTE
+            WHERE VEI.SITUACAO IN (
+                SELECT SITUACAO
+                FROM VEI_SITUACAO
+                WHERE EMPRESA = VEI.EMPRESA
+                  AND LOCALIZACAO = 'V'
+            )
+              AND VEI.DTA_VENDA BETWEEN :DATA_INICIO AND :DATA_FIM
+              AND (:EMPRESA IS NULL OR INSTR(',' || :EMPRESA || ',', ',' || TO_CHAR(VEI.EMPRESA) || ',') > 0)
+              AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.EMPRESA) || ':' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0 OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0)
+            ORDER BY VEI.DTA_VENDA DESC, VEI.NUMERO_NOTA_NFSAIDA DESC";
 
         private const string ModelosSql = @"
             SELECT *
@@ -138,6 +269,7 @@ namespace UniFlowHub.Api.Services
             FROM (
                 SELECT
                     COALESCE(VEN_NOTA.NOME, VEN_VD.NOME, 'Sem vendedor') AS VENDEDOR,
+                    COALESCE(MAX(TO_CHAR(VEN_NOTA.CPF)), MAX(TO_CHAR(VEN_VD.CPF)), '') AS CPF_VENDEDOR,
                     MAX(REV.NOME_FANTASIA) AS FILIAL,
                     COUNT(*) AS REALIZADO,
                     SUM(" + ValorVendaExpression + @") AS FATURAMENTO
@@ -173,8 +305,8 @@ namespace UniFlowHub.Api.Services
                 )
                   AND VEI.DTA_VENDA BETWEEN :DATA_INICIO AND :DATA_FIM
                   AND (:EMPRESA IS NULL OR INSTR(',' || :EMPRESA || ',', ',' || TO_CHAR(VEI.EMPRESA) || ',') > 0)
-                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0)
-                GROUP BY COALESCE(VEN_NOTA.NOME, VEN_VD.NOME, 'Sem vendedor')
+                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.EMPRESA) || ':' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0 OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VEI.REVENDA_ORIGEM) || ',') > 0)
+            GROUP BY COALESCE(VEN_NOTA.NOME, VEN_VD.NOME, 'Sem vendedor')
                 ORDER BY REALIZADO DESC
             )
             WHERE ROWNUM <= 12";
@@ -213,7 +345,7 @@ namespace UniFlowHub.Api.Services
                   )
                   AND VR.TIPO_RETORNO IN ('1')
                   AND (:EMPRESA IS NULL OR INSTR(',' || :EMPRESA || ',', ',' || TO_CHAR(VP.EMPRESA) || ',') > 0)
-                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VP.REVENDA) || ',') > 0)";
+                  AND (:REVENDA IS NULL OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VP.EMPRESA) || ':' || TO_CHAR(VP.REVENDA) || ',') > 0 OR INSTR(',' || :REVENDA || ',', ',' || TO_CHAR(VP.REVENDA) || ',') > 0)";
 
         private const string RetornoFiResumoSql = @"
             SELECT
@@ -305,6 +437,7 @@ namespace UniFlowHub.Api.Services
                 items.Add(new VeiculoAcessorioRankingDto
                 {
                     Codigo = GetString(reader, "CODIGO"),
+                    CpfVendedor = OnlyDigits(GetString(reader, "CPF_VENDEDOR")),
                     Nome = GetString(reader, "NOME"),
                     Categoria = GetString(reader, "CATEGORIA"),
                     Quantidade = GetInt(reader, "QUANTIDADE"),
@@ -314,6 +447,7 @@ namespace UniFlowHub.Api.Services
                 });
             }
 
+            await ApplyMetasAcessoriosAsync(items, dataInicio, dataFim);
             return items;
         }
 
@@ -338,9 +472,66 @@ namespace UniFlowHub.Api.Services
             {
                 Filiais = await LoadFiliaisAsync(connection, dataInicio, dataFim, empresa, revenda),
                 VendasDiarias = await LoadVendasDiariasAsync(connection, dataInicio, dataFim, empresa, revenda),
+                VendasDetalhes = await LoadVendasDetalhesAsync(connection, dataInicio, dataFim, empresa, revenda),
                 Modelos = await LoadModelosAsync(connection, dataInicio, dataFim, empresa, revenda),
                 Vendedores = await LoadVendedoresAsync(connection, dataInicio, dataFim, empresa, revenda),
                 AtualizadoEm = DateTime.Now
+            };
+        }
+
+        public async Task<VeiculoVendedorMetaDto> SaveMetaAsync(string role, int userId, VeiculoVendedorMetaDto dto)
+        {
+            await EnsureCanAccessAsync(role);
+
+            var cpf = OnlyDigits(dto.CpfVendedor);
+            if (string.IsNullOrWhiteSpace(cpf))
+                throw new InvalidOperationException("CPF do vendedor nao informado.");
+
+            if (dto.ValorMeta < 0)
+                throw new InvalidOperationException("A meta de vendas nao pode ser negativa.");
+
+            var dataInicio = dto.DataInicio?.Date;
+            var dataFim = dto.DataFim?.Date;
+            if (!dataInicio.HasValue || !dataFim.HasValue)
+                throw new InvalidOperationException("Informe a data inicial e final da meta.");
+
+            if (dataInicio > dataFim)
+                throw new InvalidOperationException("A data inicial da meta nao pode ser maior que a data final.");
+
+            var origem = NormalizeMetaOrigem(dto.Origem);
+            var tipoMeta = NormalizeMetaTipo(dto.TipoMeta);
+
+            var meta = await _context.PecaVendedorMeta.FirstOrDefaultAsync(item =>
+                item.CpfVendedor == cpf
+                && item.Origem == origem
+                && item.DataInicio == dataInicio
+                && item.DataFim == dataFim);
+
+            if (meta is null)
+            {
+                meta = new PecaVendedorMeta { CpfVendedor = cpf };
+                _context.PecaVendedorMeta.Add(meta);
+            }
+
+            meta.NomeVendedor = dto.NomeVendedor?.Trim() ?? string.Empty;
+            meta.Origem = origem;
+            meta.TipoMeta = tipoMeta;
+            meta.ValorMeta = dto.ValorMeta;
+            meta.DataInicio = dataInicio;
+            meta.DataFim = dataFim;
+            meta.DataAtualizacao = DateTime.UtcNow;
+            meta.AtualizadoPorUserId = userId;
+            await _context.SaveChangesAsync();
+
+            return new VeiculoVendedorMetaDto
+            {
+                CpfVendedor = meta.CpfVendedor,
+                NomeVendedor = meta.NomeVendedor,
+                Origem = meta.Origem,
+                TipoMeta = meta.TipoMeta,
+                ValorMeta = meta.ValorMeta,
+                DataInicio = meta.DataInicio,
+                DataFim = meta.DataFim
             };
         }
 
@@ -393,7 +584,9 @@ namespace UniFlowHub.Api.Services
                     Propostas = novos + direta + seminovos,
                     Baixados = novos + direta + seminovos,
                     Faturamento = GetDecimal(reader, "FATURAMENTO"),
-                    Margem = GetDecimal(reader, "MARGEM")
+                    Margem = GetDecimal(reader, "MARGEM"),
+                    FaturamentoSemDireta = GetDecimal(reader, "FATURAMENTO_SEM_DIRETA"),
+                    MargemSemDireta = GetDecimal(reader, "MARGEM_SEM_DIRETA")
                 });
             }
 
@@ -442,7 +635,29 @@ namespace UniFlowHub.Api.Services
             return items;
         }
 
-        private static async Task<List<VeiculoBiVendedorMetaDto>> LoadVendedoresAsync(OracleConnection connection, DateTime dataInicio, DateTime dataFim, object empresa, object revenda)
+        private static async Task<List<VeiculoBiVendaDetalheDto>> LoadVendasDetalhesAsync(OracleConnection connection, DateTime dataInicio, DateTime dataFim, object empresa, object revenda)
+        {
+            await using var command = CreateCommand(connection, VendasDetalhesSql, dataInicio, dataFim, empresa, revenda);
+            var items = new List<VeiculoBiVendaDetalheDto>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var date = GetDateTime(reader, "DATA_VENDA");
+                items.Add(new VeiculoBiVendaDetalheDto
+                {
+                    Data = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    Tipo = GetString(reader, "TIPO"),
+                    Cliente = GetString(reader, "CLIENTE"),
+                    NotaFiscal = GetString(reader, "NOTA_FISCAL"),
+                    Veiculo = GetString(reader, "VEICULO"),
+                    Valor = GetDecimal(reader, "VALOR")
+                });
+            }
+
+            return items;
+        }
+
+        private async Task<List<VeiculoBiVendedorMetaDto>> LoadVendedoresAsync(OracleConnection connection, DateTime dataInicio, DateTime dataFim, object empresa, object revenda)
         {
             await using var command = CreateCommand(connection, VendedoresSql, dataInicio, dataFim, empresa, revenda);
             var items = new List<VeiculoBiVendedorMetaDto>();
@@ -453,6 +668,7 @@ namespace UniFlowHub.Api.Services
                 items.Add(new VeiculoBiVendedorMetaDto
                 {
                     Vendedor = GetString(reader, "VENDEDOR"),
+                    CpfVendedor = OnlyDigits(GetString(reader, "CPF_VENDEDOR")),
                     Filial = GetString(reader, "FILIAL"),
                     Meta = 0,
                     Realizado = realizado,
@@ -460,7 +676,78 @@ namespace UniFlowHub.Api.Services
                 });
             }
 
+            await ApplyMetasVendedoresAsync(items, dataInicio, dataFim);
             return items;
+        }
+
+        private async Task ApplyMetasVendedoresAsync(List<VeiculoBiVendedorMetaDto> vendedores, DateTime dataInicio, DateTime dataFim)
+        {
+            var cpfs = vendedores
+                .Select(vendedor => OnlyDigits(vendedor.CpfVendedor))
+                .Where(cpf => !string.IsNullOrWhiteSpace(cpf))
+                .Distinct()
+                .ToList();
+            if (cpfs.Count == 0)
+                return;
+
+            var metas = await _context.PecaVendedorMeta
+                .Where(meta => cpfs.Contains(meta.CpfVendedor))
+                .Where(meta => meta.Origem == "veiculos")
+                .Where(meta => !meta.DataInicio.HasValue || !meta.DataFim.HasValue || (meta.DataInicio <= dataFim && meta.DataFim >= dataInicio))
+                .AsNoTracking()
+                .ToListAsync();
+
+            foreach (var vendedor in vendedores)
+            {
+                var cpf = OnlyDigits(vendedor.CpfVendedor);
+                var meta = metas
+                    .Where(item => item.CpfVendedor == cpf)
+                    .OrderByDescending(item => item.DataInicio ?? DateTime.MinValue)
+                    .ThenByDescending(item => item.DataAtualizacao)
+                    .FirstOrDefault();
+                if (meta is null)
+                    continue;
+
+                vendedor.Meta = (int)Math.Round(meta.ValorMeta, MidpointRounding.AwayFromZero);
+                vendedor.TipoMeta = NormalizeMetaTipo(meta.TipoMeta);
+                vendedor.MetaDataInicio = meta.DataInicio;
+                vendedor.MetaDataFim = meta.DataFim;
+            }
+        }
+
+        private async Task ApplyMetasAcessoriosAsync(List<VeiculoAcessorioRankingDto> vendedores, DateTime dataInicio, DateTime dataFim)
+        {
+            var cpfs = vendedores
+                .Select(vendedor => OnlyDigits(vendedor.CpfVendedor))
+                .Where(cpf => !string.IsNullOrWhiteSpace(cpf))
+                .Distinct()
+                .ToList();
+            if (cpfs.Count == 0)
+                return;
+
+            var metas = await _context.PecaVendedorMeta
+                .Where(meta => cpfs.Contains(meta.CpfVendedor))
+                .Where(meta => meta.Origem == "acessorios")
+                .Where(meta => !meta.DataInicio.HasValue || !meta.DataFim.HasValue || (meta.DataInicio <= dataFim && meta.DataFim >= dataInicio))
+                .AsNoTracking()
+                .ToListAsync();
+
+            foreach (var vendedor in vendedores)
+            {
+                var cpf = OnlyDigits(vendedor.CpfVendedor);
+                var meta = metas
+                    .Where(item => item.CpfVendedor == cpf)
+                    .OrderByDescending(item => item.DataInicio ?? DateTime.MinValue)
+                    .ThenByDescending(item => item.DataAtualizacao)
+                    .FirstOrDefault();
+                if (meta is null)
+                    continue;
+
+                vendedor.Meta = meta.ValorMeta;
+                vendedor.TipoMeta = NormalizeMetaTipo(meta.TipoMeta);
+                vendedor.MetaDataInicio = meta.DataInicio;
+                vendedor.MetaDataFim = meta.DataFim;
+            }
         }
 
         private static async Task<VeiculosBiRetornoFiDashboardDto> LoadRetornoFiResumoAsync(OracleConnection connection, DateTime dataInicio, DateTime dataFim, object empresa, object revenda)
@@ -553,6 +840,15 @@ namespace UniFlowHub.Api.Services
                 : normalized;
         }
 
+        private static string OnlyDigits(string? value)
+            => new((value ?? string.Empty).Where(char.IsDigit).ToArray());
+
+        private static string NormalizeMetaTipo(string? value)
+            => string.Equals(value?.Trim(), "quantidade", StringComparison.OrdinalIgnoreCase) ? "quantidade" : "valor";
+
+        private static string NormalizeMetaOrigem(string? value)
+            => string.Equals(value?.Trim(), "acessorios", StringComparison.OrdinalIgnoreCase) ? "acessorios" : "veiculos";
+
         private static string GetOracleConnectionString(IConfiguration configuration)
         {
             var environment = configuration["Oracle:Environment"]?.Trim();
@@ -580,16 +876,47 @@ namespace UniFlowHub.Api.Services
             if (reader.IsDBNull(ordinal))
                 return 0;
 
+            try
+            {
+                return reader.GetDecimal(ordinal);
+            }
+            catch (OverflowException)
+            {
+            }
+            catch (InvalidCastException)
+            {
+            }
+
             if (reader is OracleDataReader oracleReader)
             {
                 var value = oracleReader.GetOracleDecimal(ordinal);
                 if (value.IsNull)
                     return 0;
 
-                return decimal.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+                try
+                {
+                    return value.Value;
+                }
+                catch (OverflowException)
+                {
+                    return ParseDecimal(value.ToString());
+                }
             }
 
-            return Convert.ToDecimal(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+            var rawValue = reader.GetValue(ordinal);
+            return rawValue is OracleDecimal oracleDecimal
+                ? ParseDecimal(oracleDecimal.ToString())
+                : Convert.ToDecimal(rawValue, CultureInfo.InvariantCulture);
+        }
+
+        private static decimal ParseDecimal(string value)
+        {
+            if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                return parsed;
+
+            return decimal.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out parsed)
+                ? parsed
+                : 0;
         }
 
         private static DateTime GetDateTime(DbDataReader reader, string column)

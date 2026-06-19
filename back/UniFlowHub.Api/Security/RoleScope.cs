@@ -8,7 +8,20 @@ namespace UniFlowHub.Api.Security
             => string.Equals(role?.Trim(), "Admin", StringComparison.OrdinalIgnoreCase);
 
         public static bool IsRH(string? role)
-            => string.Equals(role?.Trim(), "RH", StringComparison.OrdinalIgnoreCase);
+        {
+            var value = Normalize(role);
+            return value == "rh"
+                || value == "admin rh"
+                || value == "adminrh"
+                || value == "administrador rh"
+                || value == "administradorrh"
+                || value == "recursos humanos"
+                || value == "recursoshumanos"
+                || value == "admin recursos humanos"
+                || value == "adminrecursoshumanos"
+                || value == "administrador recursos humanos"
+                || value == "administradorrecursoshumanos";
+        }
 
         public static bool IsTI(string? role)
             => string.Equals(role?.Trim(), "TI", StringComparison.OrdinalIgnoreCase);
@@ -49,6 +62,15 @@ namespace UniFlowHub.Api.Security
             public static bool IsUser(string? role)
             => string.Equals(role?.Trim(), "Usuario", StringComparison.OrdinalIgnoreCase);        
 
+        private static string Normalize(string? value)
+        {
+            var normalized = (value ?? string.Empty).Trim().Normalize(System.Text.NormalizationForm.FormD);
+            var chars = normalized
+                .Where(ch => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                .ToArray();
+
+            return new string(chars).ToLowerInvariant().Trim();
+        }
         
     }
 }

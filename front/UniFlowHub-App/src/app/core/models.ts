@@ -71,6 +71,7 @@ export interface SolicitacaoRH {
   dataAvaliacao?: string | null;
   dataAprovacao?: string | null;
   aprovada?: boolean | null;
+  aprovador: string;
   observacoesAprovacao: string;
   aprovacaoPendente: boolean;
   avaliacaoPendente: boolean;
@@ -86,6 +87,11 @@ export type SolicitacaoPayload = Omit<
   | 'satisfacaoNota'
   | 'satisfacaoComentario'
   | 'dataAvaliacao'
+  | 'dataAprovacao'
+  | 'aprovada'
+  | 'aprovador'
+  | 'observacoesAprovacao'
+  | 'aprovacaoPendente'
   | 'avaliacaoPendente'
 >;
 
@@ -274,6 +280,73 @@ export type SolicitacaoCompraUpdatePayload = Omit<
   | 'userid'
 >;
 
+export type GestaoPessoasTipoProcesso = 'Admissao' | 'Demissao';
+
+export interface GestaoPessoasEtapa {
+  id: number;
+  nome: string;
+  tipoProcesso: GestaoPessoasTipoProcesso;
+  ordem: number;
+  ativa: boolean;
+  dataCadastro: string;
+  dataAtualizacao?: string | null;
+}
+
+export type GestaoPessoasEtapaPayload = Pick<GestaoPessoasEtapa, 'nome' | 'tipoProcesso' | 'ordem' | 'ativa'>;
+
+export interface GestaoPessoasHistorico {
+  id: number;
+  etapaId: number;
+  etapaNome: string;
+  acao: string;
+  observacoes: string;
+  usuarioId: number;
+  usuarioNome: string;
+  dataMovimentacao: string;
+}
+
+export interface GestaoPessoasProcesso {
+  id: number;
+  tipoProcesso: GestaoPessoasTipoProcesso;
+  titulo: string;
+  solicitante: string;
+  unidade: string;
+  departamento: string;
+  colaboradorNome: string;
+  cargo: string;
+  descricao: string;
+  prioridade: string;
+  status: string;
+  observacoes: string;
+  dataSolicitacao: string;
+  dataAprovacaoGestor?: string | null;
+  aprovadorGestor: string;
+  observacoesAprovacao: string;
+  dataCancelamento?: string | null;
+  motivoCancelamento: string;
+  dataConclusao?: string | null;
+  etapaAtualId?: number | null;
+  etapaAtualNome: string;
+  userid: number;
+  historico: GestaoPessoasHistorico[];
+}
+
+export type GestaoPessoasProcessoPayload = Omit<
+  GestaoPessoasProcesso,
+  | 'id'
+  | 'status'
+  | 'dataSolicitacao'
+  | 'dataAprovacaoGestor'
+  | 'aprovadorGestor'
+  | 'observacoesAprovacao'
+  | 'dataCancelamento'
+  | 'motivoCancelamento'
+  | 'dataConclusao'
+  | 'etapaAtualId'
+  | 'etapaAtualNome'
+  | 'historico'
+>;
+
 export interface GuiaIcms {
   id: string;
   documento: string;
@@ -336,6 +409,33 @@ export interface RepasseResumoEmpresa {
   mediaGiroEstoque: number;
   distorcao: number;
   limiteAutorizado: number;
+}
+
+export interface RepasseVendedorResumo {
+  vendedor: string;
+  filial: string;
+  quantidade: number;
+  totalVenda: number;
+  margem: number;
+}
+
+export interface RepasseVendaVendedorItem {
+  empresa: number;
+  revenda: number;
+  nomeRevenda: string;
+  vendedor: string;
+  veiculo: string;
+  placa: string;
+  numeroNotaFiscal: string;
+  totalVenda: number;
+  margem: number;
+  dataVenda: string;
+}
+
+export interface RepasseVendasVendedor {
+  vendedores: RepasseVendedorResumo[];
+  vendas: RepasseVendaVendedorItem[];
+  atualizadoEm: string;
 }
 
 export interface CartaoPontoArquivo {

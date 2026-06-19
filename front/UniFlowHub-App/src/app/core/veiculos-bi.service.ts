@@ -4,19 +4,32 @@ import { Observable } from 'rxjs';
 
 const API_URL = '/api';
 
+type VeiculosBiFilter = {
+  dataInicio?: string;
+  dataFim?: string;
+  empresa?: number | null;
+  revenda?: Array<number | string> | null;
+};
+
 export interface VeiculoAcessorioRanking {
   codigo: string;
+  cpfVendedor: string;
   nome: string;
   categoria: string;
   quantidade: number;
   faturamento: number;
   margemPercentual: number;
   rentabilidade: number;
+  meta: number;
+  tipoMeta: 'valor' | 'quantidade';
+  metaDataInicio?: string | null;
+  metaDataFim?: string | null;
 }
 
 export interface VeiculosBiDashboard {
   filiais: VeiculoBiFilialVenda[];
   vendasDiarias: VeiculoBiVendaDiaria[];
+  vendasDetalhes: VeiculoBiVendaDetalhe[];
   modelos: VeiculoBiModeloRanking[];
   vendedores: VeiculoBiVendedorMeta[];
   atualizadoEm: string;
@@ -38,6 +51,8 @@ export interface VeiculoBiFilialVenda {
   baixados: number;
   faturamento: number;
   margem: number;
+  faturamentoSemDireta: number;
+  margemSemDireta: number;
 }
 
 export interface VeiculoBiVendaDiaria {
@@ -45,6 +60,15 @@ export interface VeiculoBiVendaDiaria {
   novos: number;
   vendaDireta: number;
   seminovos: number;
+}
+
+export interface VeiculoBiVendaDetalhe {
+  data: string;
+  tipo: string;
+  cliente: string;
+  notaFiscal: string;
+  veiculo: string;
+  valor: number;
 }
 
 export interface VeiculoBiModeloRanking {
@@ -57,10 +81,24 @@ export interface VeiculoBiModeloRanking {
 
 export interface VeiculoBiVendedorMeta {
   vendedor: string;
+  cpfVendedor: string;
   filial: string;
   meta: number;
+  tipoMeta: 'valor' | 'quantidade';
   realizado: number;
   faturamento: number;
+  metaDataInicio?: string | null;
+  metaDataFim?: string | null;
+}
+
+export interface VeiculoVendedorMetaPayload {
+  cpfVendedor: string;
+  nomeVendedor: string;
+  origem: 'veiculos' | 'acessorios';
+  tipoMeta: 'valor' | 'quantidade';
+  valorMeta: number;
+  dataInicio: string;
+  dataFim: string;
 }
 
 export interface VeiculosBiRetornoFiDashboard {
@@ -87,19 +125,23 @@ export interface VeiculosBiRetornoFiGrupo {
 export class VeiculosBiService {
   constructor(private readonly http: HttpClient) {}
 
-  loadDashboard(filter: { dataInicio?: string; dataFim?: string; empresa?: number | null; revenda?: number[] | null } = {}): Observable<VeiculosBiDashboard> {
+  loadDashboard(filter: VeiculosBiFilter = {}): Observable<VeiculosBiDashboard> {
     return this.http.get<VeiculosBiDashboard>(`${API_URL}/veiculos-bi/dashboard`, { params: this.buildParams(filter) });
   }
 
-  loadAcessorios(filter: { dataInicio?: string; dataFim?: string; empresa?: number | null; revenda?: number[] | null } = {}): Observable<VeiculoAcessorioRanking[]> {
+  loadAcessorios(filter: VeiculosBiFilter = {}): Observable<VeiculoAcessorioRanking[]> {
     return this.http.get<VeiculoAcessorioRanking[]>(`${API_URL}/veiculos-bi/acessorios`, { params: this.buildParams(filter) });
   }
 
-  loadRetornoFi(filter: { dataInicio?: string; dataFim?: string; empresa?: number | null; revenda?: number[] | null } = {}): Observable<VeiculosBiRetornoFiDashboard> {
+  loadRetornoFi(filter: VeiculosBiFilter = {}): Observable<VeiculosBiRetornoFiDashboard> {
     return this.http.get<VeiculosBiRetornoFiDashboard>(`${API_URL}/veiculos-bi/retorno-fi`, { params: this.buildParams(filter) });
   }
 
-  private buildParams(filter: { dataInicio?: string; dataFim?: string; empresa?: number | null; revenda?: number[] | null } = {}): HttpParams {
+  saveMeta(payload: VeiculoVendedorMetaPayload): Observable<VeiculoVendedorMetaPayload> {
+    return this.http.put<VeiculoVendedorMetaPayload>(`${API_URL}/veiculos-bi/vendedores/meta`, payload);
+  }
+
+  private buildParams(filter: VeiculosBiFilter = {}): HttpParams {
     let params = new HttpParams();
     for (const [key, value] of Object.entries(filter)) {
       if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) {

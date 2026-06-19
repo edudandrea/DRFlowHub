@@ -21,7 +21,18 @@ namespace UniFlowHub.Api.Services
         {
             var query = _repo.Query().AsNoTracking();
 
-            if (!CanManage(role, acessos))
+            if (CanManage(role, acessos) && CanApprove(acessos))
+                query = query.Where(s => s.Aprovada == true || s.Aprovada == null || s.Userid == userId);
+            else if (CanManage(role, acessos))
+                query = query.Where(s =>
+                    s.Aprovada == true
+                    || (s.Aprovada == null
+                        && s.Status != "Aguardando aprovacao do gestor"
+                        && s.Status != "Reprovada pelo gestor")
+                    || s.Userid == userId);
+            else if (CanApprove(acessos))
+                query = query.Where(s => s.Userid == userId || s.Aprovada == null);
+            else
                 query = query.Where(s => s.Userid == userId);
 
             return query
@@ -52,13 +63,41 @@ namespace UniFlowHub.Api.Services
                 Descricao = dto.Descricao.Trim(),
                 Prioridade = dto.Prioridade.Trim(),
                 DataSolicitacao = DateTime.UtcNow,
-                Status = string.IsNullOrWhiteSpace(dto.Status) ? "Aberta" : dto.Status.Trim(),
+                Status = CanManage(role, acessos) ? "Aberta" : "Aguardando aprovacao do gestor",
                 Responsavel = dto.Responsavel?.Trim() ?? string.Empty,
                 Observacoes = dto.Observacoes?.Trim() ?? string.Empty,
+                Aprovada = CanManage(role, acessos) ? true : null,
+                DataAprovacao = CanManage(role, acessos) ? DateTime.UtcNow : null,
+                Aprovador = CanManage(role, acessos) ? "Fluxo direto RH" : string.Empty,
                 Userid = ownerUserId,
             };
 
             _repo.Add(solicitacao);
+            _repo.Save();
+
+            return MapResponse(solicitacao);
+        }
+
+        public SolicitacoesRHResponseDto Aprovar(int id, SolicitacaoRHAprovacaoDto dto, string role, int currentUserId, IEnumerable<string> acessos)
+        {
+            if (!CanApprove(acessos))
+                throw new UnauthorizedAccessException("Somente usuarios com permissao de aprovacao podem aprovar solicitacoes do RH.");
+
+            var solicitacao = _repo.Query().FirstOrDefault(s => s.Id == id);
+            if (solicitacao is null)
+                throw new KeyNotFoundException("Solicitacao nao encontrada.");
+
+            if (IsFinalizada(solicitacao))
+                throw new InvalidOperationException("Solicitacoes finalizadas nao permitem aprovacao.");
+
+            var user = _userRepo.Query().AsNoTracking().FirstOrDefault(u => u.Id == currentUserId);
+            solicitacao.Aprovada = dto.Aprovada;
+            solicitacao.DataAprovacao = DateTime.UtcNow;
+            solicitacao.Aprovador = user?.Nome ?? "Gestor";
+            solicitacao.ObservacoesAprovacao = dto.ObservacoesAprovacao?.Trim() ?? string.Empty;
+            solicitacao.Status = dto.Aprovada ? "Aberta" : "Reprovada pelo gestor";
+
+            _repo.Update(solicitacao);
             _repo.Save();
 
             return MapResponse(solicitacao);
@@ -214,7 +253,7 @@ namespace UniFlowHub.Api.Services
             if (solicitacao is null)
                 throw new KeyNotFoundException("Solicitacao nao encontrada.");
 
-            if (!CanManage(role, acessos) && solicitacao.Userid != currentUserId)
+            if (!CanManage(role, acessos) && !CanApprove(acessos) && solicitacao.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar este anexo.");
 
             if (string.IsNullOrWhiteSpace(solicitacao.AnexossUrl))
@@ -237,7 +276,12 @@ namespace UniFlowHub.Api.Services
 
         private static bool CanManage(string role, IEnumerable<string> acessos)
         {
-            return RoleScope.IsAdmin(role) || HasAccess(acessos, "rh-admin");
+            return RoleScope.IsAdmin(role) || RoleScope.IsRH(role) || HasAccess(acessos, "rh-admin");
+        }
+
+        private static bool CanApprove(IEnumerable<string> acessos)
+        {
+            return HasAccess(acessos, "rh-aprovacao");
         }
 
         private static bool HasAccess(IEnumerable<string> acessos, string chave)
@@ -247,7 +291,8 @@ namespace UniFlowHub.Api.Services
         {
             return solicitacao.DataEncerramento.HasValue
                 || string.Equals(solicitacao.Status, "Concluida", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(solicitacao.Status, "Cancelada", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(solicitacao.Status, "Cancelada", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(solicitacao.Status, "Reprovada pelo gestor", StringComparison.OrdinalIgnoreCase);
         }
 
         private SolicitacoesRH GetAccessibleSolicitacao(int id, string role, int currentUserId, IEnumerable<string> acessos)
@@ -256,7 +301,7 @@ namespace UniFlowHub.Api.Services
             if (solicitacao is null)
                 throw new KeyNotFoundException("Solicitacao nao encontrada.");
 
-            if (!CanManage(role, acessos) && solicitacao.Userid != currentUserId)
+            if (!CanManage(role, acessos) && !CanApprove(acessos) && solicitacao.Userid != currentUserId)
                 throw new UnauthorizedAccessException("Voce nao pode acessar esta solicitacao.");
 
             return solicitacao;
@@ -282,6 +327,12 @@ namespace UniFlowHub.Api.Services
                 Status = s.Status,
                 Observacoes = s.Observacoes,
                 ObservacoesEncerramento = s.ObservacoesEncerramento,
+                DataAprovacao = s.DataAprovacao,
+                Aprovada = s.Aprovada,
+                Aprovador = s.Aprovador,
+                ObservacoesAprovacao = s.ObservacoesAprovacao,
+                AprovacaoPendente = !s.Aprovada.HasValue
+                    && string.Equals(s.Status, "Aguardando aprovacao do gestor", StringComparison.OrdinalIgnoreCase),
                 SatisfacaoNota = s.SatisfacaoNota,
                 SatisfacaoComentario = s.SatisfacaoComentario,
                 DataAvaliacao = s.DataAvaliacao,

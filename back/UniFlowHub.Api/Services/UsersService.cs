@@ -41,7 +41,7 @@ namespace UniFlowHub.Api.Services
         {
             IQueryable<Users> user = _repo.Query().Include(u => u.Unidade).Include(u => u.Perfis);
 
-            if (CanManageUsers(role, acessos))
+            if (CanViewUsersDirectory(role, acessos))
                 return MapUsers(user);
 
             user = user.Where(u => u.Email == email);
@@ -136,6 +136,14 @@ namespace UniFlowHub.Api.Services
             return RoleScope.IsAdmin(role)
                 || RoleScope.IsTI(role)
                 || (acessos?.Contains("usuarios", StringComparer.OrdinalIgnoreCase) ?? false);
+        }
+
+        private static bool CanViewUsersDirectory(string role, IEnumerable<string>? acessos)
+        {
+            return CanManageUsers(role, acessos)
+                || RoleScope.IsRH(role)
+                || (acessos?.Contains("rh-admin", StringComparer.OrdinalIgnoreCase) ?? false)
+                || (acessos?.Contains("dashboard-rh", StringComparer.OrdinalIgnoreCase) ?? false);
         }
 
         private void SaveUserPerfis(Users user, List<string> perfis)

@@ -44,4 +44,34 @@
       <strong>{{ users().length }}</strong>
     </article>
   </section>
+
+  @if (canViewRhAdmin()) {
+    <section class="birthdays-panel">
+      <div class="panel-heading">
+        <div>
+          <span>RH</span>
+          <h2>Aniversariantes de {{ birthMonthName() }}</h2>
+        </div>
+        <button type="button" (click)="printBirthdaysPdf()" [disabled]="!aniversariantesMes().length">
+          Baixar PDF
+        </button>
+      </div>
+
+      @if (aniversariantesMes().length === 0) {
+        <p class="empty">Nenhum aniversariante ativo neste mes.</p>
+      } @else {
+        <div class="birthdays-list">
+          @for (item of aniversariantesMes(); track item.id) {
+            <article class="birthday-card">
+              <strong>{{ birthDay(item) }}</strong>
+              <div>
+                <h3>{{ item.nome }}</h3>
+                <p>{{ item.departamento || 'Sem departamento' }} - {{ item.unidadeNome || 'Sem unidade' }}</p>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+  }
 </main>

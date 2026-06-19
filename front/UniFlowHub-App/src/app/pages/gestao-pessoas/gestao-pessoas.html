@@ -1,0 +1,244 @@
+<main class="people-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Gestao de Pessoas</p>
+        <h1>Admissao e Demissao</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="metrics">
+    <article><span>Admissoes</span><strong>{{ admissaoCount() }}</strong></article>
+    <article><span>Demissoes</span><strong>{{ demissaoCount() }}</strong></article>
+    <article><span>Em andamento</span><strong>{{ pendentesGestor() }}</strong></article>
+  </section>
+
+  <section class="workspace">
+    <div class="tabs">
+      <button type="button" [class.active]="activeTab() === 'processos'" (click)="setTab('processos')">Processos</button>
+      @if (canManage()) {
+        <button type="button" [class.active]="activeTab() === 'etapas'" (click)="setTab('etapas')">Cadastro de etapas</button>
+      }
+    </div>
+
+    @if (activeTab() === 'processos') {
+      <section class="process-sheet">
+        <div class="list-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Fluxo direto</p>
+              <h2>Solicitacoes</h2>
+              <p>{{ filteredProcessos().length }} registro(s)</p>
+            </div>
+            <button class="primary" type="button" (click)="openNewProcesso()">Novo processo</button>
+          </div>
+
+          <div class="filters">
+            <select [value]="tipoFiltro()" (change)="tipoFiltro.set($any($event.target).value)">
+              <option value="Todos">Todos</option>
+              <option value="Admissao">Admissao</option>
+              <option value="Demissao">Demissao</option>
+            </select>
+            <input type="search" placeholder="Buscar solicitante, colaborador ou status" [value]="search()" (input)="search.set($any($event.target).value)" />
+          </div>
+
+          <div class="process-table-wrap">
+            <table class="process-table">
+              <thead>
+                <tr>
+                  <th>Solicitacao</th>
+                  <th>Colaborador</th>
+                  <th>Status</th>
+                  <th>Fluxo</th>
+                  <th>Acoes</th>
+                </tr>
+              </thead>
+              <tbody>
+                @if (loading()) {
+                  <tr><td colspan="5">Carregando...</td></tr>
+                } @else if (filteredProcessos().length === 0) {
+                  <tr><td colspan="5">Nenhum processo encontrado.</td></tr>
+                } @else {
+                  @for (item of filteredProcessos(); track item.id) {
+                    <tr [class.selected]="selected()?.id === item.id" (click)="select(item)">
+                      <td>
+                        <div class="request-cell">
+                          <span class="process-pill" [class.hiring]="item.tipoProcesso === 'Admissao'" [class.dismissal]="item.tipoProcesso === 'Demissao'">{{ item.tipoProcesso }}</span>
+                          <strong>{{ item.titulo }}</strong>
+                          <small>#{{ item.id }} - {{ item.dataSolicitacao | date: 'dd/MM/yyyy' }} - {{ item.solicitante }}</small>
+                        </div>
+                      </td>
+                      <td>
+                        <strong>{{ item.colaboradorNome }}</strong>
+                        <small>{{ item.cargo || item.departamento }}</small>
+                      </td>
+                      <td><strong class="status-pill">{{ item.status }}</strong></td>
+                      <td>
+                        <div class="row-flow">
+                          @for (etapa of etapasDoItem(item); track etapa.id; let index = $index) {
+                            <button
+                              class="row-flow-step"
+                              type="button"
+                              [attr.data-state]="etapaClassFor(item, etapa, index)"
+                              [style.--step-color]="stepColorFor(item, index)"
+                              [title]="etapa.nome"
+                              (click)="onFlowStepClick(item, index, $event)">
+                              <span>{{ index + 1 }}</span>
+                              <small>{{ etapa.nome }}</small>
+                            </button>
+                          }
+                        </div>
+                      </td>
+                      <td>
+                        <div class="row-actions">
+                          <button class="secondary small" type="button" [disabled]="saving() || !canMove() || etapaAtualIndexFor(item) <= 0 || isFinalized(item)" (click)="$event.stopPropagation(); backItem(item)">Voltar</button>
+                          <button class="primary small" type="button" [disabled]="saving() || !canMove() || !item.etapaAtualId || isFinalized(item)" (click)="$event.stopPropagation(); advanceItem(item)">Avancar</button>
+                          <button class="danger small" type="button" [disabled]="saving() || isFinalized(item)" (click)="$event.stopPropagation(); openCancel(item)">Cancelar</button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    } @else {
+      <section class="stages-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Admissao e Demissao</p>
+            <h2>Cadastro de etapas</h2>
+            <p>Cada etapa aparece somente no processo marcado.</p>
+          </div>
+          <button class="primary" type="button" (click)="openNewEtapa()">Nova etapa</button>
+        </div>
+
+        <div class="stage-table-wrap">
+          <table class="stage-table">
+            <thead>
+              <tr>
+                <th>Ordem</th>
+                <th>Etapa</th>
+                <th>Processo</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (etapa of etapasOrdenadas(); track etapa.id) {
+                <tr (click)="editEtapa(etapa)">
+                  <td>{{ etapa.ordem }}</td>
+                  <td><strong>{{ etapa.nome }}</strong></td>
+                  <td>
+                    <span class="process-pill" [class.hiring]="etapa.tipoProcesso === 'Admissao'" [class.dismissal]="etapa.tipoProcesso === 'Demissao'">
+                      {{ etapa.tipoProcesso }}
+                    </span>
+                  </td>
+                  <td>{{ etapa.ativa ? 'Ativa' : 'Inativa' }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="4">Nenhuma etapa cadastrada.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+  </section>
+
+  @if (modalProcessoOpen()) {
+    <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && modalProcessoOpen.set(false)">
+      <form class="modal-panel" [formGroup]="processoForm" (ngSubmit)="submitProcesso()" (click)="$event.stopPropagation()">
+        <div class="section-heading"><h2>Novo processo</h2><button class="icon-button" type="button" (click)="modalProcessoOpen.set(false)">x</button></div>
+        <div class="grid two">
+          <label>Tipo<select formControlName="tipoProcesso"><option value="Admissao">Admissao</option><option value="Demissao">Demissao</option></select></label>
+          <label>Prioridade<select formControlName="prioridade"><option>Baixa</option><option>Media</option><option>Alta</option><option>Critica</option></select></label>
+          <label>Titulo<input formControlName="titulo" /></label>
+          <label>Solicitante<input formControlName="solicitante" /></label>
+          <label>
+            Empresa
+            <select formControlName="unidade">
+              <option value="">Selecione</option>
+              @for (empresa of empresas(); track empresa.id) {
+                <option [value]="empresa.nome">{{ empresa.numero }} - {{ empresa.nome }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            Departamento
+            <select formControlName="departamento">
+              <option value="">Selecione</option>
+              @for (departamento of departamentos(); track departamento) {
+                <option [value]="departamento">{{ departamento }}</option>
+              }
+            </select>
+          </label>
+          <label>Colaborador<input formControlName="colaboradorNome" /></label>
+          <label>
+            Cargo
+            <select formControlName="cargo">
+              <option value="">Selecione</option>
+              @for (cargo of cargos(); track cargo) {
+                <option [value]="cargo">{{ cargo }}</option>
+              }
+            </select>
+          </label>
+        </div>
+        <label>Descricao<textarea formControlName="descricao" rows="5"></textarea></label>
+        <label>Observacoes<textarea formControlName="observacoes" rows="3"></textarea></label>
+        <div class="actions"><button class="primary" type="submit" [disabled]="saving()">Criar processo</button></div>
+      </form>
+    </section>
+  }
+
+  @if (modalEtapaOpen()) {
+    <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && modalEtapaOpen.set(false)">
+      <form class="modal-panel compact" [formGroup]="etapaForm" (ngSubmit)="submitEtapa()" (click)="$event.stopPropagation()">
+        <div class="section-heading"><h2>{{ selectedEtapa() ? 'Editar etapa' : 'Nova etapa' }}</h2><button class="icon-button" type="button" (click)="modalEtapaOpen.set(false)">x</button></div>
+        <label>Nome<input formControlName="nome" /></label>
+        <div class="grid two">
+          <label>Processo<select formControlName="tipoProcesso"><option value="Admissao">Admissao</option><option value="Demissao">Demissao</option></select></label>
+          <label>Ordem<input type="number" min="1" formControlName="ordem" /></label>
+        </div>
+        <label class="check"><input type="checkbox" formControlName="ativa" /> Ativa</label>
+        <div class="actions"><button class="primary" type="submit" [disabled]="saving()">Salvar etapa</button></div>
+      </form>
+    </section>
+  }
+
+  @if (cancelModalOpen()) {
+    <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && cancelModalOpen.set(false)">
+      <form class="modal-panel compact" [formGroup]="cancelForm" (ngSubmit)="cancelProcesso()" (click)="$event.stopPropagation()">
+        <div class="section-heading"><h2>Cancelar processo</h2><button class="icon-button" type="button" (click)="cancelModalOpen.set(false)">x</button></div>
+        <label>Motivo do cancelamento<textarea formControlName="motivoCancelamento" rows="5"></textarea></label>
+        <div class="actions"><button class="danger" type="submit" [disabled]="saving()">Confirmar cancelamento</button></div>
+      </form>
+    </section>
+  }
+</main>

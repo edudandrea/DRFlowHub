@@ -33,7 +33,7 @@
   <section class="metrics">
     <article>
       <span>Total</span>
-      <strong>{{ minhasSolicitacoes().length }}</strong>
+      <strong>{{ solicitacoesVisiveis().length }}</strong>
     </article>
     <article>
       <span>Abertas</span>
@@ -54,7 +54,7 @@
       <div class="section-heading">
         <div>
           <h2>Minhas solicitações</h2>
-          <p>{{ minhasSolicitacoes().length }} registro(s)</p>
+          <p>{{ solicitacoesVisiveis().length }} registro(s) de ontem e hoje</p>
         </div>
         <button class="primary" type="button" (click)="openCreateModal()">Abrir solicitação</button>
       </div>
@@ -78,14 +78,37 @@
         <p class="satisfaction-alert">Você tem {{ avaliacoesPendentes() }} solicitação(ões) encerrada(s) para avaliar.</p>
       }
 
-      <div class="request-list">
+      <div class="rh-board">
         @if (loading()) {
           <p class="empty">Carregando...</p>
-        } @else if (minhasSolicitacoes().length === 0) {
-          <p class="empty">Nenhuma solicitação criada ainda.</p>
+        } @else if (solicitacoesVisiveis().length === 0) {
+          <p class="empty">Nenhuma solicitação de ontem ou hoje.</p>
         } @else {
-          @for (item of pagedSolicitacoes(); track item.id) {
-            <article class="request-card" [class.editable]="canEdit(item)" (click)="openEditModal(item)">
+          @for (column of rhColumns(); track column.key) {
+            <section
+              class="rh-column"
+              [class.drag-over]="dragTargetColumn() === column.key"
+              (dragover)="onSolicitacaoDragOver($event, column.key)"
+              (dragleave)="onSolicitacaoDragLeave(column.key)"
+              (drop)="onSolicitacaoDrop($event, column.key)"
+            >
+              <header>
+                <strong>{{ column.title }}</strong>
+                <small>{{ column.subtitle }}</small>
+              </header>
+              @if (column.items.length === 0) {
+                <p class="column-empty">Sem solicitacoes</p>
+              } @else {
+                @for (item of column.items; track item.id) {
+            <article
+              class="request-card"
+              [class.editable]="canEdit(item)"
+              [class.dragging]="draggingSolicitacaoId() === item.id"
+              [draggable]="canMoveSolicitacao(item)"
+              (dragstart)="onSolicitacaoDragStart($event, item)"
+              (dragend)="onSolicitacaoDragEnd()"
+              (click)="openEditModal(item)"
+            >
               <div>
                 <h3>#{{ item.id }} - {{ item.titulo }}</h3>
                 <p>{{ item.tipoSolicitacao }} - {{ item.departamento }}</p>
@@ -96,6 +119,9 @@
                 <small>Sem responsável</small>
               }
               <span class="status">{{ item.status }}</span>
+              @if (isApprovalPending(item)) {
+                <small class="approval-chip">Aguardando aprovacao do gestor</small>
+              }
               <small>Criada em {{ item.dataSolicitacao | date: 'dd/MM/yyyy HH:mm' }}</small>
               @if (item.dataEncerramento) {
                 <small>Encerrada em {{ item.dataEncerramento | date: 'dd/MM/yyyy HH:mm' }}</small>
@@ -138,13 +164,16 @@
                 </div>
               }
             </article>
+                }
+              }
+            </section>
           }
         }
       </div>
-      @if (minhasSolicitacoes().length > pageSize()) {
+      @if (solicitacoesVisiveis().length > pageSize()) {
         <div class="detail-actions">
           <button class="secondary" type="button" (click)="previousPage()" [disabled]="page() <= 1">Anterior</button>
-          <span>Página {{ page() }} de {{ totalPages() }}</span>
+          <span>Página {{ currentPage() }} de {{ totalPages() }}</span>
           <button class="secondary" type="button" (click)="nextPage()" [disabled]="page() >= totalPages()">Próxima</button>
         </div>
       }
@@ -264,10 +293,35 @@
         <form class="form-panel modal-form-panel" [formGroup]="editForm" (ngSubmit)="updateSolicitacao()">
           <div class="detail-tabs" role="tablist" aria-label="Detalhes da solicitação">
             <button type="button" [class.active]="detailTab() === 'detalhes'" (click)="detailTab.set('detalhes')">Detalhes</button>
-            <button type="button" [class.active]="detailTab() === 'comunicacao'" (click)="detailTab.set('comunicacao')">Comunicação</button>
           </div>
 
-          @if (detailTab() === 'detalhes') {
+          @if (true) {
+            @if (isApprovalPending(selected())) {
+              <section class="approval-panel" [formGroup]="approvalForm">
+                <strong>Aprovacao do gestor</strong>
+                <p>Esta solicitacao so aparece para o RH depois da aprovacao.</p>
+                <label>
+                  Observacoes da aprovacao
+                  <textarea formControlName="observacoesAprovacao" rows="3"></textarea>
+                </label>
+                <div class="modal-actions">
+                  @if (canApprove(selected())) {
+                    <button class="danger" type="button" [disabled]="updating()" (click)="approveSolicitacao(false)">Reprovar</button>
+                    <button class="primary" type="button" [disabled]="updating()" (click)="approveSolicitacao(true)">Aprovar solicitação</button>
+                  } @else {
+                    <p class="notice">Somente usuários com a flag "Aprova solicitação do RH" podem aprovar.</p>
+                  }
+                </div>
+              </section>
+            } @else if (selected()?.dataAprovacao) {
+              <section class="approval-panel approved">
+                <strong>Aprovada por {{ selected()?.aprovador || 'Gestor' }}</strong>
+                <p>{{ selected()?.dataAprovacao | date: 'dd/MM/yyyy HH:mm' }}</p>
+                @if (selected()?.observacoesAprovacao) {
+                  <p>{{ selected()?.observacoesAprovacao }}</p>
+                }
+              </section>
+            }
             @if (isFinalized(selected())) {
               <p class="notice">Solicitação encerrada ou cancelada. Edicao bloqueada.</p>
             }

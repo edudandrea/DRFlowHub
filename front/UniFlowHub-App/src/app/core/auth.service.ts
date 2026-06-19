@@ -76,11 +76,12 @@ export class AuthService {
 
   hasAccess(access: string): boolean {
     const user = this.user();
+    const normalizedAccess = this.normalize(access);
     return !!user && (
       user.role === 'Admin'
-      || (user.role === 'TI' && access === 'veiculos-repasses')
-      || this.defaultAccesses(user).includes(access)
-      || (user.acessos ?? []).includes(access)
+      || (user.role === 'TI' && normalizedAccess === 'veiculos-repasses')
+      || this.defaultAccesses(user).some((item) => this.normalize(item) === normalizedAccess)
+      || (user.acessos ?? []).some((item) => this.normalize(item) === normalizedAccess)
     );
   }
 
@@ -120,6 +121,7 @@ export class AuthService {
     const department = this.normalize(user.departamento);
     const perfis = (user.perfis ?? []).map((perfil) => this.normalize(perfil));
     return role === 'rh'
+      || this.isRhText(role)
       || this.isRhText(department)
       || perfis.some((perfil) => perfil === 'rh' || this.isRhText(perfil));
   }
@@ -146,8 +148,13 @@ export class AuthService {
 
   private isRhText(value: string): boolean {
     const normalized = this.normalize(value);
+    const compact = normalized.replace(/[^a-z0-9]/g, '');
     return /\brh\b/.test(normalized)
-      || /\brecursos?\s*humanos\b/.test(normalized);
+      || compact === 'adminrh'
+      || compact === 'administradorrh'
+      || /\badmin(?:istrador)?\s*rh\b/.test(normalized)
+      || /\brecursos?\s*humanos\b/.test(normalized)
+      || /\badmin(?:istrador)?\s*recursos?\s*humanos\b/.test(normalized);
   }
 
   private setSession(response: LoginResponse): void {

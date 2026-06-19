@@ -357,8 +357,12 @@ export class TiPage implements OnInit, AfterViewInit, OnDestroy {
 
     this.loadUnidades();
     this.loadMonitoringLinks();
-    this.loadConhecimentos();
-    this.loadEquipamentos();
+    if (this.auth.hasAccess('base-conhecimento-ti') || this.canManage()) {
+      this.loadConhecimentos();
+    }
+    if (this.auth.hasAccess('equipamentos-ti') || this.canManage()) {
+      this.loadEquipamentos();
+    }
     this.load();
     if (this.canManage()) {
       this.loadResponsaveis();

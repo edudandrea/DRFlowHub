@@ -32,6 +32,9 @@ namespace UniFlowHub.Api.Data
         public DbSet<PerfilSistemaAcesso> PerfilSistemaAcesso { get; set; }
         public DbSet<PerfilSistemaEmpresa> PerfilSistemaEmpresa { get; set; }
         public DbSet<UserPerfil> UserPerfil { get; set; }
+        public DbSet<GestaoPessoasEtapa> GestaoPessoasEtapa { get; set; }
+        public DbSet<GestaoPessoasProcesso> GestaoPessoasProcesso { get; set; }
+        public DbSet<GestaoPessoasProcessoHistorico> GestaoPessoasProcessoHistorico { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -158,6 +161,10 @@ namespace UniFlowHub.Api.Data
                 .IsUnique(false);
 
             modelBuilder.Entity<PecaVendedorMeta>()
+                .HasIndex(s => new { s.CpfVendedor, s.Origem, s.TipoMeta, s.DataInicio, s.DataFim })
+                .IsUnique(false);
+
+            modelBuilder.Entity<PecaVendedorMeta>()
                 .HasOne(s => s.AtualizadoPorUser)
                 .WithMany()
                 .HasForeignKey(s => s.AtualizadoPorUserId)
@@ -204,6 +211,33 @@ namespace UniFlowHub.Api.Data
                 .WithMany(s => s.Comunicacoes)
                 .HasForeignKey(s => s.SolicitacaoCompraId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<GestaoPessoasEtapa>()
+                .HasIndex(s => new { s.TipoProcesso, s.Ordem });
+
+            modelBuilder.Entity<GestaoPessoasProcesso>()
+                .HasOne(s => s.OwnerUser)
+                .WithMany()
+                .HasForeignKey(s => s.Userid)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<GestaoPessoasProcesso>()
+                .HasOne(s => s.EtapaAtual)
+                .WithMany()
+                .HasForeignKey(s => s.EtapaAtualId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<GestaoPessoasProcessoHistorico>()
+                .HasOne(s => s.Processo)
+                .WithMany(s => s.Historico)
+                .HasForeignKey(s => s.ProcessoId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<GestaoPessoasProcessoHistorico>()
+                .HasOne(s => s.Etapa)
+                .WithMany()
+                .HasForeignKey(s => s.EtapaId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

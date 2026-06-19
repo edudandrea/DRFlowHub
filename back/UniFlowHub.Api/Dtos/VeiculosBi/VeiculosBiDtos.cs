@@ -11,18 +11,24 @@ namespace UniFlowHub.Api.Dtos.VeiculosBi
     public class VeiculoAcessorioRankingDto
     {
         public string Codigo { get; set; } = string.Empty;
+        public string CpfVendedor { get; set; } = string.Empty;
         public string Nome { get; set; } = string.Empty;
         public string Categoria { get; set; } = string.Empty;
         public int Quantidade { get; set; }
         public decimal Faturamento { get; set; }
         public decimal MargemPercentual { get; set; }
         public decimal Rentabilidade { get; set; }
+        public decimal Meta { get; set; }
+        public string TipoMeta { get; set; } = "valor";
+        public DateTime? MetaDataInicio { get; set; }
+        public DateTime? MetaDataFim { get; set; }
     }
 
     public class VeiculosBiDashboardDto
     {
         public List<VeiculoBiFilialVendaDto> Filiais { get; set; } = new();
         public List<VeiculoBiVendaDiariaDto> VendasDiarias { get; set; } = new();
+        public List<VeiculoBiVendaDetalheDto> VendasDetalhes { get; set; } = new();
         public List<VeiculoBiModeloRankingDto> Modelos { get; set; } = new();
         public List<VeiculoBiVendedorMetaDto> Vendedores { get; set; } = new();
         public DateTime AtualizadoEm { get; set; } = DateTime.Now;
@@ -67,6 +73,8 @@ namespace UniFlowHub.Api.Dtos.VeiculosBi
         public int Baixados { get; set; }
         public decimal Faturamento { get; set; }
         public decimal Margem { get; set; }
+        public decimal FaturamentoSemDireta { get; set; }
+        public decimal MargemSemDireta { get; set; }
     }
 
     public class VeiculoBiVendaDiariaDto
@@ -75,6 +83,16 @@ namespace UniFlowHub.Api.Dtos.VeiculosBi
         public int Novos { get; set; }
         public int VendaDireta { get; set; }
         public int Seminovos { get; set; }
+    }
+
+    public class VeiculoBiVendaDetalheDto
+    {
+        public string Data { get; set; } = string.Empty;
+        public string Tipo { get; set; } = string.Empty;
+        public string Cliente { get; set; } = string.Empty;
+        public string NotaFiscal { get; set; } = string.Empty;
+        public string Veiculo { get; set; } = string.Empty;
+        public decimal Valor { get; set; }
     }
 
     public class VeiculoBiModeloRankingDto
@@ -89,9 +107,24 @@ namespace UniFlowHub.Api.Dtos.VeiculosBi
     public class VeiculoBiVendedorMetaDto
     {
         public string Vendedor { get; set; } = string.Empty;
+        public string CpfVendedor { get; set; } = string.Empty;
         public string Filial { get; set; } = string.Empty;
         public int Meta { get; set; }
+        public string TipoMeta { get; set; } = "valor";
         public int Realizado { get; set; }
         public decimal Faturamento { get; set; }
+        public DateTime? MetaDataInicio { get; set; }
+        public DateTime? MetaDataFim { get; set; }
+    }
+
+    public class VeiculoVendedorMetaDto
+    {
+        public string CpfVendedor { get; set; } = string.Empty;
+        public string NomeVendedor { get; set; } = string.Empty;
+        public string Origem { get; set; } = "veiculos";
+        public string TipoMeta { get; set; } = "valor";
+        public decimal ValorMeta { get; set; }
+        public DateTime? DataInicio { get; set; }
+        public DateTime? DataFim { get; set; }
     }
 }

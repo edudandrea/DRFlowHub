@@ -142,6 +142,26 @@ namespace UniFlowHub.Api.Controllers
             }
         }
 
+        [HttpPost("{id:int}/aprovacao")]
+        public IActionResult Aprovar(int id, [FromBody] SolicitacaoRHAprovacaoDto dto)
+        {
+            try
+            {
+                var solicitacao = _service.Aprovar(id, dto, GetRole(), GetUserId(), GetAcessos());
+
+                return Ok(new
+                {
+                    sucesso = true,
+                    mensagem = "Aprovacao registrada com sucesso",
+                    solicitacao
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpPost("{id:int}/reabrir")]
         public IActionResult Reabrir(int id)
         {

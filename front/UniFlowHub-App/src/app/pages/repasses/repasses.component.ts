@@ -6,11 +6,12 @@ import { NgxSpinnerService } from 'ngx-spinner';
 import { ToastrService } from 'ngx-toastr';
 import { AutoRefreshControlComponent } from '../../core/auto-refresh-control.component';
 import { AuthService } from '../../core/auth.service';
-import { Empresa, RepasseDashboard, RepasseResumoEmpresa, RepasseVeiculo, Unidade } from '../../core/models';
+import { Empresa, RepasseDashboard, RepasseResumoEmpresa, RepasseVendaVendedorItem, RepasseVendasVendedor, RepasseVendedorResumo, RepasseVeiculo, Unidade } from '../../core/models';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { RepassesService } from '../../core/repasses.service';
 import { ThemeService } from '../../core/theme.service';
 import { UnidadesService } from '../../core/unidades.service';
+import { forkJoin } from 'rxjs';
 
 interface SituacaoResumo {
   nome: string;
@@ -29,6 +30,8 @@ interface PieSlice {
   labelY: number;
   midAngle: number;
 }
+
+type RepasseTab = 'estoque' | 'vendas-vendedor';
 
 const REPASSE_EMPRESAS = new Map<number, string>([
   [1, 'Renault'],
@@ -55,18 +58,26 @@ export class RepassesComponent implements OnInit {
   private readonly spinner = inject(NgxSpinnerService);
   private readonly router = inject(Router);
   private readonly profileFlow = inject(ProfileFlowService);
+  private vendedorSearchTimer: number | null = null;
 
   readonly theme = inject(ThemeService);
   readonly user = computed(() => this.auth.user());
   readonly empresas = signal<Empresa[]>([]);
   readonly revendas = signal<Unidade[]>([]);
   readonly dashboard = signal<RepasseDashboard>({ veiculos: [], topDiasEstoque: [], resumos: [] });
+  readonly vendasVendedor = signal<RepasseVendasVendedor>({ vendedores: [], vendas: [], atualizadoEm: '' });
   readonly loading = signal(false);
+  readonly loadingVendedores = signal(false);
   readonly atualizadoEm = signal<Date | null>(null);
+  readonly activeTab = signal<RepasseTab>('estoque');
   readonly profileMenuOpen = signal(false);
   readonly page = signal(1);
   readonly pageSize = signal(10);
+  readonly vendedorPage = signal(1);
+  readonly vendedorPageSize = signal(10);
   readonly buscaDetalhe = signal('');
+  readonly vendedorFiltro = signal('');
+  readonly vendedorSelecionado = signal('');
   readonly diasInicio = signal<number | null>(null);
   readonly diasFim = signal<number | null>(null);
   readonly situacaoFiltro = signal('');
@@ -142,6 +153,14 @@ export class RepassesComponent implements OnInit {
   readonly pagedVeiculos = computed(() => this.veiculosFiltrados().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
   readonly custoTotalFiltrado = computed(() => this.veiculosFiltrados().reduce((total, item) => total + item.custoContabil, 0));
   readonly totalVeiculosFiltrado = computed(() => this.veiculosFiltrados().length);
+  readonly vendedores = computed(() => this.vendasVendedor().vendedores ?? []);
+  readonly vendas = computed(() => this.vendasVendedor().vendas ?? []);
+  readonly vendedorTotalPages = computed(() => Math.max(1, Math.ceil(this.vendedores().length / this.vendedorPageSize())));
+  readonly pagedVendedores = computed(() => this.vendedores().slice((this.safeVendedorPage() - 1) * this.vendedorPageSize(), this.safeVendedorPage() * this.vendedorPageSize()));
+  readonly totalVendasVendedor = computed(() => this.vendas().length);
+  readonly totalVendaVendedor = computed(() => this.vendas().reduce((total, item) => total + item.totalVenda, 0));
+  readonly totalMargemVendedor = computed(() => this.vendas().reduce((total, item) => total + item.margem, 0));
+  readonly margemPercentualVendedor = computed(() => this.totalVendaVendedor() === 0 ? 0 : (this.totalMargemVendedor() / this.totalVendaVendedor()) * 100);
   readonly topDiasEstoque = computed(() => this.dashboard().topDiasEstoque);
   readonly activeTopVehicle = computed(() => {
     const items = this.topDiasEstoque();
@@ -232,15 +251,23 @@ export class RepassesComponent implements OnInit {
   loadDashboard(): void {
     this.loading.set(true);
     void this.spinner.show();
-    this.repassesService.dashboard({
+    const filter = {
       empresa: this.empresaSelecionada(),
       revenda: this.revendaSelecionada(),
       dataInicio: this.dataInicio(),
       dataFim: this.dataFim(),
+    };
+
+    forkJoin({
+      dashboard: this.repassesService.dashboard(filter),
+      vendasVendedor: this.repassesService.vendasPorVendedor({ ...filter, vendedor: this.vendedorFiltro() }),
     }).subscribe({
-      next: (result) => {
-        this.dashboard.set(result);
+      next: ({ dashboard, vendasVendedor }) => {
+        this.dashboard.set(dashboard);
+        this.vendasVendedor.set(vendasVendedor);
         this.page.set(1);
+        this.vendedorPage.set(1);
+        this.vendedorSelecionado.set(vendasVendedor.vendedores[0]?.vendedor ?? '');
         this.atualizadoEm.set(new Date());
         this.loading.set(false);
         void this.spinner.hide();
@@ -249,6 +276,28 @@ export class RepassesComponent implements OnInit {
         this.loading.set(false);
         void this.spinner.hide();
         this.toastr.error('Não foi possível carregar os repasses.', 'Repasse');
+      },
+    });
+  }
+
+  loadVendasVendedor(): void {
+    this.loadingVendedores.set(true);
+    this.repassesService.vendasPorVendedor({
+      empresa: this.empresaSelecionada(),
+      revenda: this.revendaSelecionada(),
+      dataInicio: this.dataInicio(),
+      dataFim: this.dataFim(),
+      vendedor: this.vendedorFiltro(),
+    }).subscribe({
+      next: (result) => {
+        this.vendasVendedor.set(result);
+        this.vendedorPage.set(1);
+        this.vendedorSelecionado.set(result.vendedores[0]?.vendedor ?? '');
+        this.loadingVendedores.set(false);
+      },
+      error: () => {
+        this.loadingVendedores.set(false);
+        this.toastr.error('NÃ£o foi possÃ­vel carregar as vendas por vendedor.', 'Repasse');
       },
     });
   }
@@ -270,6 +319,8 @@ export class RepassesComponent implements OnInit {
     this.dataInicio.set(this.toDateInputValue(new Date()));
     this.dataFim.set(this.toDateInputValue(new Date()));
     this.page.set(1);
+    this.vendedorPage.set(1);
+    this.vendedorFiltro.set('');
     this.hoveredTopIndex.set(null);
     this.loadDashboard();
   }
@@ -342,6 +393,53 @@ export class RepassesComponent implements OnInit {
     this.page.set(Math.min(this.totalPages(), this.safePage() + 1));
   }
 
+  setTab(tab: RepasseTab): void {
+    this.activeTab.set(tab);
+  }
+
+  setVendedorFiltro(value: string, autoSearch = false): void {
+    this.vendedorFiltro.set(value);
+
+    if (!autoSearch) {
+      return;
+    }
+
+    if (this.vendedorSearchTimer !== null) {
+      window.clearTimeout(this.vendedorSearchTimer);
+    }
+
+    this.vendedorSearchTimer = window.setTimeout(() => {
+      this.vendedorSearchTimer = null;
+      this.loadVendasVendedor();
+    }, 350);
+  }
+
+  clearVendedorFiltro(): void {
+    if (this.vendedorSearchTimer !== null) {
+      window.clearTimeout(this.vendedorSearchTimer);
+      this.vendedorSearchTimer = null;
+    }
+
+    this.vendedorFiltro.set('');
+    this.loadVendasVendedor();
+  }
+
+  selectVendedor(vendedor: string): void {
+    this.vendedorSelecionado.set(vendedor);
+  }
+
+  vendasDoVendedor(vendedor: string): RepasseVendaVendedorItem[] {
+    return this.vendas().filter((item) => item.vendedor === vendedor);
+  }
+
+  previousVendedorPage(): void {
+    this.vendedorPage.set(Math.max(1, this.safeVendedorPage() - 1));
+  }
+
+  nextVendedorPage(): void {
+    this.vendedorPage.set(Math.min(this.vendedorTotalPages(), this.safeVendedorPage() + 1));
+  }
+
   goHome(): void {
     void this.router.navigate(['/hub']);
   }
@@ -410,6 +508,14 @@ export class RepassesComponent implements OnInit {
     return item.empresa;
   }
 
+  trackByVendedor(_: number, item: RepasseVendedorResumo): string {
+    return item.vendedor;
+  }
+
+  trackByVendaVendedor(_: number, item: RepasseVendaVendedorItem): string {
+    return `${item.empresa}-${item.revenda}-${item.numeroNotaFiscal}-${item.placa}`;
+  }
+
   empresaCustoPercentual(item: RepasseResumoEmpresa): number {
     return Math.min(100, Math.max(3, (item.custoPara / this.maiorCustoEmpresa()) * 100));
   }
@@ -424,6 +530,10 @@ export class RepassesComponent implements OnInit {
 
   private safePage(): number {
     return Math.min(Math.max(this.page(), 1), this.totalPages());
+  }
+
+  private safeVendedorPage(): number {
+    return Math.min(Math.max(this.vendedorPage(), 1), this.vendedorTotalPages());
   }
 
   private normalizeNumberFilter(value: string | number | null): number | null {

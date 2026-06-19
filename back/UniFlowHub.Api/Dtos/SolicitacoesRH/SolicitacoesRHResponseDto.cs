@@ -22,6 +22,11 @@ namespace UniFlowHub.Api.Dtos.SolicitacoesRH
         public string Status { get; set; } = string.Empty;
         public string Observacoes { get; set; } = string.Empty;
         public string ObservacoesEncerramento { get; set; } = string.Empty;
+        public DateTime? DataAprovacao { get; set; }
+        public bool? Aprovada { get; set; }
+        public string Aprovador { get; set; } = string.Empty;
+        public string ObservacoesAprovacao { get; set; } = string.Empty;
+        public bool AprovacaoPendente { get; set; }
         public int? SatisfacaoNota { get; set; }
         public string SatisfacaoComentario { get; set; } = string.Empty;
         public DateTime? DataAvaliacao { get; set; }

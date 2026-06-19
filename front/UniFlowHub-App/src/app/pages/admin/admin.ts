@@ -7,21 +7,21 @@ import { ToastrService } from 'ngx-toastr';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { SolicitacaoRH, SolicitacaoRHComunicação, Unidade, User } from '../../core/models';
+import { SolicitacaoRH, SolicitacaoRHComunicação, Unidade } from '../../core/models';
 import { SolicitacoesService } from '../../core/solicitacoes.service';
 import { ThemeService } from '../../core/theme.service';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { UnidadesService } from '../../core/unidades.service';
 
-interface BirthdayItem {
-  id: number;
-  nome: string;
-  departamento: string;
-  cargo: string;
-  day: number;
-  isToday: boolean;
-}
 type AdminSortField = 'id' | 'titulo' | 'solicitante' | 'unidade' | 'departamento' | 'prioridade' | 'status' | 'dataSolicitacao';
+type RhColumnKey = 'pendentes' | 'atendimento' | 'concluidos';
+
+interface RhColumn {
+  key: RhColumnKey;
+  title: string;
+  subtitle: string;
+  items: SolicitacaoRH[];
+}
 
 @Component({
   selector: 'app-admin',
@@ -57,7 +57,6 @@ export class AdminPage implements OnInit, OnDestroy {
   readonly attachmentPreviewType = signal<'image' | 'pdf' | 'download' | null>(null);
   readonly profileMenuOpen = signal(false);
   readonly unidades = signal<Unidade[]>([]);
-  readonly users = signal<User[]>([]);
   private attachmentObjectUrl = '';
   private communicationRefreshId: ReturnType<typeof setInterval> | null = null;
   readonly search = signal('');
@@ -67,39 +66,20 @@ export class AdminPage implements OnInit, OnDestroy {
   readonly pageSize = signal(10);
   readonly sortField = signal<AdminSortField>('id');
   readonly sortDirection = signal<'asc' | 'desc'>('desc');
+  readonly draggingSolicitacaoId = signal<number | null>(null);
+  readonly dragTargetColumn = signal<RhColumnKey | null>(null);
   readonly user = computed(() => this.auth.user());
-  readonly abertas = computed(() => this.solicitacoes().filter((item) => item.status === 'Aberta').length);
-  readonly avaliacoesRespondidas = computed(() => this.solicitacoes().filter((item) => !!item.satisfacaoNota).length);
+  readonly canOpenSolicitacaoFromPanel = computed(() => !this.auth.hasAccess('rh-admin'));
+  readonly abertas = computed(() => this.filtered().filter((item) => item.status === 'Aberta').length);
+  readonly avaliacoesRespondidas = computed(() => this.filtered().filter((item) => !!item.satisfacaoNota).length);
   readonly altaPrioridade = computed(() =>
-    this.solicitacoes().filter((item) => item.prioridade === 'Alta' || item.prioridade === 'Critica').length,
+    this.filtered().filter((item) => item.prioridade === 'Alta' || item.prioridade === 'Critica').length,
   );
-  readonly aniversariantesMes = computed<BirthdayItem[]>(() => {
-    const today = new Date();
-    const currentMonth = today.getMonth();
-
-    return this.users()
-      .map((user) => {
-        const date = this.dateParts(user.dataNascimento);
-        if (!date || date.month !== currentMonth) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          nome: user.nome,
-          departamento: user.departamento,
-          cargo: user.cargo,
-          day: date.day,
-          isToday: date.day === today.getDate(),
-        };
-      })
-      .filter((item): item is BirthdayItem => !!item)
-      .sort((a, b) => a.day - b.day || a.nome.localeCompare(b.nome));
-  });
   readonly filtered = computed(() => {
     const term = this.search().trim().toLowerCase();
-    const from = this.parseDateFilter(this.dateFrom(), false);
-    const to = this.parseDateFilter(this.dateTo(), true);
+    const hasDateFilter = !!this.dateFrom() || !!this.dateTo();
+    const from = hasDateFilter ? this.parseDateFilter(this.dateFrom(), false) : this.startOfYesterday();
+    const to = hasDateFilter ? this.parseDateFilter(this.dateTo(), true) : this.endOfToday();
 
     const filtered = this.solicitacoes().filter((item) => {
       const itemDate = new Date(item.dataSolicitacao);
@@ -116,7 +96,33 @@ export class AdminPage implements OnInit, OnDestroy {
     return this.sortItems(filtered);
   });
   readonly totalPages = computed(() => Math.max(1, Math.ceil(this.filtered().length / this.pageSize())));
+  readonly currentPage = computed(() => this.safePage());
   readonly paged = computed(() => this.filtered().slice((this.safePage() - 1) * this.pageSize(), this.safePage() * this.pageSize()));
+  readonly rhColumns = computed<RhColumn[]>(() => {
+    const items = this.paged();
+    const columns: Omit<RhColumn, 'subtitle'>[] = [
+      {
+        key: 'pendentes',
+        title: 'Pendente',
+        items: items.filter((item) => this.columnForSolicitacao(item) === 'pendentes'),
+      },
+      {
+        key: 'atendimento',
+        title: 'Em atendimento',
+        items: items.filter((item) => this.columnForSolicitacao(item) === 'atendimento'),
+      },
+      {
+        key: 'concluidos',
+        title: 'Concluidos',
+        items: items.filter((item) => this.columnForSolicitacao(item) === 'concluidos'),
+      },
+    ];
+
+    return columns.map((column) => ({
+      ...column,
+      subtitle: `${column.items.length} solicitacao(oes)`,
+    }));
+  });
 
   readonly form = this.fb.nonNullable.group({
     unidade: ['', Validators.required],
@@ -147,7 +153,6 @@ export class AdminPage implements OnInit, OnDestroy {
 
     this.load();
     this.loadUnidades();
-    this.loadUsers();
   }
 
   ngOnDestroy(): void {
@@ -161,19 +166,13 @@ export class AdminPage implements OnInit, OnDestroy {
     });
   }
 
-  loadUsers(): void {
-    this.auth.listUsers().subscribe({
-      next: (users) => this.users.set(users),
-      error: () => this.users.set([]),
-    });
-  }
-
   load(): void {
     this.loading.set(true);
     void this.spinner.show();
     this.service.list().subscribe({
       next: (items) => {
         this.solicitacoes.set(items);
+        this.page.set(1);
         this.loading.set(false);
         void this.spinner.hide();
       },
@@ -205,8 +204,6 @@ export class AdminPage implements OnInit, OnDestroy {
     });
     this.closeForm.reset({ observacoesEncerramento: item.observacoesEncerramento || '' });
     this.messageForm.reset({ mensagem: '' });
-    this.loadComunicacoes(item.id);
-    this.startCommunicationRefresh();
   }
 
   closeModal(): void {
@@ -215,7 +212,6 @@ export class AdminPage implements OnInit, OnDestroy {
     }
 
     this.modalOpen.set(false);
-    this.stopCommunicationRefresh();
     this.comunicacoes.set([]);
     this.clearAttachmentPreview();
   }
@@ -291,13 +287,7 @@ export class AdminPage implements OnInit, OnDestroy {
 
     this.saving.set(true);
     void this.spinner.show();
-    this.service.update(selected.id, {
-      ...this.form.getRawValue(),
-      dataAprovacao: selected.dataAprovacao ?? null,
-      aprovada: selected.aprovada ?? null,
-      observacoesAprovacao: selected.observacoesAprovacao ?? '',
-      aprovacaoPendente: selected.aprovacaoPendente,
-    }).subscribe({
+    this.service.update(selected.id, this.form.getRawValue()).subscribe({
       next: (updated) => {
         this.solicitacoes.set(this.solicitacoes().map((item) => item.id === updated.id ? updated : item));
         this.selected.set(updated);
@@ -371,6 +361,59 @@ export class AdminPage implements OnInit, OnDestroy {
     });
   }
 
+  onSolicitacaoDragStart(event: DragEvent, item: SolicitacaoRH): void {
+    if (!this.canMoveSolicitacao(item)) {
+      event.preventDefault();
+      return;
+    }
+
+    this.draggingSolicitacaoId.set(item.id);
+    event.dataTransfer?.setData('text/plain', String(item.id));
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onSolicitacaoDragEnd(): void {
+    this.draggingSolicitacaoId.set(null);
+    this.dragTargetColumn.set(null);
+  }
+
+  onSolicitacaoDragOver(event: DragEvent, columnKey: RhColumnKey): void {
+    if (this.isBusy() || this.draggingSolicitacaoId() === null) {
+      return;
+    }
+
+    event.preventDefault();
+    this.dragTargetColumn.set(columnKey);
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onSolicitacaoDragLeave(columnKey: RhColumnKey): void {
+    if (this.dragTargetColumn() === columnKey) {
+      this.dragTargetColumn.set(null);
+    }
+  }
+
+  onSolicitacaoDrop(event: DragEvent, columnKey: RhColumnKey): void {
+    event.preventDefault();
+    const draggedId = Number(event.dataTransfer?.getData('text/plain') || this.draggingSolicitacaoId());
+    this.onSolicitacaoDragEnd();
+
+    if (this.isBusy()) {
+      return;
+    }
+
+    const item = this.solicitacoes().find((solicitacao) => solicitacao.id === draggedId);
+    if (!item || !this.canMoveSolicitacao(item) || this.columnForSolicitacao(item) === columnKey) {
+      return;
+    }
+
+    this.moveSolicitacao(item, columnKey);
+  }
+
   sendMessage(): void {
     const selected = this.selected();
     if (!selected || this.isFinalized(selected) || this.messageForm.invalid || this.sendingMessage()) {
@@ -434,6 +477,21 @@ export class AdminPage implements OnInit, OnDestroy {
     this.page.set(1);
   }
 
+  setSearchTerm(value: string): void {
+    this.search.set(value);
+    this.page.set(1);
+  }
+
+  setDateFrom(value: string): void {
+    this.dateFrom.set(value);
+    this.page.set(1);
+  }
+
+  setDateTo(value: string): void {
+    this.dateTo.set(value);
+    this.page.set(1);
+  }
+
   setSort(field: AdminSortField): void {
     if (this.sortField() === field) {
       this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc');
@@ -453,7 +511,15 @@ export class AdminPage implements OnInit, OnDestroy {
   }
 
   isFinalized(item: SolicitacaoRH | null): boolean {
-    return !!item && (!!item.dataEncerramento || item.status === 'Concluida' || item.status === 'Cancelada');
+    return !!item && (
+      !!item.dataEncerramento
+      || item.status === 'Concluida'
+      || item.status === 'Cancelada'
+    );
+  }
+
+  canMoveSolicitacao(item: SolicitacaoRH): boolean {
+    return !this.isBusy() && !this.isFinalized(item);
   }
 
   private loadComunicacoes(id: number): void {
@@ -514,6 +580,19 @@ export class AdminPage implements OnInit, OnDestroy {
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
+  private startOfYesterday(): Date {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - 1);
+    return date;
+  }
+
+  private endOfToday(): Date {
+    const date = new Date();
+    date.setHours(23, 59, 59, 999);
+    return date;
+  }
+
   private safePage(): number {
     return Math.min(Math.max(this.page(), 1), this.totalPages());
   }
@@ -531,21 +610,136 @@ export class AdminPage implements OnInit, OnDestroy {
     });
   }
 
-  private dateParts(value: string): { month: number; day: number } | null {
-    if (!value) {
-      return null;
+  private moveSolicitacao(item: SolicitacaoRH, columnKey: RhColumnKey): void {
+    if (columnKey === 'concluidos') {
+      this.closeSolicitacaoFromBoard(item);
+      return;
     }
 
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      return { month: Number(match[2]) - 1, day: Number(match[3]) };
+    const status = this.statusForColumn(columnKey);
+    if (this.isFinalized(item)) {
+      this.reopenSolicitacaoFromBoard(item, status);
+      return;
     }
 
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return null;
-    }
-
-    return { month: date.getMonth(), day: date.getDate() };
+    this.updateSolicitacaoStatusFromBoard(item, status);
   }
+
+  private updateSolicitacaoStatusFromBoard(item: SolicitacaoRH, status: string): void {
+    const responsavel = this.normalize(status).includes('atendimento')
+      ? this.user()?.nome || item.responsavel
+      : item.responsavel;
+
+    this.saving.set(true);
+    void this.spinner.show();
+    this.service.update(item.id, this.solicitacaoUpdatePayload(item, status, responsavel)).subscribe({
+      next: (updated) => {
+        this.solicitacoes.set(this.solicitacoes().map((solicitacao) => solicitacao.id === updated.id ? updated : solicitacao));
+        if (this.selected()?.id === updated.id) {
+          this.selected.set(updated);
+          this.form.patchValue({ status: updated.status, responsavel: updated.responsavel });
+        }
+        this.saving.set(false);
+        void this.spinner.hide();
+        this.toastr.success(`Solicitacao #${updated.id} movida para ${updated.status}.`, 'RH');
+      },
+      error: () => {
+        this.saving.set(false);
+        void this.spinner.hide();
+        this.toastr.error('Nao foi possivel mover a solicitacao.', 'Erro');
+      },
+    });
+  }
+
+  private closeSolicitacaoFromBoard(item: SolicitacaoRH): void {
+    this.closing.set(true);
+    void this.spinner.show();
+    this.service.close(item.id, 'Concluida pelo Kanban do RH.').subscribe({
+      next: (updated) => {
+        this.solicitacoes.set(this.solicitacoes().map((solicitacao) => solicitacao.id === updated.id ? updated : solicitacao));
+        if (this.selected()?.id === updated.id) {
+          this.selected.set(updated);
+          this.form.patchValue({ status: updated.status });
+          this.closeForm.patchValue({ observacoesEncerramento: updated.observacoesEncerramento });
+        }
+        this.closing.set(false);
+        void this.spinner.hide();
+        this.toastr.success(`Solicitacao #${updated.id} concluida.`, 'RH');
+      },
+      error: () => {
+        this.closing.set(false);
+        void this.spinner.hide();
+        this.toastr.error('Nao foi possivel concluir a solicitacao.', 'Erro');
+      },
+    });
+  }
+
+  private reopenSolicitacaoFromBoard(item: SolicitacaoRH, status: string): void {
+    this.reopening.set(true);
+    void this.spinner.show();
+    this.service.reopen(item.id).subscribe({
+      next: (reopened) => {
+        this.reopening.set(false);
+        void this.spinner.hide();
+        this.updateSolicitacaoStatusFromBoard(reopened, status);
+      },
+      error: () => {
+        this.reopening.set(false);
+        void this.spinner.hide();
+        this.toastr.error('Nao foi possivel reabrir a solicitacao.', 'Erro');
+      },
+    });
+  }
+
+  private solicitacaoUpdatePayload(item: SolicitacaoRH, status: string, responsavel = item.responsavel): Parameters<SolicitacoesService['update']>[1] {
+    return {
+      unidade: item.unidade,
+      titulo: item.titulo,
+      tipoSolicitacao: item.tipoSolicitacao,
+      solicitante: item.solicitante,
+      departamento: item.departamento,
+      descricao: item.descricao,
+      anexossUrl: item.anexossUrl,
+      prioridade: item.prioridade,
+      responsavel,
+      status,
+      observacoes: item.observacoes,
+    };
+  }
+
+  private statusForColumn(columnKey: RhColumnKey): string {
+    const statuses: Record<RhColumnKey, string> = {
+      pendentes: 'Pendente',
+      atendimento: 'Em atendimento',
+      concluidos: 'Concluida',
+    };
+
+    return statuses[columnKey];
+  }
+
+  private columnForSolicitacao(item: SolicitacaoRH): RhColumnKey {
+    if (this.isFinalized(item)) {
+      return 'concluidos';
+    }
+
+    const status = this.normalize(item.status);
+    if (status.includes('atendimento') || status.includes('andamento') || status.includes('analise')) {
+      return 'atendimento';
+    }
+
+    return 'pendentes';
+  }
+
+  private isBusy(): boolean {
+    return this.saving() || this.closing() || this.reopening();
+  }
+
+  private normalize(value: string | null | undefined): string {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
 }

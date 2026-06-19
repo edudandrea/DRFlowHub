@@ -1,5 +1,6 @@
 import { DatePipe, isPlatformBrowser } from '@angular/common';
 import { Component, HostListener, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { NgxSpinnerService } from 'ngx-spinner';
 import { ToastrService } from 'ngx-toastr';
@@ -9,7 +10,7 @@ import { Empresa, Unidade } from '../../core/models';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { ThemeService } from '../../core/theme.service';
 import { UnidadesService } from '../../core/unidades.service';
-import { VeiculoAcessorioRanking, VeiculosBiDashboard, VeiculosBiRetornoFiDashboard, VeiculosBiRetornoFiGrupo, VeiculosBiService } from '../../core/veiculos-bi.service';
+import { VeiculoAcessorioRanking, VeiculoBiVendaDetalhe, VeiculosBiDashboard, VeiculosBiRetornoFiDashboard, VeiculosBiRetornoFiGrupo, VeiculosBiService } from '../../core/veiculos-bi.service';
 
 interface FilialVenda {
   empresaNumero: number;
@@ -27,6 +28,8 @@ interface FilialVenda {
   baixados: number;
   faturamento: number;
   margem: number;
+  faturamentoSemDireta: number;
+  margemSemDireta: number;
 }
 
 interface VendaDiaria {
@@ -35,6 +38,8 @@ interface VendaDiaria {
   vendaDireta: number;
   seminovos: number;
 }
+
+interface VendaDetalhe extends VeiculoBiVendaDetalhe {}
 
 interface ModeloRanking {
   modelo: string;
@@ -46,16 +51,33 @@ interface ModeloRanking {
 
 interface VendedorMeta {
   vendedor: string;
+  cpfVendedor: string;
   filial: string;
   meta: number;
+  tipoMeta: 'valor' | 'quantidade';
   realizado: number;
   faturamento: number;
+  metaDataInicio?: string | null;
+  metaDataFim?: string | null;
+}
+
+interface MetaTarget {
+  origem: 'veiculos' | 'acessorios';
+  nome: string;
+  cpfVendedor: string;
+  meta: number;
+  tipoMeta: 'valor' | 'quantidade';
+  realizado: number;
+  faturamento: number;
+  metaDataInicio?: string | null;
+  metaDataFim?: string | null;
 }
 
 interface ChartSlice {
   label: string;
   value: number;
   color: string;
+  tipo?: string;
 }
 
 interface PreparacaoBloco {
@@ -68,7 +90,7 @@ type VeiculosBiTab = 'veiculos' | 'acessorios' | 'retorno-fi';
 
 @Component({
   selector: 'app-veiculos-bi',
-  imports: [DatePipe, AutoRefreshControlComponent],
+  imports: [DatePipe, FormsModule, AutoRefreshControlComponent],
   templateUrl: './veiculos-bi.html',
   styleUrl: './veiculos-bi.scss',
 })
@@ -94,7 +116,7 @@ export class VeiculosBiPage implements OnInit {
   readonly dataInicio = signal(this.defaultStartDate());
   readonly dataFim = signal(this.defaultEndDate());
   readonly empresaNumero = signal<number | null>(null);
-  readonly revendasSelecionadas = signal<number[]>([]);
+  readonly revendasSelecionadas = signal<string[]>([]);
   readonly vendasPeriodoPage = signal(1);
   readonly vendasPeriodoPageSize = 10;
 
@@ -102,10 +124,18 @@ export class VeiculosBiPage implements OnInit {
   readonly revendas = signal<Unidade[]>([]);
   readonly vendasFiliais = signal<FilialVenda[]>([]);
   readonly vendasDiarias = signal<VendaDiaria[]>([]);
+  readonly vendasDetalhes = signal<VendaDetalhe[]>([]);
   readonly modelos = signal<ModeloRanking[]>([]);
   readonly vendedores = signal<VendedorMeta[]>([]);
   readonly acessorios = signal<VeiculoAcessorioRanking[]>([]);
   readonly retornoFi = signal<VeiculosBiRetornoFiDashboard | null>(null);
+  readonly metaModalTarget = signal<MetaTarget | null>(null);
+  readonly metaDraft = signal<number>(0);
+  readonly metaTipoDraft = signal<'valor' | 'quantidade'>('valor');
+  readonly metaDataInicioDraft = signal('');
+  readonly metaDataFimDraft = signal('');
+  readonly savingMeta = signal(false);
+  readonly selectedDetail = signal<{ data?: string; tipo: string; titulo: string } | null>(null);
 
   readonly acessoriosPreparacao = computed<PreparacaoBloco[]>(() => {
     const acessorios = this.acessorios();
@@ -114,9 +144,9 @@ export class VeiculosBiPage implements OnInit {
     const rentabilidade = acessorios.reduce((total, item) => total + item.rentabilidade, 0);
     const top = acessorios[0];
     return [
-      { titulo: 'Acessorios vendidos', descricao: `${this.formatMoney(faturamento)} em ${this.formatNumber(quantidade)} itens`, indicador: acessorios.length ? 'Departamento 7' : 'Sem dados' },
-      { titulo: 'Ticket medio de acessorios', descricao: quantidade ? `${this.formatMoney(faturamento / quantidade)} por item vendido` : 'Aguardando vendas no periodo.', indicador: 'Oracle' },
-      { titulo: top?.nome ?? 'Top acessorio', descricao: top ? `${this.formatNumber(top.quantidade)} un. - margem ${this.formatPercent(top.margemPercentual)}` : 'Nenhum acessorio encontrado.', indicador: rentabilidade ? this.formatMoney(rentabilidade) : 'Sem margem' },
+      { titulo: 'Acessorios vendidos', descricao: `${this.formatMoney(faturamento)} em ${this.formatNumber(quantidade)} notas`, indicador: acessorios.length ? 'Departamento 7' : 'Sem dados' },
+      { titulo: 'Ticket medio de acessorios', descricao: quantidade ? `${this.formatMoney(faturamento / quantidade)} por nota` : 'Aguardando vendas no periodo.', indicador: 'Oracle' },
+      { titulo: top?.nome ?? 'Top vendedor', descricao: top ? `${this.formatNumber(top.quantidade)} notas - margem ${this.formatPercent(top.margemPercentual)}` : 'Nenhum vendedor encontrado.', indicador: rentabilidade ? this.formatMoney(rentabilidade) : 'Sem margem' },
     ];
   });
 
@@ -127,24 +157,31 @@ export class VeiculosBiPage implements OnInit {
   ];
 
   readonly empresasDisponiveis = computed(() => this.empresas().slice().sort((a, b) => a.numero - b.numero || a.nome.localeCompare(b.nome)));
-  readonly revendasDaEmpresa = computed(() => this.revendas()
-    .filter((revenda) => !this.empresaNumero() || revenda.empresaNumero === this.empresaNumero())
-    .sort((a, b) => a.empresaNumero - b.empresaNumero || a.numeroRevenda - b.numeroRevenda || a.revenda.localeCompare(b.revenda)));
+  readonly revendasDaEmpresa = computed(() => {
+    const empresa = this.empresaNumero();
+    return this.revendas()
+      .filter((revenda) => !empresa || revenda.empresaNumero === empresa)
+      .sort((a, b) => a.empresaNumero - b.empresaNumero || a.numeroRevenda - b.numeroRevenda || a.revenda.localeCompare(b.revenda));
+  });
   readonly revendasSelecionadasLabel = computed(() => {
     const selected = this.revendasSelecionadas();
     if (!selected.length) {
       return 'Todas as revendas';
     }
 
-    return selected.slice().sort((a, b) => a - b).map((numero) => `${numero}`).join(', ');
+    const labels = new Map(this.revendas().map((revenda) => [
+      this.revendaKey(revenda),
+      `${revenda.empresaNumero}.${revenda.numeroRevenda}`,
+    ]));
+    return selected.slice().sort().map((key) => labels.get(key) ?? key).join(', ');
   });
 
   readonly vendasFiltradas = computed(() => {
     const empresa = this.empresaNumero();
-    const revendas = this.revendasSelecionadas();
+    const revendas = new Set(this.revendasSelecionadas());
     return this.vendasFiliais()
       .filter((item) => !empresa || item.empresaNumero === empresa)
-      .filter((item) => !revendas.length || revendas.includes(item.revendaNumero));
+      .filter((item) => !revendas.size || revendas.has(this.filialRevendaKey(item)));
   });
 
   readonly metaNovosTotal = computed(() => this.sumFiliais('metaNovos'));
@@ -157,17 +194,17 @@ export class VeiculosBiPage implements OnInit {
   readonly anunciadosTotal = computed(() => this.sumFiliais('anunciadosNovos') + this.sumFiliais('anunciadosDireta'));
   readonly propostasTotal = computed(() => this.sumFiliais('propostas'));
   readonly baixadosTotal = computed(() => this.sumFiliais('baixados'));
-  readonly faturamentoTotal = computed(() => this.sumFiliais('faturamento'));
-  readonly margemTotal = computed(() => this.sumFiliais('margem'));
+  readonly faturamentoTotal = computed(() => this.sumFiliais('faturamentoSemDireta'));
+  readonly margemTotal = computed(() => this.sumFiliais('margemSemDireta'));
   readonly ticketMedio = computed(() => this.unidadesTotal() ? this.faturamentoTotal() / this.unidadesTotal() : 0);
   readonly atingimento = computed(() => this.metaTotal() ? (this.novosTotal() + this.diretaTotal()) / this.metaTotal() * 100 : 0);
   readonly conversao = computed(() => this.propostasTotal() ? this.unidadesTotal() / this.propostasTotal() * 100 : 0);
   readonly margemPercentual = computed(() => this.faturamentoTotal() ? this.margemTotal() / this.faturamentoTotal() * 100 : 0);
 
   readonly mixRealizado = computed<ChartSlice[]>(() => [
-    { label: 'Novos loja', value: this.novosTotal(), color: '#2563eb' },
-    { label: 'Venda direta', value: this.diretaTotal(), color: '#16a34a' },
-    { label: 'Seminovos', value: this.seminovosTotal(), color: '#f59e0b' },
+    { label: 'Novos loja', tipo: 'Novos', value: this.novosTotal(), color: '#2563eb' },
+    { label: 'Venda direta', tipo: 'Direta', value: this.diretaTotal(), color: '#16a34a' },
+    { label: 'Seminovos', tipo: 'Seminovos', value: this.seminovosTotal(), color: '#f59e0b' },
   ]);
   readonly mixMeta = computed<ChartSlice[]>(() => [
     { label: 'Meta novos', value: this.metaNovosTotal(), color: '#2563eb' },
@@ -187,9 +224,9 @@ export class VeiculosBiPage implements OnInit {
     ...item,
     total: item.novos + item.vendaDireta + item.seminovos,
     slices: [
-      { label: 'Novos', value: item.novos, color: '#2563eb' },
-      { label: 'Direta', value: item.vendaDireta, color: '#16a34a' },
-      { label: 'Seminovos', value: item.seminovos, color: '#f59e0b' },
+      { label: 'Novos', tipo: 'Novos', value: item.novos, color: '#2563eb' },
+      { label: 'Direta', tipo: 'Direta', value: item.vendaDireta, color: '#16a34a' },
+      { label: 'Seminovos', tipo: 'Seminovos', value: item.seminovos, color: '#f59e0b' },
     ],
   })));
   readonly topModelos = computed(() => this.modelos().slice().sort((a, b) => b.unidades - a.unidades).slice(0, 10));
@@ -197,7 +234,7 @@ export class VeiculosBiPage implements OnInit {
     const revendas = new Set(this.vendasFiltradas().map((item) => item.filial));
     return this.vendedores()
       .filter((item) => !revendas.size || revendas.has(item.filial))
-      .sort((a, b) => (b.realizado / Math.max(b.meta, 1)) - (a.realizado / Math.max(a.meta, 1)));
+      .sort((a, b) => this.sellerGoalPercent(b) - this.sellerGoalPercent(a) || b.faturamento - a.faturamento);
   });
   readonly maxFilial = computed(() => Math.max(...this.vendasFiltradas().flatMap((item) => [
     item.metaNovos + item.metaVendaDireta,
@@ -210,6 +247,17 @@ export class VeiculosBiPage implements OnInit {
     const page = Math.min(this.vendasPeriodoPage(), this.vendasPeriodoTotalPages());
     const start = (page - 1) * this.vendasPeriodoPageSize;
     return this.vendasFiltradas().slice(start, start + this.vendasPeriodoPageSize);
+  });
+  readonly vendasDetalhesSelecionadas = computed(() => {
+    const selected = this.selectedDetail();
+    if (!selected) {
+      return [];
+    }
+
+    return this.vendasDetalhes()
+      .filter((item) => item.tipo === selected.tipo)
+      .filter((item) => !selected.data || item.data === selected.data)
+      .slice(0, 25);
   });
 
   readonly vendasDiariasFiltradas = computed(() => {
@@ -308,18 +356,19 @@ export class VeiculosBiPage implements OnInit {
     });
   }
 
-  private dashboardFilter(): { dataInicio: string; dataFim: string; empresa: number | null; revenda: number[] } {
+  private dashboardFilter(): { dataInicio: string; dataFim: string; empresa: number | null; revenda: string[] } {
     return {
       dataInicio: this.dataInicio(),
       dataFim: this.dataFim(),
       empresa: this.empresaNumero(),
-      revenda: this.revendasSelecionadas(),
+      revenda: this.effectiveRevendas(),
     };
   }
 
   private applyDashboard(data: VeiculosBiDashboard): void {
     this.vendasFiliais.set(data.filiais ?? []);
     this.vendasDiarias.set(data.vendasDiarias ?? []);
+    this.vendasDetalhes.set(data.vendasDetalhes ?? []);
     this.modelos.set(data.modelos ?? []);
     this.vendedores.set(data.vendedores ?? []);
     this.atualizadoEm.set(data.atualizadoEm || new Date().toISOString());
@@ -343,6 +392,20 @@ export class VeiculosBiPage implements OnInit {
     ].join('-');
   }
 
+  private firstDayOfCurrentMonth(): Date {
+    const date = new Date();
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
+  private toDateInputOrDefault(value: string | null | undefined, fallback: Date): string {
+    if (!value) {
+      return this.toDateInputValue(fallback);
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? this.toDateInputValue(fallback) : this.toDateInputValue(date);
+  }
+
   setEmpresa(value: string): void {
     const numero = Number(value);
     this.empresaNumero.set(Number.isFinite(numero) && numero > 0 ? numero : null);
@@ -350,10 +413,10 @@ export class VeiculosBiPage implements OnInit {
     this.vendasPeriodoPage.set(1);
   }
 
-  toggleRevenda(numero: number): void {
+  toggleRevenda(key: string): void {
     const selected = new Set(this.revendasSelecionadas());
-    selected.has(numero) ? selected.delete(numero) : selected.add(numero);
-    this.revendasSelecionadas.set([...selected].sort((a, b) => a - b));
+    selected.has(key) ? selected.delete(key) : selected.add(key);
+    this.revendasSelecionadas.set([...selected].sort());
     this.vendasPeriodoPage.set(1);
   }
 
@@ -375,8 +438,36 @@ export class VeiculosBiPage implements OnInit {
     this.activeTab.set(tab);
   }
 
-  isRevendaSelected(numero: number): boolean {
-    return this.revendasSelecionadas().includes(numero);
+  selectVendaDetalhe(slice: ChartSlice, data?: string): void {
+    if (!slice.tipo || !slice.value) {
+      return;
+    }
+
+    this.selectedDetail.set({
+      data,
+      tipo: slice.tipo,
+      titulo: data ? `${slice.label} em ${this.formatDateLabel(data)}` : slice.label,
+    });
+  }
+
+  closeVendaDetalhe(): void {
+    this.selectedDetail.set(null);
+  }
+
+  towerShortLabel(label: string): string {
+    if (label.toLowerCase().includes('direta')) {
+      return 'VC';
+    }
+
+    return label.toLowerCase().includes('seminovos') ? 'Usados' : 'Novos';
+  }
+
+  isRevendaSelected(key: string): boolean {
+    return this.revendasSelecionadas().includes(key);
+  }
+
+  revendaKey(revenda: Unidade): string {
+    return `${revenda.empresaNumero}:${revenda.numeroRevenda}`;
   }
 
   percent(value: number, max: number): number {
@@ -389,6 +480,159 @@ export class VeiculosBiPage implements OnInit {
 
   metaPercentual(meta: VendedorMeta): number {
     return meta.meta ? meta.realizado / meta.meta * 100 : 0;
+  }
+
+  sellerGoalPercent(seller: VendedorMeta): number {
+    return this.metaGoalPercent(seller.tipoMeta, seller.meta, seller.realizado, seller.faturamento);
+  }
+
+  sellerGoalProgressWidth(seller: VendedorMeta): number {
+    return Math.max(0, Math.min(this.sellerGoalPercent(seller), 100));
+  }
+
+  sellerGoalClass(seller: VendedorMeta): string {
+    const percent = this.sellerGoalPercent(seller);
+    if (percent >= 100) {
+      return 'success';
+    }
+
+    return percent < 70 ? 'danger' : 'warning';
+  }
+
+  sellerGoalColor(seller: VendedorMeta): string {
+    const status = this.sellerGoalClass(seller);
+    if (status === 'success') {
+      return 'var(--color-brand-green-strong)';
+    }
+
+    return status === 'warning' ? '#f59e0b' : '#dc2626';
+  }
+
+  metaGoalPercent(tipoMeta: 'valor' | 'quantidade' | undefined, meta: number, realizado: number, faturamento: number): number {
+    if (!meta) {
+      return 0;
+    }
+
+    return (tipoMeta === 'quantidade' ? realizado : faturamento) / meta * 100;
+  }
+
+  metaGoalLabel(tipoMeta: 'valor' | 'quantidade' | undefined, meta: number, realizado: number, faturamento: number, unidade = 'unidades'): string {
+    if (!meta) {
+      return 'sem meta';
+    }
+
+    if (tipoMeta === 'quantidade') {
+      return `${this.formatNumber(realizado)} de ${this.formatNumber(meta)} ${unidade}`;
+    }
+
+    return `${this.formatMoney(faturamento)} de ${this.formatMoney(meta)}`;
+  }
+
+  openMetaModal(seller: VendedorMeta): void {
+    if (!seller.cpfVendedor) {
+      this.toastr.warning('Vendedor sem CPF no retorno do Oracle.', 'Meta de vendas');
+      return;
+    }
+
+    this.openMetaTarget({
+      origem: 'veiculos',
+      nome: seller.vendedor,
+      cpfVendedor: seller.cpfVendedor,
+      meta: seller.meta ?? 0,
+      tipoMeta: seller.tipoMeta ?? 'valor',
+      realizado: seller.realizado,
+      faturamento: seller.faturamento,
+      metaDataInicio: seller.metaDataInicio,
+      metaDataFim: seller.metaDataFim,
+    });
+  }
+
+  openAcessorioMetaModal(item: VeiculoAcessorioRanking): void {
+    if (!item.cpfVendedor) {
+      this.toastr.warning('Vendedor sem CPF no retorno do Oracle.', 'Meta de acessorios');
+      return;
+    }
+
+    this.openMetaTarget({
+      origem: 'acessorios',
+      nome: item.nome,
+      cpfVendedor: item.cpfVendedor,
+      meta: item.meta ?? 0,
+      tipoMeta: item.tipoMeta ?? 'valor',
+      realizado: item.quantidade,
+      faturamento: item.faturamento,
+      metaDataInicio: item.metaDataInicio,
+      metaDataFim: item.metaDataFim,
+    });
+  }
+
+  openMetaTarget(target: MetaTarget): void {
+    this.metaModalTarget.set(target);
+    this.metaDraft.set(target.meta ?? 0);
+    this.metaTipoDraft.set(target.tipoMeta ?? 'valor');
+    this.metaDataInicioDraft.set(this.toDateInputOrDefault(target.metaDataInicio, this.firstDayOfCurrentMonth()));
+    this.metaDataFimDraft.set(this.toDateInputOrDefault(target.metaDataFim, new Date()));
+  }
+
+  closeMetaModal(): void {
+    if (this.savingMeta()) {
+      return;
+    }
+
+    this.metaModalTarget.set(null);
+    this.metaDraft.set(0);
+    this.metaTipoDraft.set('valor');
+    this.metaDataInicioDraft.set('');
+    this.metaDataFimDraft.set('');
+  }
+
+  setMetaTipo(value: string): void {
+    this.metaTipoDraft.set(value === 'quantidade' ? 'quantidade' : 'valor');
+  }
+
+  saveMeta(): void {
+    const target = this.metaModalTarget();
+    if (!target) {
+      return;
+    }
+
+    const valorMeta = Number(this.metaDraft());
+    if (!Number.isFinite(valorMeta) || valorMeta < 0) {
+      this.toastr.error('Informe uma meta valida.', 'Meta de vendas');
+      return;
+    }
+
+    if (!this.metaDataInicioDraft() || !this.metaDataFimDraft()) {
+      this.toastr.error('Informe o periodo da meta.', 'Meta de vendas');
+      return;
+    }
+
+    if (this.metaDataInicioDraft() > this.metaDataFimDraft()) {
+      this.toastr.error('A data inicial da meta nao pode ser maior que a data final.', 'Meta de vendas');
+      return;
+    }
+
+    this.savingMeta.set(true);
+    this.veiculosBiService.saveMeta({
+      cpfVendedor: target.cpfVendedor,
+      nomeVendedor: target.nome,
+      origem: target.origem,
+      tipoMeta: this.metaTipoDraft(),
+      valorMeta,
+      dataInicio: this.metaDataInicioDraft(),
+      dataFim: this.metaDataFimDraft(),
+    }).subscribe({
+      next: () => {
+        this.savingMeta.set(false);
+        this.metaModalTarget.set(null);
+        this.toastr.success('Meta de vendas atualizada.', 'B.I Veiculos');
+        this.load();
+      },
+      error: (error) => {
+        this.savingMeta.set(false);
+        this.toastr.error(this.getErrorMessage('Nao foi possivel salvar a meta do vendedor.', error), 'Erro');
+      },
+    });
   }
 
   retornoPercentual(item: VeiculosBiRetornoFiGrupo): number {
@@ -458,7 +702,7 @@ export class VeiculosBiPage implements OnInit {
   }
 
   formatMoney(value: number): string {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   }
 
   formatNumber(value: number): string {
@@ -467,6 +711,11 @@ export class VeiculosBiPage implements OnInit {
 
   formatPercent(value: number): string {
     return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  }
+
+  formatDateLabel(value: string): string {
+    const [year, month, day] = value.split('-');
+    return day && month && year ? `${day}/${month}/${year}` : value;
   }
 
   goHome(): void {
@@ -501,7 +750,9 @@ export class VeiculosBiPage implements OnInit {
   private rebuildDashboard(): void {
     const filiais = this.sourceRevendas().map((revenda, index) => this.mockFilial(revenda, index));
     this.vendasFiliais.set(filiais);
-    this.vendasDiarias.set(this.mockVendasDiarias(filiais));
+    const diarias = this.mockVendasDiarias(filiais);
+    this.vendasDiarias.set(diarias);
+    this.vendasDetalhes.set(this.mockVendasDetalhes(diarias));
     this.modelos.set(this.mockModelos());
     this.vendedores.set(this.mockVendedores(filiais));
   }
@@ -511,7 +762,7 @@ export class VeiculosBiPage implements OnInit {
       dataInicio: this.dataInicio(),
       dataFim: this.dataFim(),
       empresa: this.empresaNumero(),
-      revenda: this.revendasSelecionadas(),
+      revenda: this.effectiveRevendas(),
     }).subscribe({
       next: (items) => this.acessorios.set(items),
       error: (error) => {
@@ -519,6 +770,19 @@ export class VeiculosBiPage implements OnInit {
         this.toastr.error(this.getErrorMessage('Nao foi possivel carregar os acessorios.', error), 'B.I Veiculos');
       },
     });
+  }
+
+  private filialRevendaKey(item: FilialVenda): string {
+    return `${item.empresaNumero}:${item.revendaNumero}`;
+  }
+
+  private effectiveRevendas(): string[] {
+    const selected = this.revendasSelecionadas();
+    if (selected.length || !this.empresaNumero()) {
+      return selected;
+    }
+
+    return this.revendasDaEmpresa().map((revenda) => this.revendaKey(revenda));
   }
 
   private loadRetornoFi(): void {
@@ -587,6 +851,8 @@ export class VeiculosBiPage implements OnInit {
       baixados: delivered + directDone + seminovos + 7,
       faturamento: (delivered + directDone + seminovos) * ticket,
       margem: (delivered + directDone + seminovos) * ticket * (0.072 + (index % 4) * 0.006),
+      faturamentoSemDireta: (delivered + seminovos) * ticket,
+      margemSemDireta: (delivered + seminovos) * ticket * (0.072 + (index % 4) * 0.006),
     };
   }
 
@@ -616,6 +882,37 @@ export class VeiculosBiPage implements OnInit {
     });
   }
 
+  private mockVendasDetalhes(diarias: VendaDiaria[]): VendaDetalhe[] {
+    const modelos = ['Kicks Advance', 'Frontier Platinum', 'Versa Exclusive', 'Sentra Advance', 'Pulse Audace'];
+    const clientes = ['Marina Torres', 'Paulo Ribeiro', 'Sandra Dias', 'Joao Becker', 'Claudia Moraes'];
+    return diarias.flatMap((dia, diaIndex) => [
+      ...Array.from({ length: dia.novos }, (_, index) => ({
+        data: dia.data,
+        tipo: 'Novos',
+        cliente: clientes[(diaIndex + index) % clientes.length],
+        notaFiscal: `${210000 + diaIndex * 10 + index}`,
+        veiculo: modelos[(diaIndex + index) % modelos.length],
+        valor: 118000 + index * 3500,
+      })),
+      ...Array.from({ length: dia.vendaDireta }, (_, index) => ({
+        data: dia.data,
+        tipo: 'Direta',
+        cliente: clientes[(diaIndex + index + 2) % clientes.length],
+        notaFiscal: `${220000 + diaIndex * 10 + index}`,
+        veiculo: modelos[(diaIndex + index + 1) % modelos.length],
+        valor: 126000 + index * 4200,
+      })),
+      ...Array.from({ length: dia.seminovos }, (_, index) => ({
+        data: dia.data,
+        tipo: 'Seminovos',
+        cliente: clientes[(diaIndex + index + 3) % clientes.length],
+        notaFiscal: `${230000 + diaIndex * 10 + index}`,
+        veiculo: modelos[(diaIndex + index + 2) % modelos.length],
+        valor: 78000 + index * 2700,
+      })),
+    ]);
+  }
+
   private mockVendedores(filiais: FilialVenda[]): VendedorMeta[] {
     const nomes = ['Ana Costa', 'Bruno Lima', 'Carla Souza', 'Diego Rocha', 'Fernanda Alves', 'Gustavo Melo', 'Helena Prado', 'Igor Martins'];
     return nomes.map((vendedor, index) => {
@@ -624,15 +921,17 @@ export class VeiculosBiPage implements OnInit {
       const realizado = Math.max(5, Math.round(meta * (0.72 + (index % 5) * 0.07)));
       return {
         vendedor,
+        cpfVendedor: '',
         filial: filial?.filial ?? 'Sem filial',
         meta,
+        tipoMeta: 'quantidade',
         realizado,
         faturamento: realizado * (125000 + index * 9000),
       };
     });
   }
 
-  private sumFiliais(field: keyof Pick<FilialVenda, 'metaNovos' | 'metaVendaDireta' | 'faturadosNovos' | 'faturadosDireta' | 'seminovos' | 'anunciadosNovos' | 'anunciadosDireta' | 'propostas' | 'baixados' | 'faturamento' | 'margem'>): number {
+  private sumFiliais(field: keyof Pick<FilialVenda, 'metaNovos' | 'metaVendaDireta' | 'faturadosNovos' | 'faturadosDireta' | 'seminovos' | 'anunciadosNovos' | 'anunciadosDireta' | 'propostas' | 'baixados' | 'faturamento' | 'margem' | 'faturamentoSemDireta' | 'margemSemDireta'>): number {
     return this.vendasFiltradas().reduce((total, item) => total + Number(item[field] ?? 0), 0);
   }
 

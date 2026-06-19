@@ -81,6 +81,71 @@ namespace UniFlowHub.Api.Services
                   )
             ORDER BY DIAS_ESTOQUE DESC, VEI.EMPRESA, VEI.REVENDA_ORIGEM, MOD.DES_MODELO";
 
+        private const string ValorVendaExpression = @"
+            COALESCE(
+                (
+                    SELECT FMCS.TOT_NOTA_FISCAL - COALESCE(FMCS.VALDESCONTO, 0)
+                    FROM FAT_MOVIMENTO_CAPA FMCS
+                    WHERE VEI.EMPRESA_NFSAIDA = FMCS.EMPRESA
+                      AND VEI.REVENDA_NFSAIDA = FMCS.REVENDA
+                      AND VEI.NUMERO_NOTA_NFSAIDA = FMCS.NUMERO_NOTA_FISCAL
+                      AND VEI.SERIE_NOTA_FISCAL_NFSAIDA = FMCS.SERIE_NOTA_FISCAL
+                      AND VEI.TIPO_TRANSACAO_NFSAIDA = FMCS.TIPO_TRANSACAO
+                      AND VEI.CONTADOR_NFSAIDA = FMCS.CONTADOR
+                ),
+                VEI.VAL_PRESENTE_VENDA,
+                VEI.PRECO_CONCESSIONARIA,
+                0
+            )";
+
+        private const string VendasPorVendedorSql = @"
+            SELECT
+                VEI.EMPRESA AS EMPRESA,
+                VEI.REVENDA_ORIGEM AS REVENDA,
+                REV.NOME_FANTASIA AS NOME_REVENDA,
+                COALESCE(VEN_NOTA.NOME, VEN_VD.NOME, 'Sem vendedor') AS VENDEDOR,
+                MOD.DES_MODELO AS VEICULO,
+                FIC.PLACA AS PLACA,
+                TO_CHAR(VEI.NUMERO_NOTA_NFSAIDA) AS NUMERO_NOTA_FISCAL,
+                " + ValorVendaExpression + @" AS TOTAL_VENDA,
+                " + ValorVendaExpression + @" - COALESCE(VEI.VAL_CUSTO_CONTABIL, VEI.VAL_COMPRA, 0) AS MARGEM,
+                VEI.DTA_VENDA AS DATA_VENDA
+            FROM VEI_VEICULO VEI
+            INNER JOIN OFI_FICHA_SEGUIMENTO FIC ON VEI.CHASSI = FIC.CHASSI
+            INNER JOIN VEI_MODELO MOD ON VEI.EMPRESA = MOD.EMPRESA AND VEI.MODELO = MOD.MODELO
+            INNER JOIN GER_REVENDA REV ON VEI.EMPRESA = REV.EMPRESA AND VEI.REVENDA_ORIGEM = REV.REVENDA
+            LEFT JOIN FAT_NOTAS_VENDEDOR NOTA
+               ON NOTA.EMPRESA = VEI.EMPRESA_NFSAIDA
+              AND NOTA.REVENDA = VEI.REVENDA_NFSAIDA
+              AND NOTA.NUMERO_NOTA_FISCAL = VEI.NUMERO_NOTA_NFSAIDA
+              AND NOTA.SERIE_NOTA_FISCAL = VEI.SERIE_NOTA_FISCAL_NFSAIDA
+              AND NOTA.TIPO_TRANSACAO = VEI.TIPO_TRANSACAO_NFSAIDA
+              AND NOTA.CONTADOR = VEI.CONTADOR_NFSAIDA
+              AND (NOTA.TIPO_VENDEDOR = 'N' OR NOTA.TIPO_VENDEDOR IS NULL)
+            LEFT JOIN FAT_VENDEDOR VEN_NOTA
+               ON VEN_NOTA.EMPRESA = NOTA.EMPRESA
+              AND VEN_NOTA.REVENDA = NOTA.REVENDA
+              AND VEN_NOTA.VENDEDOR = NOTA.VENDEDOR
+            LEFT JOIN FAT_VENDEDOR VEN_VD
+               ON VEN_VD.EMPRESA = VEI.EMPRESA_VENDEDOR_VD
+              AND VEN_VD.REVENDA = VEI.REVENDA_VENDEDOR_VD
+              AND VEN_VD.VENDEDOR = VEI.VENDEDOR_VD
+            WHERE VEI.SITUACAO IN (
+                SELECT SITUACAO
+                FROM VEI_SITUACAO
+                WHERE EMPRESA = VEI.EMPRESA
+                  AND LOCALIZACAO = 'V'
+            )
+              AND VEI.NOVO_USADO = 'U'
+              AND VEI.DTA_VENDA BETWEEN :DATA_INICIO AND :DATA_FIM
+              AND (:EMPRESA IS NULL OR VEI.EMPRESA = :EMPRESA)
+              AND (:REVENDA IS NULL OR VEI.REVENDA_ORIGEM = :REVENDA)
+              AND (
+                    :VENDEDOR IS NULL
+                    OR UPPER(COALESCE(VEN_NOTA.NOME, VEN_VD.NOME, 'Sem vendedor')) LIKE '%' || UPPER(:VENDEDOR) || '%'
+                  )
+            ORDER BY VENDEDOR, VEI.DTA_VENDA DESC, VEI.NUMERO_NOTA_NFSAIDA DESC";
+
         public RepassesService(IConfiguration configuration)
         {
             _connectionString = GetOracleConnectionString(configuration);
@@ -109,6 +174,43 @@ namespace UniFlowHub.Api.Services
                 Veiculos = veiculos,
                 TopDiasEstoque = veiculos.OrderByDescending(item => item.DiasEstoque).Take(5).ToList(),
                 Resumos = BuildResumos(veiculosInicio, veiculos),
+            };
+        }
+
+        public async Task<RepasseVendasVendedorDto> GetVendasPorVendedorAsync(string role, IEnumerable<string> acessos, RepasseVendasVendedorFilterDto filter)
+        {
+            EnsureCanView(role, acessos);
+            EnsureConnectionString();
+
+            if (filter.Empresa.HasValue)
+                EnsureEmpresaAllowed(role, filter.Empresa.Value);
+
+            var dataInicio = (filter.DataInicio ?? DateTime.Today.AddDays(-30)).Date;
+            var dataFim = (filter.DataFim ?? DateTime.Today).Date.AddDays(1).AddTicks(-1);
+            if (dataInicio > dataFim)
+                throw new InvalidOperationException("Data inicial nao pode ser maior que a data final.");
+
+            await using var connection = new OracleConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var vendas = await LoadVendasPorVendedorAsync(connection, filter, dataInicio, dataFim);
+            return new RepasseVendasVendedorDto
+            {
+                Vendas = vendas,
+                Vendedores = vendas
+                    .GroupBy(item => item.Vendedor)
+                    .Select(group => new RepasseVendedorResumoDto
+                    {
+                        Vendedor = group.Key,
+                        Filial = string.Join(", ", group.Select(item => item.NomeRevenda).Where(item => !string.IsNullOrWhiteSpace(item)).Distinct().Take(3)),
+                        Quantidade = group.Count(),
+                        TotalVenda = group.Sum(item => item.TotalVenda),
+                        Margem = group.Sum(item => item.Margem),
+                    })
+                    .OrderByDescending(item => item.TotalVenda)
+                    .ThenBy(item => item.Vendedor)
+                    .ToList(),
+                AtualizadoEm = DateTime.Now,
             };
         }
 
@@ -177,6 +279,41 @@ namespace UniFlowHub.Api.Services
             }).ToList();
         }
 
+        private static async Task<List<RepasseVendaVendedorItemDto>> LoadVendasPorVendedorAsync(OracleConnection connection, RepasseVendasVendedorFilterDto filter, DateTime dataInicio, DateTime dataFim)
+        {
+            var vendas = new List<RepasseVendaVendedorItemDto>();
+
+            await using var command = connection.CreateCommand();
+            command.BindByName = true;
+            command.CommandText = VendasPorVendedorSql;
+            command.CommandType = CommandType.Text;
+            command.Parameters.Add("DATA_INICIO", OracleDbType.Date, dataInicio, ParameterDirection.Input);
+            command.Parameters.Add("DATA_FIM", OracleDbType.Date, dataFim, ParameterDirection.Input);
+            command.Parameters.Add("EMPRESA", OracleDbType.Int32, NormalizeIntFilter(filter.Empresa), ParameterDirection.Input);
+            command.Parameters.Add("REVENDA", OracleDbType.Int32, NormalizeIntFilter(filter.Revenda), ParameterDirection.Input);
+            command.Parameters.Add("VENDEDOR", OracleDbType.Varchar2, NormalizeTextFilter(filter.Vendedor), ParameterDirection.Input);
+
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                vendas.Add(new RepasseVendaVendedorItemDto
+                {
+                    Empresa = GetInt(reader, "EMPRESA"),
+                    Revenda = GetInt(reader, "REVENDA"),
+                    NomeRevenda = GetString(reader, "NOME_REVENDA"),
+                    Vendedor = GetString(reader, "VENDEDOR"),
+                    Veiculo = GetString(reader, "VEICULO"),
+                    Placa = GetString(reader, "PLACA"),
+                    NumeroNotaFiscal = GetString(reader, "NUMERO_NOTA_FISCAL"),
+                    TotalVenda = GetDecimal(reader, "TOTAL_VENDA"),
+                    Margem = GetDecimal(reader, "MARGEM"),
+                    DataVenda = GetDateTime(reader, "DATA_VENDA"),
+                });
+            }
+
+            return vendas;
+        }
+
         private static void EnsureCanView(string role, IEnumerable<string> acessos)
         {
             if (string.IsNullOrWhiteSpace(role))
@@ -212,6 +349,11 @@ namespace UniFlowHub.Api.Services
             return value.HasValue ? value.Value.Date : DBNull.Value;
         }
 
+        private static object NormalizeTextFilter(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? DBNull.Value : value.Trim();
+        }
+
         private static string GetEmpresaNome(int empresa, string fallback)
         {
             if (NomesEmpresas.TryGetValue(empresa, out var nome))
@@ -236,6 +378,12 @@ namespace UniFlowHub.Api.Services
         {
             var ordinal = reader.GetOrdinal(column);
             return reader.IsDBNull(ordinal) ? 0 : Convert.ToDecimal(reader.GetValue(ordinal));
+        }
+
+        private static DateTime GetDateTime(DbDataReader reader, string column)
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? DateTime.MinValue : Convert.ToDateTime(reader.GetValue(ordinal));
         }
 
         private static string GetOracleConnectionString(IConfiguration configuration)

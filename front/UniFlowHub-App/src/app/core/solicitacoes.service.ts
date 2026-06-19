@@ -58,6 +58,12 @@ export class SolicitacoesService {
       .pipe(map((response) => response.solicitacao));
   }
 
+  approve(id: number, aprovada: boolean, observacoesAprovacao: string): Observable<SolicitacaoRH> {
+    return this.http
+      .post<SaveResponse>(`${API_URL}/solicitacoesrh/${id}/aprovacao`, { aprovada, observacoesAprovacao })
+      .pipe(map((response) => response.solicitacao));
+  }
+
   rateSatisfaction(id: number, nota: number, comentario: string): Observable<SolicitacaoRH> {
     return this.http
       .post<SaveResponse>(`${API_URL}/solicitacoesrh/${id}/satisfacao`, { nota, comentario })

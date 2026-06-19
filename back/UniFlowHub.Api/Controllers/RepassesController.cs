@@ -36,5 +36,24 @@ namespace UniFlowHub.Api.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        [HttpGet("vendas-vendedor")]
+        public async Task<IActionResult> VendasPorVendedor([FromQuery] RepasseVendasVendedorFilterDto filter)
+        {
+            try
+            {
+                var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                var acessos = User.FindAll("access").Select(claim => claim.Value);
+                return Ok(await _service.GetVendasPorVendedorAsync(role, acessos, filter));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }
