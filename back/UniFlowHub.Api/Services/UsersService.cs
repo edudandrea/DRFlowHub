@@ -27,7 +27,7 @@ namespace UniFlowHub.Api.Services
                 Cpf = u.Cpf,
                 Email = u.Email,
                 Role = u.Role,
-                Perfis = u.Perfis.Select(p => p.Perfil).ToList(),
+                Perfis = new List<string>(),
                 Departamento = u.Departamento,
                 Cargo = u.Cargo,
                 Ativo = u.Ativo,
@@ -79,13 +79,12 @@ namespace UniFlowHub.Api.Services
             if (string.IsNullOrWhiteSpace(email))
                 throw new InvalidOperationException("Email e obrigatorio.");
 
-            dto.Role = AuthService.NormalizeRole(dto.Role);
-            var perfis = AuthService.NormalizePerfilList(dto.Role, dto.Perfis);
-            EnsureConfiguredRoles(perfis);
+            dto.Role = AuthService.NormalizeRole(string.IsNullOrWhiteSpace(dto.Role) ? dto.Cargo : dto.Role);
             dto.UnidadeId = NormalizeUnidadeId(dto.UnidadeId);
 
             AuthService.ValidateUnidadeForRole(dto.Role, dto.UnidadeId);
             ValidateUnidadeExists(dto.UnidadeId);
+            ValidateCargoExists(dto.Cargo);
 
             if (_repo.Query().Any(u => u.Id != id && u.Email == email))
                 throw new InvalidOperationException("Ja existe um usuario com este email.");
@@ -99,7 +98,6 @@ namespace UniFlowHub.Api.Services
             user.Ativo = dto.Ativo;
             user.UnidadeId = dto.UnidadeId;
             user.DataNascimento = dto.DataNascimento;
-            SaveUserPerfis(user, perfis);
 
             if (!string.IsNullOrWhiteSpace(dto.Senha))
             {
@@ -113,22 +111,6 @@ namespace UniFlowHub.Api.Services
             _repo.Save();
 
             return MapUsers(_repo.Query().Include(u => u.Unidade).Include(u => u.Perfis).Where(u => u.Id == id)).Single();
-        }
-
-        private void EnsureConfiguredRole(string role)
-        {
-            if (string.IsNullOrWhiteSpace(role))
-                throw new InvalidOperationException("Perfil invalido.");
-
-            if (!_context.PerfilSistema.Any(p => p.Nome == role))
-                throw new InvalidOperationException("Perfil invalido.");
-        }
-
-        private void EnsureConfiguredRoles(IEnumerable<string> perfis)
-        {
-            var configured = _context.PerfilSistema.Select(p => p.Nome).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (!perfis.Any() || perfis.Any(perfil => !configured.Contains(perfil)))
-                throw new InvalidOperationException("Perfil invalido.");
         }
 
         private static bool CanManageUsers(string role, IEnumerable<string>? acessos)
@@ -146,14 +128,6 @@ namespace UniFlowHub.Api.Services
                 || (acessos?.Contains("dashboard-rh", StringComparer.OrdinalIgnoreCase) ?? false);
         }
 
-        private void SaveUserPerfis(Users user, List<string> perfis)
-        {
-            _context.UserPerfil.RemoveRange(user.Perfis);
-            user.Perfis.Clear();
-            foreach (var perfil in perfis)
-                user.Perfis.Add(new UserPerfil { Perfil = perfil });
-        }
-
         private static int? NormalizeUnidadeId(int? unidadeId)
             => unidadeId.HasValue && unidadeId.Value > 0 ? unidadeId : null;
 
@@ -161,6 +135,15 @@ namespace UniFlowHub.Api.Services
         {
             if (unidadeId.HasValue && !_context.Unidade.Any(unidade => unidade.Id == unidadeId.Value))
                 throw new InvalidOperationException("Empresa e revenda informadas nao foram encontradas.");
+        }
+
+        private void ValidateCargoExists(string cargo)
+        {
+            if (string.IsNullOrWhiteSpace(cargo))
+                throw new InvalidOperationException("Cargo e obrigatorio.");
+
+            if (!_context.GestaoPessoasCargo.Any(c => c.Ativo && c.Nome == cargo.Trim()))
+                throw new InvalidOperationException("Cargo invalido.");
         }
 
         public UserResponseDto UpdateProfile(int id, UserProfileUpdateDto dto)

@@ -15,7 +15,6 @@ import { UsuariosPage } from './pages/usuarios/usuarios';
 import { VeiculosComponent } from './pages/veiculos/veiculos.component';
 import { VeiculosBiPage } from './pages/veiculos-bi/veiculos-bi';
 import { EmpresasRevendasPage } from './pages/empresas-revendas/empresas-revendas';
-import { PerfisPage } from './pages/perfis/perfis';
 import { GestaoPessoasPage } from './pages/gestao-pessoas/gestao-pessoas';
 
 const PECAS_BI_ACCESSES = [
@@ -62,7 +61,7 @@ export const routes: Routes = [
   {
     path: 'gestao-pessoas',
     component: GestaoPessoasPage,
-    canActivate: [accessGuard(['rh-admin'])],
+    canActivate: [accessGuard(['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'])],
   },
   {
     path: 'ti',
@@ -130,9 +129,10 @@ export const routes: Routes = [
     canActivate: [accessGuard(['empresas-revendas'])],
   },
   {
-    path: 'cadastros/perfis',
-    component: PerfisPage,
-    canActivate: [accessGuard(['perfis'])],
+    path: 'cadastros/controle-acessos',
+    component: GestaoPessoasPage,
+    canActivate: [accessGuard(['usuarios'])],
+    data: { tab: 'acessos' },
   },
   { path: '', redirectTo: 'hub', pathMatch: 'full' },
   { path: '**', redirectTo: '' },

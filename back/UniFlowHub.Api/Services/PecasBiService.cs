@@ -176,7 +176,7 @@ namespace UniFlowHub.Api.Services
                             AND FNVF.TIPO_TRANSACAO = COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
                             AND FNVF.CONTADOR = COALESCE(FMCORI.CONTADOR, FMC.CONTADOR)
                             AND (FNVF.TIPO_VENDEDOR = 'N' OR FNVF.TIPO_VENDEDOR IS NULL)
-                            AND REGEXP_REPLACE(COALESCE(TO_CHAR(FVF.CPF), ''), '[^0-9]', '') = :CPF_VENDEDOR
+                            AND LTRIM(REGEXP_REPLACE(COALESCE(TO_CHAR(FVF.CPF), ''), '[^0-9]', ''), '0') = :CPF_VENDEDOR
                       )
                   )
                   AND (
@@ -457,7 +457,7 @@ namespace UniFlowHub.Api.Services
                             AND FNVF.TIPO_TRANSACAO = COALESCE(FMCORI.TIPO_TRANSACAO, FMC.TIPO_TRANSACAO)
                             AND FNVF.CONTADOR = COALESCE(FMCORI.CONTADOR, FMC.CONTADOR)
                             AND (FNVF.TIPO_VENDEDOR = 'N' OR FNVF.TIPO_VENDEDOR IS NULL)
-                            AND REGEXP_REPLACE(COALESCE(TO_CHAR(FVF.CPF), ''), '[^0-9]', '') = :CPF_VENDEDOR
+                            AND LTRIM(REGEXP_REPLACE(COALESCE(TO_CHAR(FVF.CPF), ''), '[^0-9]', ''), '0') = :CPF_VENDEDOR
                       )
                   )
                   AND (
@@ -481,7 +481,7 @@ namespace UniFlowHub.Api.Services
 
         public async Task<PecasBiResponseDto> LoadAsync(string role, int userId, PecasBiFilterDto filter)
         {
-            await EnsureCanAccessAsync(role);
+            await EnsureCanAccessAsync(role, userId);
             EnsureConnectionString();
 
             var dataInicio = (filter.DataInicio ?? DateTime.Today.AddMonths(-5)).Date;
@@ -554,7 +554,7 @@ namespace UniFlowHub.Api.Services
 
         public async Task<List<PecaCanalDetalheDto>> LoadCanalDetalhesAsync(string role, int userId, string canalDetalhe, PecasBiFilterDto filter)
         {
-            await EnsureCanAccessAsync(role);
+            await EnsureCanAccessAsync(role, userId);
             EnsureConnectionString();
 
             if (string.IsNullOrWhiteSpace(canalDetalhe))
@@ -610,12 +610,14 @@ namespace UniFlowHub.Api.Services
             if (dataInicio > dataFim)
                 throw new InvalidOperationException("A data inicial da meta nao pode ser maior que a data final.");
 
-            var meta = await _context.PecaVendedorMeta.FirstOrDefaultAsync(item =>
-                item.CpfVendedor == cpf
-                && item.Origem == "pecas"
-                && item.TipoMeta == "valor"
-                && item.DataInicio == dataInicio
-                && item.DataFim == dataFim);
+            var cpfLookup = NormalizeCpfLookup(cpf);
+            var meta = (await _context.PecaVendedorMeta
+                .Where(item => item.Origem == "pecas")
+                .Where(item => item.TipoMeta == "valor")
+                .Where(item => item.DataInicio == dataInicio)
+                .Where(item => item.DataFim == dataFim)
+                .ToListAsync())
+                .FirstOrDefault(item => NormalizeCpfLookup(item.CpfVendedor) == cpfLookup);
             if (meta is null)
             {
                 meta = new PecaVendedorMeta { CpfVendedor = cpf };
@@ -645,13 +647,11 @@ namespace UniFlowHub.Api.Services
 
         private async Task<PecaBiAccessScope> GetAccessScopeAsync(string role, int userId)
         {
-            var perfilAcessos = await GetPerfilAcessosAsync(role);
-            var perfilEmpresas = await GetPerfilEmpresasAsync(role);
-            var adminPecas = perfilAcessos.Contains("pecas-admin");
-            var empresasPermitidas = perfilAcessos
+            var cargoAcessos = await GetCargoAcessosAsync(userId);
+            var adminPecas = cargoAcessos.Contains("pecas-admin");
+            var empresasPermitidas = cargoAcessos
                 .Where(PecasBiEmpresaPorAcesso.ContainsKey)
                 .Select(acesso => PecasBiEmpresaPorAcesso[acesso])
-                .Concat(perfilEmpresas)
                 .Distinct()
                 .OrderBy(empresa => empresa)
                 .ToList();
@@ -660,7 +660,7 @@ namespace UniFlowHub.Api.Services
                 || RoleScope.IsTI(role)
                 || RoleScope.IsGerenteGeralPecas(role)
                 || adminPecas
-                || perfilAcessos.Contains("vendas-pecas");
+                || cargoAcessos.Contains("vendas-pecas");
             var todasEmpresasPermitidas = possuiEscopoPorEmpresa
                 && await CoversAllEmpresasAsync(empresasPermitidas);
             var acessoGeral = (!possuiEscopoPorEmpresa && podeTerAcessoGeralSemEscopo)
@@ -829,7 +829,7 @@ namespace UniFlowHub.Api.Services
         private async Task ApplyMetasAsync(List<PecaVendedorDto> vendedores, DateTime rankingDataInicio, DateTime rankingDataFim)
         {
             var cpfs = vendedores
-                .Select(vendedor => OnlyDigits(vendedor.CpfVendedor))
+                .Select(vendedor => NormalizeCpfLookup(vendedor.CpfVendedor))
                 .Where(cpf => !string.IsNullOrWhiteSpace(cpf))
                 .Distinct()
                 .ToList();
@@ -837,11 +837,12 @@ namespace UniFlowHub.Api.Services
             if (cpfs.Count == 0)
                 return;
 
-            var metas = await _context.PecaVendedorMeta
-                .Where(meta => cpfs.Contains(meta.CpfVendedor))
+            var metas = (await _context.PecaVendedorMeta
                 .Where(meta => meta.Origem == "pecas")
                 .Where(meta => meta.TipoMeta == "valor")
-                .ToListAsync();
+                .ToListAsync())
+                .Where(meta => cpfs.Contains(NormalizeCpfLookup(meta.CpfVendedor)))
+                .ToList();
 
             var inicioMesAtual = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
             var fimMesAtual = inicioMesAtual.AddMonths(1).AddTicks(-1);
@@ -850,9 +851,9 @@ namespace UniFlowHub.Api.Services
 
             foreach (var vendedor in vendedores)
             {
-                var cpf = OnlyDigits(vendedor.CpfVendedor);
+                var cpf = NormalizeCpfLookup(vendedor.CpfVendedor);
                 var metasVendedor = metas
-                    .Where(meta => meta.CpfVendedor == cpf)
+                    .Where(meta => NormalizeCpfLookup(meta.CpfVendedor) == cpf)
                     .OrderByDescending(meta => meta.DataInicio ?? DateTime.MinValue)
                     .ThenByDescending(meta => meta.DataAtualizacao)
                     .ToList();
@@ -920,12 +921,13 @@ namespace UniFlowHub.Api.Services
             var cpf = OnlyDigits(cpfVendedor);
             if (string.IsNullOrWhiteSpace(cpf))
                 return null;
+            var cpfLookup = NormalizeCpfLookup(cpf);
 
-            var meta = await _context.PecaVendedorMeta
-                .Where(meta => meta.CpfVendedor == cpf)
+            var meta = (await _context.PecaVendedorMeta
                 .Where(meta => meta.Origem == "pecas")
                 .Where(meta => meta.TipoMeta == "valor")
-                .FirstOrDefaultAsync();
+                .ToListAsync())
+                .FirstOrDefault(meta => NormalizeCpfLookup(meta.CpfVendedor) == cpfLookup);
 
             if (meta is null || !meta.DataInicio.HasValue || !meta.DataFim.HasValue)
                 return null;
@@ -937,7 +939,7 @@ namespace UniFlowHub.Api.Services
             if (filtroInicio < metaDataInicio || filtroFim > metaDataFim)
                 return null;
 
-            var valorVendido = await LoadValorVendidoMetaAsync(connection, filtroDataInicio, filtroDataFim, cpf, canal);
+            var valorVendido = await LoadValorVendidoMetaAsync(connection, filtroDataInicio, filtroDataFim, cpfLookup, canal);
 
             return new PecaMetaResumoDto
             {
@@ -991,7 +993,8 @@ namespace UniFlowHub.Api.Services
             command.Parameters.Add("DATA_FIM", OracleDbType.Date, dataFim, ParameterDirection.Input);
             command.Parameters.Add("EMPRESA", OracleDbType.Varchar2, empresa, ParameterDirection.Input);
             command.Parameters.Add("REVENDA", OracleDbType.Varchar2, revenda, ParameterDirection.Input);
-            command.Parameters.Add("CPF_VENDEDOR", OracleDbType.Varchar2, string.IsNullOrWhiteSpace(cpfVendedor) ? DBNull.Value : cpfVendedor, ParameterDirection.Input);
+            var cpfLookup = NormalizeCpfLookup(cpfVendedor);
+            command.Parameters.Add("CPF_VENDEDOR", OracleDbType.Varchar2, string.IsNullOrWhiteSpace(cpfLookup) ? DBNull.Value : cpfLookup, ParameterDirection.Input);
             command.Parameters.Add("CANAL", OracleDbType.Varchar2, canal, ParameterDirection.Input);
             if (canalDetalhe is not null)
                 command.Parameters.Add("CANAL_DETALHE", OracleDbType.Varchar2, canalDetalhe, ParameterDirection.Input);
@@ -1004,22 +1007,22 @@ namespace UniFlowHub.Api.Services
                 throw new InvalidOperationException("Connection string Oracle nao configurada para o B.I de pecas.");
         }
 
-        private async Task EnsureCanAccessAsync(string role)
+        private async Task EnsureCanAccessAsync(string role, int userId)
         {
             if (!RoleScope.IsAdmin(role)
                 && !RoleScope.IsTI(role)
                 && !RoleScope.IsGerenteGeralPecas(role)
                 && !RoleScope.IsGerentePecas(role)
                 && !RoleScope.IsVendedorPecas(role)
-                && !await HasAnyPecasBiPerfilAccessAsync(role))
+                && !await HasAnyPecasBiCargoAccessAsync(userId))
             {
                 throw new UnauthorizedAccessException("Acesso permitido somente para Gerente Geral de Pecas, Gerente de Pecas, Vendedor de Pecas, Admin ou TI.");
             }
         }
 
-        private async Task<bool> HasAnyPecasBiPerfilAccessAsync(string role)
+        private async Task<bool> HasAnyPecasBiCargoAccessAsync(int userId)
         {
-            var acessos = await GetPerfilAcessosAsync(role);
+            var acessos = await GetCargoAcessosAsync(userId);
             return acessos.Contains("pecas-admin") || acessos.Contains("vendas-pecas") || acessos.Any(PecasBiEmpresaPorAcesso.ContainsKey);
         }
 
@@ -1028,12 +1031,15 @@ namespace UniFlowHub.Api.Services
             return RoleScope.IsAdmin(role) || RoleScope.IsTI(role) || accessScope.AdminPecas;
         }
 
-        private async Task<HashSet<string>> GetPerfilAcessosAsync(string role)
+        private async Task<HashSet<string>> GetCargoAcessosAsync(int userId)
         {
-            var perfil = PerfisService.NormalizePerfilName(role);
-            var acessos = await _context.PerfilSistema
-                .Where(p => p.Nome == perfil)
-                .SelectMany(p => p.Acessos.Select(a => a.Chave))
+            var user = await _context.User.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            if (user is null || string.IsNullOrWhiteSpace(user.Cargo))
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var acessos = await _context.GestaoPessoasCargo
+                .Where(cargo => cargo.Ativo && cargo.Nome == user.Cargo)
+                .SelectMany(cargo => cargo.Acessos.Select(a => a.Chave))
                 .ToListAsync();
 
             return acessos.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1139,6 +1145,12 @@ namespace UniFlowHub.Api.Services
         private static string OnlyDigits(string? value)
         {
             return new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        }
+
+        private static string NormalizeCpfLookup(string? value)
+        {
+            var digits = OnlyDigits(value).TrimStart('0');
+            return string.IsNullOrWhiteSpace(digits) ? "0" : digits;
         }
 
         private static string GetOracleConnectionString(IConfiguration configuration)

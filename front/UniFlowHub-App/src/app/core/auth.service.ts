@@ -79,8 +79,6 @@ export class AuthService {
     const normalizedAccess = this.normalize(access);
     return !!user && (
       user.role === 'Admin'
-      || (user.role === 'TI' && normalizedAccess === 'veiculos-repasses')
-      || this.defaultAccesses(user).some((item) => this.normalize(item) === normalizedAccess)
       || (user.acessos ?? []).some((item) => this.normalize(item) === normalizedAccess)
     );
   }
@@ -116,27 +114,6 @@ export class AuthService {
       || perfis.some((perfil) => perfil === 'ti' || this.isTiText(perfil));
   }
 
-  private isRhUserValue(user: User): boolean {
-    const role = this.normalize(user.role);
-    const department = this.normalize(user.departamento);
-    const perfis = (user.perfis ?? []).map((perfil) => this.normalize(perfil));
-    return role === 'rh'
-      || this.isRhText(role)
-      || this.isRhText(department)
-      || perfis.some((perfil) => perfil === 'rh' || this.isRhText(perfil));
-  }
-
-  private defaultAccesses(user: User): string[] {
-    const accesses = new Set(['ti', 'rh', 'compras']);
-    if (this.isTiUserValue(user)) {
-      ['ti-admin', 'usuarios', 'empresas-revendas', 'perfis'].forEach((access) => accesses.add(access));
-    }
-    if (this.isRhUserValue(user)) {
-      accesses.add('rh-admin');
-    }
-    return Array.from(accesses);
-  }
-
   private isTiText(value: string): boolean {
     const normalized = this.normalize(value);
     const compact = normalized.replace(/[^a-z0-9]/g, '');
@@ -144,17 +121,6 @@ export class AuthService {
       || /\bt\.i\b/.test(normalized)
       || compact === 'ti'
       || /\btecnologia\b/.test(normalized);
-  }
-
-  private isRhText(value: string): boolean {
-    const normalized = this.normalize(value);
-    const compact = normalized.replace(/[^a-z0-9]/g, '');
-    return /\brh\b/.test(normalized)
-      || compact === 'adminrh'
-      || compact === 'administradorrh'
-      || /\badmin(?:istrador)?\s*rh\b/.test(normalized)
-      || /\brecursos?\s*humanos\b/.test(normalized)
-      || /\badmin(?:istrador)?\s*recursos?\s*humanos\b/.test(normalized);
   }
 
   private setSession(response: LoginResponse): void {

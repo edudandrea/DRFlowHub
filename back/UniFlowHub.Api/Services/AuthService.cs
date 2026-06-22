@@ -40,14 +40,14 @@ namespace UniFlowHub.Api.Services
 
         public UserResponseDto CreateUser(UserCreateDto dto, int? createdByUserId)
         {
-            dto.Role = NormalizeRole(dto.Role);
-            var perfis = NormalizePerfilList(dto.Role, dto.Perfis);
+            dto.Role = NormalizeRole(string.IsNullOrWhiteSpace(dto.Role) ? dto.Cargo : dto.Role);
+            var perfis = new List<string>();
             dto.UnidadeId = NormalizeUnidadeId(dto.UnidadeId);
 
             ValidateUser(dto.Nome, dto.Cpf, dto.Email, dto.Senha, dto.Role);
-            ValidateConfiguredRoles(perfis);
             ValidateUnidadeForRole(dto.Role, dto.UnidadeId);
             ValidateUnidadeExists(dto.UnidadeId);
+            ValidateCargoExists(dto.Cargo);
 
             if (_repo.Query().Any(u => u.Email == dto.Email.Trim()))
                 throw new InvalidOperationException("Ja existe um usuario com este email.");
@@ -72,9 +72,8 @@ namespace UniFlowHub.Api.Services
 
             _repo.Add(user);
             _repo.Save();
-            SaveUserPerfis(user.Id, perfis);
 
-            return ToResponse(_repo.Query().Include(u => u.Unidade).Include(u => u.Perfis).First(u => u.Id == user.Id), BuildAcessos(user, perfis), perfis);
+            return ToResponse(_repo.Query().Include(u => u.Unidade).First(u => u.Id == user.Id), BuildAcessos(user), perfis);
         }
 
         public bool HasAnyUser()
@@ -89,8 +88,8 @@ namespace UniFlowHub.Api.Services
                 _configuration.GetValue<int?>("Jwt:ExpiresMinutes") ?? 480);
 
             var role = NormalizeRole(user.Role);
-            var perfis = GetUserPerfis(user.Id, role);
-            var acessos = BuildAcessos(user, perfis);
+            var perfis = new List<string>();
+            var acessos = BuildAcessos(user);
 
             var claims = new List<Claim>
             {
@@ -121,24 +120,74 @@ namespace UniFlowHub.Api.Services
             };
         }
 
-        private List<string> BuildAcessos(Users user, List<string> perfis)
+        private List<string> BuildAcessos(Users user)
         {
-            var userPerfis = perfis.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var acessos = _context.PerfilSistema
-                .Include(p => p.Acessos)
+            if (RoleScope.IsAdmin(user.Role))
+                return PerfisService.AcessosDisponiveis
+                    .Select(a => PerfisService.NormalizeAcessoChave(a.Chave))
+                    .Where(chave => !string.Equals(chave, "perfis", StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(acesso => acesso)
+                    .ToList();
+
+            var cargoKeys = new[] { user.Cargo, user.Role }
+                .Select(NormalizeText)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var acessos = _context.GestaoPessoasCargo
+                .AsNoTracking()
+                .Include(cargo => cargo.Acessos)
+                .Where(cargo => cargo.Ativo)
                 .AsEnumerable()
-                .Where(p => userPerfis.Contains(p.Nome))
-                .SelectMany(p => p.Acessos.Select(a => a.Chave))
-                .Distinct()
+                .Where(cargo => cargoKeys.Contains(NormalizeText(cargo.Nome)))
+                .SelectMany(cargo => cargo.Acessos.Select(acesso => acesso.Chave))
                 .ToList();
 
-            acessos.AddRange(GetDefaultAcessos(user.Role, user.Departamento, perfis));
+            acessos.AddRange(GetDefaultAcessosForUser(user));
 
             return acessos
                 .Select(PerfisService.NormalizeAcessoChave)
+                .Where(chave => !string.Equals(chave, "perfis", StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(acesso => acesso)
                 .ToList();
+        }
+
+        private static List<string> GetDefaultAcessosForUser(Users user)
+        {
+            var acessos = new HashSet<string>(GetDefaultAcessos(user.Role, user.Departamento, Array.Empty<string>()), StringComparer.OrdinalIgnoreCase);
+            var normalizedRole = NormalizeText(user.Role);
+            var normalizedCargo = NormalizeText(user.Cargo);
+            var normalizedDepartamento = NormalizeText(user.Departamento);
+            var isTi = RoleScope.IsTI(user.Role)
+                || IsTiDepartment(normalizedRole)
+                || IsTiDepartment(normalizedCargo)
+                || IsTiDepartment(normalizedDepartamento);
+            var isRh = RoleScope.IsRH(user.Role)
+                || IsRhDepartment(normalizedRole)
+                || IsRhDepartment(normalizedCargo)
+                || IsRhDepartment(normalizedDepartamento);
+
+            if (isTi)
+            {
+                acessos.Add("ti-admin");
+                acessos.Add("usuarios");
+                acessos.Add("empresas-revendas");
+                acessos.Add("base-conhecimento-ti");
+                acessos.Add("equipamentos-ti");
+            }
+
+            if (isRh)
+            {
+                acessos.Add("rh-admin");
+                acessos.Add("gestao-pessoas");
+                acessos.Add("gestao-pessoas-admin");
+                acessos.Add("cartao-ponto");
+            }
+
+            return acessos.ToList();
         }
 
         private static void ValidateUser(string nome, string cpf, string email, string senha, string role)
@@ -233,7 +282,7 @@ namespace UniFlowHub.Api.Services
 
         public static UserResponseDto ToResponse(Users user, List<string>? acessos = null, List<string>? perfis = null)
         {
-            var userPerfis = perfis ?? NormalizePerfilList(user.Role, user.Perfis?.Select(p => p.Perfil) ?? Enumerable.Empty<string>());
+            var userPerfis = perfis ?? new List<string>();
             return new UserResponseDto
             {
                 Id = user.Id,
@@ -257,6 +306,18 @@ namespace UniFlowHub.Api.Services
             EnsureDefaultPerfis();
             if (!_context.PerfilSistema.Any(p => p.Nome == role))
                 throw new InvalidOperationException("Perfil invalido.");
+        }
+
+        private void ValidateCargoExists(string cargo)
+        {
+            if (string.IsNullOrWhiteSpace(cargo))
+                throw new InvalidOperationException("Cargo e obrigatorio.");
+
+            if (!_repo.HasAnyUser())
+                return;
+
+            if (!_context.GestaoPessoasCargo.Any(c => c.Ativo && c.Nome == cargo.Trim()))
+                throw new InvalidOperationException("Cargo invalido.");
         }
 
         private void ValidateConfiguredRoles(IEnumerable<string> perfis)
@@ -301,12 +362,17 @@ namespace UniFlowHub.Api.Services
             var isRh = normalizedRole == "rh"
                 || IsRhDepartment(normalizedDepartamento)
                 || normalizedPerfis.Any(perfil => perfil == "rh" || perfil == "recursos humanos");
+            var isCompras = normalizedRole == "compras"
+                || IsComprasDepartment(normalizedDepartamento)
+                || normalizedPerfis.Any(perfil => perfil == "compras");
 
             if (isTi)
             {
                 acessos.Add("ti-admin");
                 acessos.Add("usuarios");
                 acessos.Add("empresas-revendas");
+                acessos.Add("base-conhecimento-ti");
+                acessos.Add("equipamentos-ti");
                 acessos.Add("perfis");
             }
 
@@ -315,6 +381,12 @@ namespace UniFlowHub.Api.Services
                 acessos.Add("rh-admin");
                 acessos.Add("gestao-pessoas");
                 acessos.Add("gestao-pessoas-admin");
+                acessos.Add("cartao-ponto");
+            }
+
+            if (isCompras)
+            {
+                acessos.Add("compras-admin");
             }
 
             return acessos.ToList();
@@ -372,6 +444,17 @@ namespace UniFlowHub.Api.Services
                 || normalizedDepartamento.Contains("recursos humanos")
                 || normalizedDepartamento.Split(new[] { ' ', '-', '_', '/', '\\', ',', '.' }, StringSplitOptions.RemoveEmptyEntries)
                     .Any(token => token == "rh");
+        }
+
+        private static bool IsComprasDepartment(string normalizedDepartamento)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedDepartamento))
+                return false;
+
+            return normalizedDepartamento == "compras"
+                || normalizedDepartamento.Contains("compras")
+                || normalizedDepartamento.Split(new[] { ' ', '-', '_', '/', '\\', ',', '.' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Any(token => token == "compras");
         }
 
         private void EnsureDefaultPerfis()

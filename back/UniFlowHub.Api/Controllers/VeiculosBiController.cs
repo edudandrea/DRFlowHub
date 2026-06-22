@@ -24,7 +24,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(await _service.LoadDashboardAsync(role, filter));
+                return Ok(await _service.LoadDashboardAsync(role, GetAcessos(), filter));
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
@@ -36,7 +36,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(await _service.LoadAcessoriosAsync(role, filter));
+                return Ok(await _service.LoadAcessoriosAsync(role, GetAcessos(), filter));
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
@@ -48,7 +48,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(await _service.LoadRetornoFiAsync(role, filter));
+                return Ok(await _service.LoadRetornoFiAsync(role, GetAcessos(), filter));
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
@@ -60,7 +60,7 @@ namespace UniFlowHub.Api.Controllers
             try
             {
                 var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-                return Ok(await _service.SaveMetaAsync(role, GetCurrentUserId(), dto));
+                return Ok(await _service.SaveMetaAsync(role, GetAcessos(), GetCurrentUserId(), dto));
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, ex.Message); }
@@ -73,6 +73,11 @@ namespace UniFlowHub.Api.Controllers
                 return userId;
 
             throw new UnauthorizedAccessException("Usuario invalido.");
+        }
+
+        private IEnumerable<string> GetAcessos()
+        {
+            return User.FindAll("access").Select(claim => claim.Value);
         }
     }
 }

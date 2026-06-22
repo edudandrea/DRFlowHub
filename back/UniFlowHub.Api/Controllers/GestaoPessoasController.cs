@@ -128,6 +128,122 @@ namespace UniFlowHub.Api.Controllers
             }
         }
 
+        [HttpGet("cargos")]
+        public async Task<IActionResult> ListCargos()
+        {
+            return Ok(await _service.ListCargosAsync());
+        }
+
+        [HttpPost("cargos")]
+        public async Task<IActionResult> CreateCargo([FromBody] GestaoPessoasCargoSaveDto dto)
+        {
+            try
+            {
+                var cargo = await _service.SaveCargoAsync(null, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Cargo cadastrado com sucesso", cargo });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("cargos/{id:int}")]
+        public async Task<IActionResult> UpdateCargo(int id, [FromBody] GestaoPessoasCargoSaveDto dto)
+        {
+            try
+            {
+                var cargo = await _service.SaveCargoAsync(id, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Cargo atualizado com sucesso", cargo });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("itens")]
+        public async Task<IActionResult> ListItens([FromQuery] string? tipo)
+        {
+            return Ok(await _service.ListItensAsync(tipo));
+        }
+
+        [HttpPost("itens")]
+        public async Task<IActionResult> CreateItem([FromBody] GestaoPessoasItemSaveDto dto)
+        {
+            try
+            {
+                var item = await _service.SaveItemAsync(null, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Item cadastrado com sucesso", item });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("itens/{id:int}")]
+        public async Task<IActionResult> UpdateItem(int id, [FromBody] GestaoPessoasItemSaveDto dto)
+        {
+            try
+            {
+                var item = await _service.SaveItemAsync(id, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Item atualizado com sucesso", item });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("colaboradores")]
+        public async Task<IActionResult> ListColaboradores()
+        {
+            return Ok(await _service.ListColaboradoresAsync());
+        }
+
+        [HttpPost("colaboradores")]
+        public async Task<IActionResult> CreateColaborador([FromBody] GestaoPessoasColaboradorSaveDto dto)
+        {
+            try
+            {
+                var colaborador = await _service.SaveColaboradorAsync(null, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Colaborador cadastrado com sucesso", colaborador });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("colaboradores/{id:int}")]
+        public async Task<IActionResult> UpdateColaborador(int id, [FromBody] GestaoPessoasColaboradorSaveDto dto)
+        {
+            try
+            {
+                var colaborador = await _service.SaveColaboradorAsync(id, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Colaborador atualizado com sucesso", colaborador });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("colaboradores/{id:int}/retiradas")]
+        public async Task<IActionResult> AddRetirada(int id, [FromBody] GestaoPessoasColaboradorRetiradaSaveDto dto)
+        {
+            try
+            {
+                var retirada = await _service.AddRetiradaAsync(id, dto, GetRole(), GetAcessos());
+                return Ok(new { sucesso = true, mensagem = "Retirada cadastrada com sucesso", retirada });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         private int GetUserId()
         {
             var value = User.FindFirstValue(ClaimTypes.NameIdentifier);

@@ -403,9 +403,9 @@ namespace UniFlowHub.Api.Services
             _connectionString = GetOracleConnectionString(configuration);
         }
 
-        public async Task<List<VeiculoAcessorioRankingDto>> LoadAcessoriosAsync(string role, VeiculosBiFilterDto filter)
+        public async Task<List<VeiculoAcessorioRankingDto>> LoadAcessoriosAsync(string role, IEnumerable<string> acessos, VeiculosBiFilterDto filter)
         {
-            await EnsureCanAccessAsync(role);
+            EnsureCanAccess(role, acessos);
             if (string.IsNullOrWhiteSpace(_connectionString))
                 throw new InvalidOperationException("Connection string Oracle nao configurada para o B.I de veiculos.");
 
@@ -414,7 +414,7 @@ namespace UniFlowHub.Api.Services
             if (dataInicio > dataFim)
                 throw new InvalidOperationException("Data inicial nao pode ser maior que a data final.");
 
-            var empresa = await ApplyEmpresaScopeAsync(role, NormalizeFilter(filter.Empresa));
+            var empresa = ApplyEmpresaScope(role, NormalizeFilter(filter.Empresa));
             var revenda = NormalizeFilter(filter.Revenda);
 
             await using var connection = new OracleConnection(_connectionString);
@@ -451,9 +451,9 @@ namespace UniFlowHub.Api.Services
             return items;
         }
 
-        public async Task<VeiculosBiDashboardDto> LoadDashboardAsync(string role, VeiculosBiFilterDto filter)
+        public async Task<VeiculosBiDashboardDto> LoadDashboardAsync(string role, IEnumerable<string> acessos, VeiculosBiFilterDto filter)
         {
-            await EnsureCanAccessAsync(role);
+            EnsureCanAccess(role, acessos);
             if (string.IsNullOrWhiteSpace(_connectionString))
                 throw new InvalidOperationException("Connection string Oracle nao configurada para o B.I de veiculos.");
 
@@ -462,7 +462,7 @@ namespace UniFlowHub.Api.Services
             if (dataInicio > dataFim)
                 throw new InvalidOperationException("Data inicial nao pode ser maior que a data final.");
 
-            var empresa = await ApplyEmpresaScopeAsync(role, NormalizeFilter(filter.Empresa));
+            var empresa = ApplyEmpresaScope(role, NormalizeFilter(filter.Empresa));
             var revenda = NormalizeFilter(filter.Revenda);
 
             await using var connection = new OracleConnection(_connectionString);
@@ -479,9 +479,9 @@ namespace UniFlowHub.Api.Services
             };
         }
 
-        public async Task<VeiculoVendedorMetaDto> SaveMetaAsync(string role, int userId, VeiculoVendedorMetaDto dto)
+        public async Task<VeiculoVendedorMetaDto> SaveMetaAsync(string role, IEnumerable<string> acessos, int userId, VeiculoVendedorMetaDto dto)
         {
-            await EnsureCanAccessAsync(role);
+            EnsureCanAccess(role, acessos);
 
             var cpf = OnlyDigits(dto.CpfVendedor);
             if (string.IsNullOrWhiteSpace(cpf))
@@ -501,11 +501,13 @@ namespace UniFlowHub.Api.Services
             var origem = NormalizeMetaOrigem(dto.Origem);
             var tipoMeta = NormalizeMetaTipo(dto.TipoMeta);
 
-            var meta = await _context.PecaVendedorMeta.FirstOrDefaultAsync(item =>
-                item.CpfVendedor == cpf
-                && item.Origem == origem
-                && item.DataInicio == dataInicio
-                && item.DataFim == dataFim);
+            var cpfLookup = NormalizeCpfLookup(cpf);
+            var meta = (await _context.PecaVendedorMeta
+                .Where(item => item.Origem == origem)
+                .Where(item => item.DataInicio == dataInicio)
+                .Where(item => item.DataFim == dataFim)
+                .ToListAsync())
+                .FirstOrDefault(item => NormalizeCpfLookup(item.CpfVendedor) == cpfLookup);
 
             if (meta is null)
             {
@@ -535,9 +537,9 @@ namespace UniFlowHub.Api.Services
             };
         }
 
-        public async Task<VeiculosBiRetornoFiDashboardDto> LoadRetornoFiAsync(string role, VeiculosBiFilterDto filter)
+        public async Task<VeiculosBiRetornoFiDashboardDto> LoadRetornoFiAsync(string role, IEnumerable<string> acessos, VeiculosBiFilterDto filter)
         {
-            await EnsureCanAccessAsync(role);
+            EnsureCanAccess(role, acessos);
             if (string.IsNullOrWhiteSpace(_connectionString))
                 throw new InvalidOperationException("Connection string Oracle nao configurada para o B.I de veiculos.");
 
@@ -546,7 +548,7 @@ namespace UniFlowHub.Api.Services
             if (dataInicio > dataFim)
                 throw new InvalidOperationException("Data inicial nao pode ser maior que a data final.");
 
-            var empresa = await ApplyEmpresaScopeAsync(role, NormalizeFilter(filter.Empresa));
+            var empresa = ApplyEmpresaScope(role, NormalizeFilter(filter.Empresa));
             var revenda = NormalizeFilter(filter.Revenda);
 
             await using var connection = new OracleConnection(_connectionString);
@@ -683,25 +685,26 @@ namespace UniFlowHub.Api.Services
         private async Task ApplyMetasVendedoresAsync(List<VeiculoBiVendedorMetaDto> vendedores, DateTime dataInicio, DateTime dataFim)
         {
             var cpfs = vendedores
-                .Select(vendedor => OnlyDigits(vendedor.CpfVendedor))
+                .Select(vendedor => NormalizeCpfLookup(vendedor.CpfVendedor))
                 .Where(cpf => !string.IsNullOrWhiteSpace(cpf))
                 .Distinct()
                 .ToList();
             if (cpfs.Count == 0)
                 return;
 
-            var metas = await _context.PecaVendedorMeta
-                .Where(meta => cpfs.Contains(meta.CpfVendedor))
+            var metas = (await _context.PecaVendedorMeta
                 .Where(meta => meta.Origem == "veiculos")
                 .Where(meta => !meta.DataInicio.HasValue || !meta.DataFim.HasValue || (meta.DataInicio <= dataFim && meta.DataFim >= dataInicio))
                 .AsNoTracking()
-                .ToListAsync();
+                .ToListAsync())
+                .Where(meta => cpfs.Contains(NormalizeCpfLookup(meta.CpfVendedor)))
+                .ToList();
 
             foreach (var vendedor in vendedores)
             {
-                var cpf = OnlyDigits(vendedor.CpfVendedor);
+                var cpf = NormalizeCpfLookup(vendedor.CpfVendedor);
                 var meta = metas
-                    .Where(item => item.CpfVendedor == cpf)
+                    .Where(item => NormalizeCpfLookup(item.CpfVendedor) == cpf)
                     .OrderByDescending(item => item.DataInicio ?? DateTime.MinValue)
                     .ThenByDescending(item => item.DataAtualizacao)
                     .FirstOrDefault();
@@ -718,25 +721,26 @@ namespace UniFlowHub.Api.Services
         private async Task ApplyMetasAcessoriosAsync(List<VeiculoAcessorioRankingDto> vendedores, DateTime dataInicio, DateTime dataFim)
         {
             var cpfs = vendedores
-                .Select(vendedor => OnlyDigits(vendedor.CpfVendedor))
+                .Select(vendedor => NormalizeCpfLookup(vendedor.CpfVendedor))
                 .Where(cpf => !string.IsNullOrWhiteSpace(cpf))
                 .Distinct()
                 .ToList();
             if (cpfs.Count == 0)
                 return;
 
-            var metas = await _context.PecaVendedorMeta
-                .Where(meta => cpfs.Contains(meta.CpfVendedor))
+            var metas = (await _context.PecaVendedorMeta
                 .Where(meta => meta.Origem == "acessorios")
                 .Where(meta => !meta.DataInicio.HasValue || !meta.DataFim.HasValue || (meta.DataInicio <= dataFim && meta.DataFim >= dataInicio))
                 .AsNoTracking()
-                .ToListAsync();
+                .ToListAsync())
+                .Where(meta => cpfs.Contains(NormalizeCpfLookup(meta.CpfVendedor)))
+                .ToList();
 
             foreach (var vendedor in vendedores)
             {
-                var cpf = OnlyDigits(vendedor.CpfVendedor);
+                var cpf = NormalizeCpfLookup(vendedor.CpfVendedor);
                 var meta = metas
-                    .Where(item => item.CpfVendedor == cpf)
+                    .Where(item => NormalizeCpfLookup(item.CpfVendedor) == cpf)
                     .OrderByDescending(item => item.DataInicio ?? DateTime.MinValue)
                     .ThenByDescending(item => item.DataAtualizacao)
                     .FirstOrDefault();
@@ -787,49 +791,20 @@ namespace UniFlowHub.Api.Services
             return items;
         }
 
-        private async Task EnsureCanAccessAsync(string role)
+        private static void EnsureCanAccess(string role, IEnumerable<string> acessos)
         {
             if (RoleScope.IsAdmin(role) || RoleScope.IsTI(role))
                 return;
 
-            var perfil = PerfisService.NormalizePerfilName(role);
-            var hasAccess = await _context.PerfilSistema
-                .Where(p => p.Nome == perfil)
-                .SelectMany(p => p.Acessos.Select(a => a.Chave))
-                .AnyAsync(acesso => acesso == "veiculos-bi");
-            if (!hasAccess)
+            if (!acessos.Contains("veiculos-bi", StringComparer.OrdinalIgnoreCase))
                 throw new UnauthorizedAccessException("Perfil sem acesso ao B.I de veiculos.");
         }
 
-        private async Task<object> ApplyEmpresaScopeAsync(string role, object requestedEmpresa)
+        private static object ApplyEmpresaScope(string role, object requestedEmpresa)
         {
             if (RoleScope.IsQualidadeNissan(role))
                 return "2";
-
-            var perfil = PerfisService.NormalizePerfilName(role);
-            var empresasPermitidas = await _context.PerfilSistema
-                .Where(p => p.Nome == perfil)
-                .SelectMany(p => p.Empresas.Select(e => e.EmpresaNumero))
-                .Distinct()
-                .ToListAsync();
-            if (empresasPermitidas.Count == 0)
-                return requestedEmpresa;
-
-            if (requestedEmpresa == DBNull.Value)
-                return string.Join(",", empresasPermitidas);
-
-            var requested = requestedEmpresa.ToString()?.Trim() ?? string.Empty;
-            var requestedNumbers = requested
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(value => int.TryParse(value, out var numero) ? numero : 0)
-                .Where(numero => numero > 0)
-                .Distinct()
-                .ToList();
-
-            if (requestedNumbers.Any(numero => !empresasPermitidas.Contains(numero)))
-                throw new UnauthorizedAccessException("Perfil sem acesso a empresa selecionada no B.I de veiculos.");
-
-            return string.Join(",", requestedNumbers);
+            return requestedEmpresa;
         }
 
         private static object NormalizeFilter(string? value)
@@ -842,6 +817,12 @@ namespace UniFlowHub.Api.Services
 
         private static string OnlyDigits(string? value)
             => new((value ?? string.Empty).Where(char.IsDigit).ToArray());
+
+        private static string NormalizeCpfLookup(string? value)
+        {
+            var digits = OnlyDigits(value).TrimStart('0');
+            return string.IsNullOrWhiteSpace(digits) ? "0" : digits;
+        }
 
         private static string NormalizeMetaTipo(string? value)
             => string.Equals(value?.Trim(), "quantidade", StringComparison.OrdinalIgnoreCase) ? "quantidade" : "valor";

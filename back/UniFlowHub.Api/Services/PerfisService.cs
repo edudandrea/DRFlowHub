@@ -99,7 +99,7 @@ namespace UniFlowHub.Api.Services
         {
             await EnsureDefaultsAsync();
             return AcessosDisponiveis
-                .Where(acesso => !AcessosPadraoOcultos.Contains(acesso.Chave))
+                .Where(acesso => !string.Equals(acesso.Chave, "perfis", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(a => a.Grupo)
                 .ThenBy(a => a.Nome)
                 .ToList();

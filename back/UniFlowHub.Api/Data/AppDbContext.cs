@@ -35,6 +35,12 @@ namespace UniFlowHub.Api.Data
         public DbSet<GestaoPessoasEtapa> GestaoPessoasEtapa { get; set; }
         public DbSet<GestaoPessoasProcesso> GestaoPessoasProcesso { get; set; }
         public DbSet<GestaoPessoasProcessoHistorico> GestaoPessoasProcessoHistorico { get; set; }
+        public DbSet<GestaoPessoasCargo> GestaoPessoasCargo { get; set; }
+        public DbSet<GestaoPessoasCargoAcesso> GestaoPessoasCargoAcesso { get; set; }
+        public DbSet<GestaoPessoasItem> GestaoPessoasItem { get; set; }
+        public DbSet<GestaoPessoasCargoItem> GestaoPessoasCargoItem { get; set; }
+        public DbSet<GestaoPessoasColaborador> GestaoPessoasColaborador { get; set; }
+        public DbSet<GestaoPessoasColaboradorRetirada> GestaoPessoasColaboradorRetirada { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -237,6 +243,68 @@ namespace UniFlowHub.Api.Data
                 .HasOne(s => s.Etapa)
                 .WithMany()
                 .HasForeignKey(s => s.EtapaId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<GestaoPessoasCargo>()
+                .HasIndex(s => s.Nome)
+                .IsUnique();
+
+            modelBuilder.Entity<GestaoPessoasCargoAcesso>()
+                .HasIndex(s => new { s.CargoId, s.Chave })
+                .IsUnique();
+
+            modelBuilder.Entity<GestaoPessoasCargoAcesso>()
+                .HasOne(s => s.Cargo)
+                .WithMany(s => s.Acessos)
+                .HasForeignKey(s => s.CargoId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<GestaoPessoasItem>()
+                .HasIndex(s => new { s.Tipo, s.Nome, s.Tamanho })
+                .IsUnique(false);
+
+            modelBuilder.Entity<GestaoPessoasCargoItem>()
+                .HasIndex(s => new { s.CargoId, s.ItemId })
+                .IsUnique();
+
+            modelBuilder.Entity<GestaoPessoasCargoItem>()
+                .HasOne(s => s.Cargo)
+                .WithMany(s => s.Itens)
+                .HasForeignKey(s => s.CargoId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<GestaoPessoasCargoItem>()
+                .HasOne(s => s.Item)
+                .WithMany(s => s.Cargos)
+                .HasForeignKey(s => s.ItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<GestaoPessoasColaborador>()
+                .HasIndex(s => s.Cpf)
+                .IsUnique(false);
+
+            modelBuilder.Entity<GestaoPessoasColaborador>()
+                .HasOne(s => s.Cargo)
+                .WithMany(s => s.Colaboradores)
+                .HasForeignKey(s => s.CargoId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<GestaoPessoasColaborador>()
+                .HasOne(s => s.Unidade)
+                .WithMany()
+                .HasForeignKey(s => s.UnidadeId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<GestaoPessoasColaboradorRetirada>()
+                .HasOne(s => s.Colaborador)
+                .WithMany(s => s.Retiradas)
+                .HasForeignKey(s => s.ColaboradorId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<GestaoPessoasColaboradorRetirada>()
+                .HasOne(s => s.Item)
+                .WithMany(s => s.Retiradas)
+                .HasForeignKey(s => s.ItemId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

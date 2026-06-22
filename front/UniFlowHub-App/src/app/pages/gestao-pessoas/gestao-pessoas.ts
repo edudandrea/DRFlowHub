@@ -1,17 +1,31 @@
 import { DatePipe, isPlatformBrowser } from '@angular/common';
-import { Component, HostListener, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, HostListener, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { NgxSpinnerService } from 'ngx-spinner';
 import { ToastrService } from 'ngx-toastr';
 import { AuthService } from '../../core/auth.service';
 import { GestaoPessoasService } from '../../core/gestao-pessoas.service';
-import { Empresa, GestaoPessoasEtapa, GestaoPessoasProcesso, GestaoPessoasTipoProcesso, User } from '../../core/models';
+import {
+  Empresa,
+  GestaoPessoasCargo,
+  GestaoPessoasCargoItemPayload,
+  GestaoPessoasColaborador,
+  GestaoPessoasEtapa,
+  GestaoPessoasItem,
+  GestaoPessoasItemTipo,
+  GestaoPessoasProcesso,
+  GestaoPessoasTipoProcesso,
+  Unidade,
+  User,
+} from '../../core/models';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { ThemeService } from '../../core/theme.service';
 import { UnidadesService } from '../../core/unidades.service';
+import { AcessoSistema, PerfisService } from '../../core/perfis.service';
 
-type Tab = 'processos' | 'etapas';
+type Tab = 'processos' | 'etapas' | 'cargos' | 'itens' | 'colaboradores' | 'acessos';
 
 @Component({
   selector: 'app-gestao-pessoas',
@@ -20,35 +34,59 @@ type Tab = 'processos' | 'etapas';
   styleUrl: './gestao-pessoas.scss',
 })
 export class GestaoPessoasPage implements OnInit {
+  private readonly defaultAcessosTi = ['ti', 'ti-admin', 'usuarios', 'empresas-revendas', 'base-conhecimento-ti', 'equipamentos-ti'];
+  private readonly defaultAcessosRh = ['rh', 'rh-admin', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'];
+  private readonly defaultAcessosTiAdmin = ['ti-admin', 'base-conhecimento-ti', 'equipamentos-ti'];
+  private readonly defaultAcessosRhAdmin = ['rh-admin'];
+  private readonly hiddenAcessosTiAdmin = ['base-conhecimento-ti', 'equipamentos-ti'];
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly service = inject(GestaoPessoasService);
   private readonly unidadesService = inject(UnidadesService);
   private readonly toastr = inject(ToastrService);
   private readonly spinner = inject(NgxSpinnerService);
   private readonly profileFlow = inject(ProfileFlowService);
+  private readonly perfisService = inject(PerfisService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   readonly theme = inject(ThemeService);
   readonly user = computed(() => this.auth.user());
   readonly processos = signal<GestaoPessoasProcesso[]>([]);
   readonly etapas = signal<GestaoPessoasEtapa[]>([]);
+  readonly cargosCadastro = signal<GestaoPessoasCargo[]>([]);
+  readonly itens = signal<GestaoPessoasItem[]>([]);
+  readonly colaboradores = signal<GestaoPessoasColaborador[]>([]);
+  readonly acessosDisponiveis = signal<AcessoSistema[]>([]);
   readonly empresas = signal<Empresa[]>([]);
+  readonly unidades = signal<Unidade[]>([]);
   readonly users = signal<User[]>([]);
   readonly selected = signal<GestaoPessoasProcesso | null>(null);
   readonly selectedEtapa = signal<GestaoPessoasEtapa | null>(null);
+  readonly selectedCargo = signal<GestaoPessoasCargo | null>(null);
+  readonly selectedAcessoCargo = signal<GestaoPessoasCargo | null>(null);
+  readonly selectedItem = signal<GestaoPessoasItem | null>(null);
+  readonly selectedColaborador = signal<GestaoPessoasColaborador | null>(null);
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly modalProcessoOpen = signal(false);
   readonly modalEtapaOpen = signal(false);
+  readonly modalCargoOpen = signal(false);
+  readonly modalItemOpen = signal(false);
+  readonly modalColaboradorOpen = signal(false);
+  readonly modalRetiradaOpen = signal(false);
+  readonly modalAcessosOpen = signal(false);
   readonly cancelModalOpen = signal(false);
   readonly profileMenuOpen = signal(false);
   readonly activeTab = signal<Tab>('processos');
   readonly tipoFiltro = signal<GestaoPessoasTipoProcesso | 'Todos'>('Todos');
   readonly search = signal('');
 
-  readonly canManage = computed(() => this.auth.hasAccess('rh-admin') || this.auth.hasAnyRole(['RH']));
+  readonly canManage = computed(() => this.auth.hasAnyAccess(['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto']) || this.auth.hasAnyRole(['RH']));
+  readonly canManageCargos = computed(() => this.canManage());
+  readonly canManageAcessos = computed(() => this.auth.hasAnyAccess(['usuarios', 'empresas-revendas']) || this.auth.hasAnyRole(['Admin', 'TI']));
   readonly canMove = computed(() => this.canManage());
   readonly etapasDoProcesso = computed(() => this.selected() ? this.etapasDoItem(this.selected()!) : []);
   readonly etapaAtualIndex = computed(() => this.etapaAtualIndexFor(this.selected()));
@@ -65,7 +103,7 @@ export class GestaoPessoasPage implements OnInit {
     'Operacional',
     'Comercial',
   ]));
-  readonly cargos = computed(() => this.uniqueSorted(this.users().map((item) => item.cargo)));
+  readonly cargos = computed(() => this.cargosCadastro().filter((item) => item.ativo).map((item) => item.nome));
   readonly filteredProcessos = computed(() => {
     const tipo = this.tipoFiltro();
     const term = this.normalize(this.search());
@@ -85,6 +123,7 @@ export class GestaoPessoasPage implements OnInit {
   readonly admissaoCount = computed(() => this.processos().filter((item) => item.tipoProcesso === 'Admissao').length);
   readonly demissaoCount = computed(() => this.processos().filter((item) => item.tipoProcesso === 'Demissao').length);
   readonly pendentesGestor = computed(() => this.processos().filter((item) => item.status === 'Em andamento').length);
+  readonly itensAtivos = computed(() => this.itens().filter((item) => item.ativo));
 
   readonly processoForm = this.fb.nonNullable.group({
     tipoProcesso: ['Admissao' as GestaoPessoasTipoProcesso, Validators.required],
@@ -110,12 +149,71 @@ export class GestaoPessoasPage implements OnInit {
   readonly movimentoForm = this.fb.nonNullable.group({ observacoes: [''] });
   readonly cancelForm = this.fb.nonNullable.group({ motivoCancelamento: ['', Validators.required] });
 
+  readonly cargoForm = this.fb.nonNullable.group({
+    nome: ['', Validators.required],
+    departamento: [''],
+    descricao: [''],
+    ativo: [true],
+  });
+
+  readonly itemForm = this.fb.nonNullable.group({
+    tipo: ['EPI' as GestaoPessoasItemTipo, Validators.required],
+    nome: ['', Validators.required],
+    codigo: [''],
+    tamanho: [''],
+    descricao: [''],
+    ativo: [true],
+  });
+
+  readonly cargoItemForm = this.fb.nonNullable.group({
+    itemId: [0],
+    quantidade: [1],
+    obrigatorio: [true],
+  });
+  readonly cargoItensDraft = signal<GestaoPessoasCargoItemPayload[]>([]);
+  readonly cargoAcessosDraft = signal<string[]>([]);
+  readonly acessosCargoDraft = signal<string[]>([]);
+
+  readonly colaboradorForm = this.fb.nonNullable.group({
+    nome: ['', Validators.required],
+    cpf: [''],
+    email: [''],
+    telefone: [''],
+    departamento: [''],
+    cargoId: [0],
+    unidadeId: [0],
+    dataNascimento: [''],
+    dataAdmissao: [''],
+    status: ['Ativo'],
+    observacoes: [''],
+  });
+
+  readonly retiradaForm = this.fb.nonNullable.group({
+    itemId: [0, [Validators.required, Validators.min(1)]],
+    quantidade: [1, [Validators.required, Validators.min(1)]],
+    dataRetirada: [this.todayInput()],
+    dataDevolucao: [''],
+    status: ['Retirado'],
+    observacoes: [''],
+  });
+
   ngOnInit(): void {
     if (!this.isBrowser) {
       return;
     }
     this.load();
     this.loadCatalogos();
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const routeTab = this.route.snapshot.data['tab'] as Tab | undefined;
+        const tab = routeTab ?? (params.get('tab') as Tab | null) ?? 'processos';
+        if (tab && this.canUseTab(tab)) {
+          this.activeTab.set(tab);
+          return;
+        }
+        this.activeTab.set('processos');
+      });
   }
 
   loadCatalogos(): void {
@@ -124,9 +222,22 @@ export class GestaoPessoasPage implements OnInit {
       error: () => this.toastr.error('Nao foi possivel carregar as empresas.', 'Gestao de Pessoas'),
     });
 
+    this.unidadesService.list().subscribe({
+      next: (unidades) => this.unidades.set(unidades.slice().sort((a, b) => a.empresaNumero - b.empresaNumero || a.numeroRevenda - b.numeroRevenda)),
+      error: () => this.unidades.set([]),
+    });
+
     this.auth.listUsers().subscribe({
       next: (users) => this.users.set(users),
       error: () => this.users.set([]),
+    });
+
+    this.loadCargos();
+    this.loadItens();
+    this.loadColaboradores();
+    this.perfisService.listAcessos().subscribe({
+      next: (acessos) => this.acessosDisponiveis.set(acessos.filter((acesso) => acesso.chave !== 'perfis')),
+      error: () => this.acessosDisponiveis.set([]),
     });
   }
 
@@ -167,6 +278,9 @@ export class GestaoPessoasPage implements OnInit {
   }
 
   setTab(tab: Tab): void {
+    if (!this.canUseTab(tab)) {
+      return;
+    }
     this.activeTab.set(tab);
   }
 
@@ -262,6 +376,315 @@ export class GestaoPessoasPage implements OnInit {
         this.toastr.error(error?.error || 'Nao foi possivel salvar a etapa.', 'Erro');
       },
     });
+  }
+
+  loadCargos(): void {
+    this.service.listCargos().subscribe({
+      next: (cargos) => this.cargosCadastro.set(cargos),
+      error: () => this.toastr.error('Nao foi possivel carregar os cargos.', 'Gestao de Pessoas'),
+    });
+  }
+
+  loadItens(): void {
+    this.service.listItens().subscribe({
+      next: (itens) => this.itens.set(itens),
+      error: () => this.toastr.error('Nao foi possivel carregar EPIs e uniformes.', 'Gestao de Pessoas'),
+    });
+  }
+
+  loadColaboradores(): void {
+    this.service.listColaboradores().subscribe({
+      next: (colaboradores) => {
+        this.colaboradores.set(colaboradores);
+        this.selectedColaborador.set(colaboradores[0] ?? null);
+      },
+      error: () => this.toastr.error('Nao foi possivel carregar os colaboradores.', 'Gestao de Pessoas'),
+    });
+  }
+
+  openNewCargo(): void {
+    this.selectedCargo.set(null);
+    this.cargoItensDraft.set([]);
+    this.cargoAcessosDraft.set([]);
+    this.cargoItemForm.reset({ itemId: 0, quantidade: 1, obrigatorio: true });
+    this.cargoForm.reset({ nome: '', departamento: '', descricao: '', ativo: true });
+    this.modalCargoOpen.set(true);
+  }
+
+  editCargo(cargo: GestaoPessoasCargo): void {
+    this.selectedCargo.set(cargo);
+    this.cargoItensDraft.set(cargo.itens.map((item) => ({ itemId: item.itemId, quantidade: item.quantidade, obrigatorio: item.obrigatorio })));
+    this.cargoAcessosDraft.set([...(cargo.acessos ?? [])]);
+    this.cargoForm.reset({
+      nome: cargo.nome,
+      departamento: cargo.departamento,
+      descricao: cargo.descricao,
+      ativo: cargo.ativo,
+    });
+    this.modalCargoOpen.set(true);
+  }
+
+  addCargoItem(): void {
+    const raw = this.cargoItemForm.getRawValue();
+    if (!raw.itemId) {
+      return;
+    }
+    const next = this.cargoItensDraft().filter((item) => item.itemId !== raw.itemId);
+    next.push({ itemId: raw.itemId, quantidade: Math.max(1, Number(raw.quantidade) || 1), obrigatorio: raw.obrigatorio });
+    this.cargoItensDraft.set(next);
+    this.cargoItemForm.reset({ itemId: 0, quantidade: 1, obrigatorio: true });
+  }
+
+  removeCargoItem(itemId: number): void {
+    this.cargoItensDraft.set(this.cargoItensDraft().filter((item) => item.itemId !== itemId));
+  }
+
+  toggleCargoAcesso(chave: string): void {
+    const current = this.cargoAcessosDraft();
+    this.cargoAcessosDraft.set(current.includes(chave) ? current.filter((item) => item !== chave) : [...current, chave]);
+  }
+
+  hasCargoAcesso(chave: string): boolean {
+    return this.cargoAcessosDraft().includes(chave);
+  }
+
+  submitCargo(): void {
+    if (this.cargoForm.invalid || this.saving()) {
+      this.cargoForm.markAllAsTouched();
+      this.toastr.warning('Informe o nome do cargo.', 'Atencao');
+      return;
+    }
+    this.saving.set(true);
+    const selected = this.selectedCargo();
+    this.service.saveCargo({ ...this.cargoForm.getRawValue(), itens: this.cargoItensDraft(), acessos: this.cargoAcessosDraft() }, selected?.id).subscribe({
+      next: (saved) => {
+        this.cargosCadastro.set(selected ? this.cargosCadastro().map((item) => item.id === saved.id ? saved : item) : [...this.cargosCadastro(), saved]);
+        this.saving.set(false);
+        this.modalCargoOpen.set(false);
+        this.toastr.success('Cargo salvo.', 'Gestao de Pessoas');
+      },
+      error: (error) => this.failSave(error?.error || 'Nao foi possivel salvar o cargo.'),
+    });
+  }
+
+  openAcessosCargo(cargo: GestaoPessoasCargo): void {
+    const current = this.cargosCadastro().find((item) => item.id === cargo.id) ?? cargo;
+    this.selectedAcessoCargo.set(current);
+    this.acessosCargoDraft.set(this.acessosEfetivosCargo(current));
+    this.modalAcessosOpen.set(true);
+  }
+
+  toggleAcessoCargo(chave: string): void {
+    const current = this.acessosCargoDraft();
+    this.acessosCargoDraft.set(current.includes(chave) ? current.filter((item) => item !== chave) : [...current, chave]);
+  }
+
+  hasAcessoCargo(chave: string): boolean {
+    return this.acessosCargoDraft().includes(chave);
+  }
+
+  acessoNome(chave: string): string {
+    return this.acessosDisponiveis().find((item) => item.chave === chave)?.nome ?? chave;
+  }
+
+  acessosEfetivosCargo(cargo: GestaoPessoasCargo | null | undefined): string[] {
+    if (!cargo) {
+      return [];
+    }
+
+    const acessos = new Set<string>(cargo.acessos ?? []);
+    const cargoText = `${cargo.nome} ${cargo.departamento}`;
+    if (this.isTiText(cargoText)) {
+      this.defaultAcessosTi.forEach((acesso) => acessos.add(acesso));
+    }
+    if (this.isRhText(cargoText)) {
+      this.defaultAcessosRh.forEach((acesso) => acessos.add(acesso));
+    }
+
+    return Array.from(acessos).sort((a, b) => this.acessoNome(a).localeCompare(this.acessoNome(b)));
+  }
+
+  isAcessoPadraoCargo(chave: string): boolean {
+    const cargo = this.selectedAcessoCargo();
+    if (!cargo) {
+      return false;
+    }
+
+    const cargoText = `${cargo.nome} ${cargo.departamento}`;
+    return (this.isTiText(cargoText) && this.defaultAcessosTiAdmin.includes(chave))
+      || (this.isRhText(cargoText) && this.defaultAcessosRhAdmin.includes(chave));
+  }
+
+  isHiddenAcessoCargo(chave: string): boolean {
+    const cargo = this.selectedAcessoCargo();
+    if (!cargo) {
+      return false;
+    }
+
+    const cargoText = `${cargo.nome} ${cargo.departamento}`;
+    return this.isTiText(cargoText)
+      && cargo.acessos.includes('ti-admin')
+      && this.hiddenAcessosTiAdmin.includes(chave);
+  }
+
+  submitAcessosCargo(): void {
+    const cargo = this.selectedAcessoCargo();
+    if (!cargo || this.saving()) {
+      return;
+    }
+
+    this.saving.set(true);
+    this.service.saveCargo({
+      nome: cargo.nome,
+      departamento: cargo.departamento,
+      descricao: cargo.descricao,
+      ativo: cargo.ativo,
+      itens: cargo.itens.map((item) => ({ itemId: item.itemId, quantidade: item.quantidade, obrigatorio: item.obrigatorio })),
+      acessos: this.acessosCargoDraft(),
+    }, cargo.id).subscribe({
+      next: (saved) => {
+        this.cargosCadastro.set(this.cargosCadastro().map((item) => item.id === saved.id ? saved : item));
+        this.selectedAcessoCargo.set(saved);
+        this.saving.set(false);
+        this.modalAcessosOpen.set(false);
+        this.toastr.success('Acessos do cargo atualizados.', 'Controle de acessos');
+      },
+      error: (error) => this.failSave(error?.error || 'Nao foi possivel salvar os acessos do cargo.'),
+    });
+  }
+
+  openNewItem(tipo: GestaoPessoasItemTipo = 'EPI'): void {
+    this.selectedItem.set(null);
+    this.itemForm.reset({ tipo, nome: '', codigo: '', tamanho: '', descricao: '', ativo: true });
+    this.modalItemOpen.set(true);
+  }
+
+  editItem(item: GestaoPessoasItem): void {
+    this.selectedItem.set(item);
+    this.itemForm.reset({
+      tipo: item.tipo,
+      nome: item.nome,
+      codigo: item.codigo,
+      tamanho: item.tamanho,
+      descricao: item.descricao,
+      ativo: item.ativo,
+    });
+    this.modalItemOpen.set(true);
+  }
+
+  submitItem(): void {
+    if (this.itemForm.invalid || this.saving()) {
+      this.itemForm.markAllAsTouched();
+      this.toastr.warning('Informe tipo e nome.', 'Atencao');
+      return;
+    }
+    this.saving.set(true);
+    const selected = this.selectedItem();
+    this.service.saveItem(this.itemForm.getRawValue(), selected?.id).subscribe({
+      next: (saved) => {
+        this.itens.set(selected ? this.itens().map((item) => item.id === saved.id ? saved : item) : [...this.itens(), saved]);
+        this.saving.set(false);
+        this.modalItemOpen.set(false);
+        this.toastr.success('Item salvo.', 'Gestao de Pessoas');
+      },
+      error: (error) => this.failSave(error?.error || 'Nao foi possivel salvar o item.'),
+    });
+  }
+
+  openNewColaborador(): void {
+    this.selectedColaborador.set(null);
+    this.colaboradorForm.reset({
+      nome: '',
+      cpf: '',
+      email: '',
+      telefone: '',
+      departamento: '',
+      cargoId: 0,
+      unidadeId: 0,
+      dataNascimento: '',
+      dataAdmissao: '',
+      status: 'Ativo',
+      observacoes: '',
+    });
+    this.modalColaboradorOpen.set(true);
+  }
+
+  editColaborador(colaborador: GestaoPessoasColaborador): void {
+    this.selectedColaborador.set(colaborador);
+    this.colaboradorForm.reset({
+      nome: colaborador.nome,
+      cpf: colaborador.cpf,
+      email: colaborador.email,
+      telefone: colaborador.telefone,
+      departamento: colaborador.departamento,
+      cargoId: colaborador.cargoId ?? 0,
+      unidadeId: colaborador.unidadeId ?? 0,
+      dataNascimento: this.toDateInput(colaborador.dataNascimento),
+      dataAdmissao: this.toDateInput(colaborador.dataAdmissao),
+      status: colaborador.status || 'Ativo',
+      observacoes: colaborador.observacoes,
+    });
+    this.modalColaboradorOpen.set(true);
+  }
+
+  submitColaborador(): void {
+    if (this.colaboradorForm.invalid || this.saving()) {
+      this.colaboradorForm.markAllAsTouched();
+      this.toastr.warning('Informe o nome do colaborador.', 'Atencao');
+      return;
+    }
+    this.saving.set(true);
+    const selected = this.selectedColaborador();
+    const raw = this.colaboradorForm.getRawValue();
+    const payload = {
+      ...raw,
+      cargoId: raw.cargoId > 0 ? raw.cargoId : null,
+      unidadeId: raw.unidadeId > 0 ? raw.unidadeId : null,
+      dataNascimento: raw.dataNascimento || null,
+      dataAdmissao: raw.dataAdmissao || null,
+    };
+    this.service.saveColaborador(payload, selected?.id).subscribe({
+      next: (saved) => {
+        this.colaboradores.set(selected ? this.colaboradores().map((item) => item.id === saved.id ? saved : item) : [saved, ...this.colaboradores()]);
+        this.selectedColaborador.set(saved);
+        this.saving.set(false);
+        this.modalColaboradorOpen.set(false);
+        this.toastr.success('Colaborador salvo.', 'Gestao de Pessoas');
+      },
+      error: (error) => this.failSave(error?.error || 'Nao foi possivel salvar o colaborador.'),
+    });
+  }
+
+  openRetirada(colaborador: GestaoPessoasColaborador): void {
+    this.selectedColaborador.set(colaborador);
+    this.retiradaForm.reset({ itemId: 0, quantidade: 1, dataRetirada: this.todayInput(), dataDevolucao: '', status: 'Retirado', observacoes: '' });
+    this.modalRetiradaOpen.set(true);
+  }
+
+  submitRetirada(): void {
+    const colaborador = this.selectedColaborador();
+    if (!colaborador || this.retiradaForm.invalid || this.saving()) {
+      this.retiradaForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.retiradaForm.getRawValue();
+    this.saving.set(true);
+    this.service.addRetirada(colaborador.id, { ...raw, dataDevolucao: raw.dataDevolucao || null }).subscribe({
+      next: (retirada) => {
+        const updated = { ...colaborador, retiradas: [retirada, ...colaborador.retiradas] };
+        this.colaboradores.set(this.colaboradores().map((item) => item.id === colaborador.id ? updated : item));
+        this.selectedColaborador.set(updated);
+        this.saving.set(false);
+        this.modalRetiradaOpen.set(false);
+        this.toastr.success('Retirada registrada.', 'Gestao de Pessoas');
+      },
+      error: (error) => this.failSave(error?.error || 'Nao foi possivel registrar a retirada.'),
+    });
+  }
+
+  itemLabel(itemId: number): string {
+    const item = this.itens().find((entry) => entry.id === itemId);
+    return item ? `${item.tipo} - ${item.nome}${item.tamanho ? ' / ' + item.tamanho : ''}` : 'Item';
   }
 
   advance(): void {
@@ -455,6 +878,19 @@ export class GestaoPessoasPage implements OnInit {
       .trim();
   }
 
+  private isTiText(value: string): boolean {
+    const normalized = ` ${this.normalize(value)} `;
+    return normalized.includes(' ti ')
+      || normalized.includes(' t.i ')
+      || normalized.includes(' tecnologia ');
+  }
+
+  private isRhText(value: string): boolean {
+    const normalized = ` ${this.normalize(value)} `;
+    return normalized.includes(' rh ')
+      || normalized.includes(' recursos humanos ');
+  }
+
   private uniqueSorted(values: Array<string | null | undefined>): string[] {
     return Array.from(new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b));
@@ -463,5 +899,26 @@ export class GestaoPessoasPage implements OnInit {
   private defaultEmpresaValue(): string {
     const unidadeNome = this.user()?.unidadeNome ?? '';
     return this.empresas().some((empresa) => empresa.nome === unidadeNome) ? unidadeNome : '';
+  }
+
+  private toDateInput(value: string | null | undefined): string {
+    return value ? value.slice(0, 10) : '';
+  }
+
+  private todayInput(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  private canUseTab(tab: Tab): boolean {
+    if (tab === 'cargos') {
+      return this.canManageCargos();
+    }
+    if (tab === 'acessos') {
+      return this.canManageAcessos();
+    }
+    if (['etapas', 'itens', 'colaboradores'].includes(tab)) {
+      return this.canManage();
+    }
+    return true;
   }
 }

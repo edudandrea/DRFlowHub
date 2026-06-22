@@ -6,12 +6,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { NgxSpinnerService } from 'ngx-spinner';
 import { ToastrService } from 'ngx-toastr';
 import { AuthService } from '../../core/auth.service';
-import { Empresa, Role, Unidade, User, UserCreatePayload, UserUpdatePayload } from '../../core/models';
+import { Empresa, GestaoPessoasCargo, Role, Unidade, User, UserCreatePayload, UserUpdatePayload } from '../../core/models';
 import { ThemeService } from '../../core/theme.service';
 import { ProfileFlowService } from '../../core/profile-flow.service';
-import { PerfisService } from '../../core/perfis.service';
 import { UnidadesService } from '../../core/unidades.service';
 import { toDateInputValue } from '../../core/date-utils';
+import { GestaoPessoasService } from '../../core/gestao-pessoas.service';
 
 type UserModalMode = 'create' | 'edit';
 type UnidadeModalMode = 'create' | 'edit';
@@ -48,8 +48,8 @@ export class UsuariosPage implements OnInit {
   private readonly toastr = inject(ToastrService);
   private readonly spinner = inject(NgxSpinnerService);
   private readonly profileFlow = inject(ProfileFlowService);
-  private readonly perfisService = inject(PerfisService);
   private readonly unidadesService = inject(UnidadesService);
+  private readonly gestaoPessoasService = inject(GestaoPessoasService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   readonly theme = inject(ThemeService);
@@ -57,6 +57,7 @@ export class UsuariosPage implements OnInit {
   readonly users = signal<User[]>([]);
   readonly empresasCadastro = signal<Empresa[]>([]);
   readonly unidades = signal<Unidade[]>([]);
+  readonly cargosCadastro = signal<GestaoPessoasCargo[]>([]);
   readonly selectedUnidade = signal<Unidade | null>(null);
   readonly selectedEmpresa = signal<Empresa | null>(null);
   readonly selected = signal<User | null>(null);
@@ -79,14 +80,13 @@ export class UsuariosPage implements OnInit {
   readonly unidadeSortField = signal<UnidadeSortField>('empresa');
   readonly empresaSortField = signal<EmpresaSortField>('numero');
   readonly sortDirection = signal<'asc' | 'desc'>('asc');
-  readonly selectedPerfis = signal<Role[]>(['Usuario']);
-
   readonly roles = signal<Role[]>(['Admin', 'RH', 'TI', 'Diretoria', 'Compras', 'Controladoria', 'Qualidade Nissan', 'Gerente Geral de Pecas', 'Gerente de Pecas', 'Vendedor de Pecas', 'Gestor', 'Usuario']);
   readonly departamentos = ['Administrativo', 'RH', 'TI', 'Financeiro', 'Controladoria', 'Compras', 'Qualidade Nissan', 'Pecas', 'Operacional', 'Comercial'];
 
   readonly totalAdmins = computed(() => this.users().filter((item) => item.role === 'Admin').length);
   readonly totalAtivos = computed(() => this.users().filter((item) => item.ativo).length);
   readonly empresas = computed(() => this.empresasCadastro().slice().sort((a, b) => a.numero - b.numero || a.nome.localeCompare(b.nome)));
+  readonly cargosAtivos = computed(() => this.cargosCadastro().filter((item) => item.ativo).sort((a, b) => a.nome.localeCompare(b.nome)));
   readonly filtered = computed(() => {
     const term = this.normalize(this.search());
     if (!term) {
@@ -103,8 +103,6 @@ export class UsuariosPage implements OnInit {
     return this.sortItems(this.unidades().filter((item) => !term || [item.empresaNumero, item.empresa, item.numeroRevenda, item.revenda, item.nome, item.cnpj, item.endereco].some((value) => this.normalize(value).includes(term))), this.unidadeSortField());
   });
   readonly sortedEmpresas = computed(() => this.sortItems(this.empresas(), this.empresaSortField()));
-  readonly perfisSelecionados = computed(() => this.normalizeSelectedPerfis(this.form.controls.role.value as Role, this.selectedPerfis()));
-  readonly perfisDisponiveis = computed(() => this.roles().filter((role) => !this.perfisSelecionados().includes(role)));
   readonly userTree = computed(() => this.buildUserTree(this.filtered()));
   readonly totalUserPages = computed(() => this.totalPages(this.filtered().length));
   readonly totalUnidadePages = computed(() => this.totalPages(this.filteredUnidades().length));
@@ -117,7 +115,7 @@ export class UsuariosPage implements OnInit {
     nome: ['', Validators.required],
     cpf: ['', Validators.required],
     email: ['', [Validators.required, Validators.email]],
-    role: ['Usuario', Validators.required],
+    role: ['Usuario'],
     perfis: [[] as Role[]],
     departamento: ['', Validators.required],
     cargo: ['', Validators.required],
@@ -147,9 +145,9 @@ export class UsuariosPage implements OnInit {
     }
 
     this.load();
-    this.loadPerfis();
     this.loadEmpresas();
     this.loadUnidades();
+    this.loadCargos();
   }
 
   load(): void {
@@ -183,23 +181,22 @@ export class UsuariosPage implements OnInit {
     });
   }
 
-  loadPerfis(): void {
-    this.perfisService.list().subscribe({
-      next: (perfis) => this.roles.set(perfis.map((perfil) => perfil.nome)),
-      error: () => this.toastr.error('Não foi possível carregar os perfis.', 'Usuários'),
+  loadCargos(): void {
+    this.gestaoPessoasService.listCargos().subscribe({
+      next: (cargos) => this.cargosCadastro.set(cargos),
+      error: () => this.cargosCadastro.set([]),
     });
   }
 
   openCreate(): void {
     this.modalMode.set('create');
     this.selected.set(null);
-    this.selectedPerfis.set(['Usuario']);
     this.form.reset({
       nome: '',
       cpf: '',
       email: '',
       role: 'Usuario',
-      perfis: ['Usuario'],
+      perfis: [],
       departamento: '',
       cargo: '',
       empresaSelecionadaId: 0,
@@ -217,13 +214,12 @@ export class UsuariosPage implements OnInit {
     this.modalMode.set('edit');
     this.selected.set(item);
     const perfis = item.perfis?.length ? item.perfis : [item.role];
-    this.selectedPerfis.set(perfis);
     this.form.reset({
       nome: item.nome,
       cpf: item.cpf,
       email: item.email,
       role: item.role,
-      perfis,
+      perfis: [],
       departamento: item.departamento,
       cargo: item.cargo,
       empresaSelecionadaId: this.getEmpresaIdByUnidadeId(item.unidadeId ?? 0),
@@ -309,8 +305,8 @@ export class UsuariosPage implements OnInit {
         nome: raw.nome,
         cpf: raw.cpf,
         email: raw.email,
-        role: raw.role as Role,
-        perfis: this.normalizeSelectedPerfis(raw.role as Role, raw.perfis),
+        role: (raw.cargo || raw.role || 'Usuario') as Role,
+        perfis: [],
         departamento: raw.departamento,
         cargo: raw.cargo,
         ativo: raw.ativo,
@@ -344,8 +340,8 @@ export class UsuariosPage implements OnInit {
       nome: raw.nome,
       cpf: raw.cpf,
       email: raw.email,
-      role: raw.role as Role,
-      perfis: this.normalizeSelectedPerfis(raw.role as Role, raw.perfis),
+      role: (raw.cargo || raw.role || 'Usuario') as Role,
+      perfis: [],
       departamento: raw.departamento,
       cargo: raw.cargo,
       ativo: raw.ativo,
@@ -438,30 +434,8 @@ export class UsuariosPage implements OnInit {
     this.form.patchValue({ empresaSelecionadaId: Number(empresaId), unidadeId: 0 });
   }
 
-  togglePerfil(role: Role): void {
-    const current = this.selectedPerfis();
-    const next = current.includes(role)
-      ? current.filter((perfil) => perfil !== role)
-      : [...current, role];
-    this.selectedPerfis.set(next);
-    this.form.controls.perfis.setValue(next);
-    this.form.controls.perfis.markAsDirty();
-  }
-
-  removePerfil(role: Role): void {
-    const next = this.selectedPerfis().filter((perfil) => perfil !== role);
-    this.selectedPerfis.set(next);
-    this.form.controls.perfis.setValue(next);
-    this.form.controls.perfis.markAsDirty();
-  }
-
-  isPerfilSelecionado(role: Role): boolean {
-    return this.perfisSelecionados().includes(role);
-  }
-
   perfisResumo(item: User): string {
-    const perfis = item.perfis?.length ? item.perfis : [item.role];
-    return Array.from(new Set(perfis)).join(', ');
+    return item.cargo || item.role;
   }
 
   setUserSort(field: UserSortField): void {
@@ -515,6 +489,10 @@ export class UsuariosPage implements OnInit {
     return this.sortRevendas(this.unidades().filter((item) => item.empresaId === empresaId));
   }
 
+  hasCargoOption(nome: string): boolean {
+    return this.cargosAtivos().some((cargo) => cargo.nome === nome);
+  }
+
   goHome(): void {
     void this.router.navigate(['/hub']);
   }
@@ -543,10 +521,6 @@ export class UsuariosPage implements OnInit {
 
   private getEmpresaIdByUnidadeId(unidadeId: number): number {
     return this.unidades().find((item) => item.id === unidadeId)?.empresaId ?? 0;
-  }
-
-  private normalizeSelectedPerfis(role: Role, perfis: Role[] | null | undefined): Role[] {
-    return Array.from(new Set([role, ...(perfis ?? [])].filter(Boolean)));
   }
 
   private buildUserTree(users: User[]): UserEmpresaGroup[] {

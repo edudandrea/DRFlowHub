@@ -41,8 +41,8 @@
       <strong>{{ totalAdmins() }}</strong>
     </article>
     <article>
-      <span>Perfis</span>
-      <strong>{{ roles().length }}</strong>
+      <span>Cargos</span>
+      <strong>{{ cargosAtivos().length }}</strong>
     </article>
     <article>
       <span>Empresas</span>
@@ -90,7 +90,7 @@
                     <div class="tree-users">
                       <div class="users-table-head">
                         <span>Usuário</span>
-                        <span>Perfis</span>
+                        <span>Cargo</span>
                         <span>Departamento</span>
                         <span>Status</span>
                         <span>Ação</span>
@@ -157,44 +157,13 @@
               <input type="email" formControlName="email" />
             </label>
             <label>
-              Perfil principal
-              <select formControlName="role">
-                @for (role of roles(); track role) {
-                  <option [value]="role">{{ role }}</option>
-                }
+              Status
+              <select formControlName="ativo">
+                <option [ngValue]="true">Ativo</option>
+                <option [ngValue]="false">Inativo</option>
               </select>
             </label>
           </div>
-
-          <section class="profile-picker">
-            <div class="profile-picker-heading">
-              <strong>Perfis adicionais</strong>
-              <small>O perfil principal também será aplicado automaticamente.</small>
-            </div>
-            <div class="profile-options" aria-label="Perfis disponíveis">
-              @for (role of perfisDisponiveis(); track role) {
-                <button type="button" class="profile-option" (click)="togglePerfil(role)">
-                  {{ role }}
-                </button>
-              }
-            </div>
-            <div class="selected-profiles" aria-label="Perfis liberados">
-              @for (role of perfisSelecionados(); track role) {
-                <button
-                  type="button"
-                  class="profile-chip"
-                  [class.primary-profile]="role === form.controls.role.value"
-                  [disabled]="role === form.controls.role.value"
-                  (click)="removePerfil(role)"
-                >
-                  <span>{{ role }}</span>
-                  @if (role !== form.controls.role.value) {
-                    <strong>x</strong>
-                  }
-                </button>
-              }
-            </div>
-          </section>
 
           <div class="grid two">
             <label>
@@ -208,7 +177,15 @@
             </label>
             <label>
               Cargo
-              <input formControlName="cargo" />
+              <select formControlName="cargo">
+                <option value="">Selecione</option>
+                @if (form.controls.cargo.value && !hasCargoOption(form.controls.cargo.value)) {
+                  <option [value]="form.controls.cargo.value">{{ form.controls.cargo.value }}</option>
+                }
+                @for (cargo of cargosAtivos(); track cargo.id) {
+                  <option [value]="cargo.nome">{{ cargo.nome }}</option>
+                }
+              </select>
             </label>
           </div>
 
@@ -232,14 +209,6 @@
               </select>
             </label>
           </div>
-
-          <label>
-            Status
-            <select formControlName="ativo">
-              <option [ngValue]="true">Ativo</option>
-              <option [ngValue]="false">Inativo</option>
-            </select>
-          </label>
 
           <div class="grid two">
             <label>

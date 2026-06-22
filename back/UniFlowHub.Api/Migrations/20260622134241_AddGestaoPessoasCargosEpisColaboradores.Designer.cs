@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using UniFlowHub.Api.Data;
@@ -11,9 +12,11 @@ using UniFlowHub.Api.Data;
 namespace UniFlowHub.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260622134241_AddGestaoPessoasCargosEpisColaboradores")]
+    partial class AddGestaoPessoasCargosEpisColaboradores
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -502,29 +505,6 @@ namespace UniFlowHub.Migrations
                         .IsUnique();
 
                     b.ToTable("GestaoPessoasCargo");
-                });
-
-            modelBuilder.Entity("UniFlowHub.Api.Models.GestaoPessoasCargoAcesso", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CargoId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Chave")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CargoId", "Chave")
-                        .IsUnique();
-
-                    b.ToTable("GestaoPessoasCargoAcesso");
                 });
 
             modelBuilder.Entity("UniFlowHub.Api.Models.GestaoPessoasCargoItem", b =>
@@ -1526,17 +1506,6 @@ namespace UniFlowHub.Migrations
                     b.Navigation("OwnerUser");
                 });
 
-            modelBuilder.Entity("UniFlowHub.Api.Models.GestaoPessoasCargoAcesso", b =>
-                {
-                    b.HasOne("UniFlowHub.Api.Models.GestaoPessoasCargo", "Cargo")
-                        .WithMany("Acessos")
-                        .HasForeignKey("CargoId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Cargo");
-                });
-
             modelBuilder.Entity("UniFlowHub.Api.Models.GestaoPessoasCargoItem", b =>
                 {
                     b.HasOne("UniFlowHub.Api.Models.GestaoPessoasCargo", "Cargo")
@@ -1783,8 +1752,6 @@ namespace UniFlowHub.Migrations
 
             modelBuilder.Entity("UniFlowHub.Api.Models.GestaoPessoasCargo", b =>
                 {
-                    b.Navigation("Acessos");
-
                     b.Navigation("Colaboradores");
 
                     b.Navigation("Itens");

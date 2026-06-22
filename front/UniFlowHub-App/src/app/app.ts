@@ -85,6 +85,10 @@ export class App {
       enabled: true,
       children: [
         { label: 'Admissão e Demissão', description: 'Fluxo direto do RH', route: '/gestao-pessoas', enabled: true, access: 'rh-admin' },
+        { label: 'Cadastro de etapas', description: 'Fluxos de admissão e demissão', route: '/gestao-pessoas?tab=etapas', enabled: true, access: ['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'] },
+        { label: 'EPIs e Uniformes', description: 'Itens de entrega por função', route: '/gestao-pessoas?tab=itens', enabled: true, access: ['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'] },
+        { label: 'Colaboradores', description: 'Cadastro funcional e retiradas', route: '/gestao-pessoas?tab=colaboradores', enabled: true, access: ['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'] },
+        { label: 'Cargos', description: 'Funções, EPIs e uniformes', route: '/gestao-pessoas?tab=cargos', enabled: true, access: ['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'] },
         { label: 'Solicitações do RH', description: 'Atendimento e demandas', route: '/rh', userRoute: '/solicitacoes', enabled: true, access: 'rh', adminAccess: 'rh-admin' },
         { label: 'Controle Cartão Ponto', description: 'Espelho e ajustes', route: '/rh/cartao-ponto', enabled: true, access: 'cartao-ponto' },
       ],
@@ -123,13 +127,13 @@ export class App {
     { label: 'Comercial', description: 'Demandas comerciais', route: '/hub', enabled: false },
     {
       label: 'Cadastros',
-      description: 'Usuários, empresas e perfis',
+      description: 'Usuários, empresas e cargos',
       route: '/cadastros',
       enabled: true,
       children: [
         { label: 'Usuários', description: 'Administração de acessos', route: '/usuarios', enabled: true, access: 'usuarios' },
         { label: 'Empresas e Revendas', description: 'Cadastro operacional', route: '/cadastros/empresas-revendas', enabled: true, access: 'empresas-revendas' },
-        { label: 'Cadastro de perfil', description: 'Perfis e acessos', route: '/cadastros/perfis', enabled: true, access: 'perfis' },
+        { label: 'Controle de acessos', description: 'Acessos por cargo', route: '/cadastros/controle-acessos', enabled: true, access: 'usuarios' },
       ],
     },
   ];
@@ -232,7 +236,15 @@ export class App {
     }
 
     if (link.access) {
-      return this.hasLinkAccess(link.access);
+      if (this.hasLinkAccess(link.access)) {
+        return true;
+      }
+
+      if (link.adminAccess && this.auth.hasAccess(link.adminAccess)) {
+        return true;
+      }
+
+      return false;
     }
 
     return !link.roles || this.auth.hasAnyRole(link.roles) || !!link.userRoute;

@@ -347,6 +347,104 @@ export type GestaoPessoasProcessoPayload = Omit<
   | 'historico'
 >;
 
+export type GestaoPessoasItemTipo = 'EPI' | 'Uniforme';
+
+export interface GestaoPessoasItem {
+  id: number;
+  tipo: GestaoPessoasItemTipo;
+  nome: string;
+  codigo: string;
+  tamanho: string;
+  descricao: string;
+  ativo: boolean;
+  dataCadastro: string;
+  dataAtualizacao?: string | null;
+}
+
+export type GestaoPessoasItemPayload = Pick<GestaoPessoasItem, 'tipo' | 'nome' | 'codigo' | 'tamanho' | 'descricao' | 'ativo'>;
+
+export interface GestaoPessoasCargoItem {
+  id: number;
+  itemId: number;
+  itemNome: string;
+  itemTipo: GestaoPessoasItemTipo | string;
+  itemCodigo: string;
+  itemTamanho: string;
+  quantidade: number;
+  obrigatorio: boolean;
+}
+
+export type GestaoPessoasCargoItemPayload = Pick<GestaoPessoasCargoItem, 'itemId' | 'quantidade' | 'obrigatorio'>;
+
+export interface GestaoPessoasCargo {
+  id: number;
+  nome: string;
+  departamento: string;
+  descricao: string;
+  ativo: boolean;
+  dataCadastro: string;
+  dataAtualizacao?: string | null;
+  itens: GestaoPessoasCargoItem[];
+  acessos: string[];
+}
+
+export type GestaoPessoasCargoPayload = Pick<GestaoPessoasCargo, 'nome' | 'departamento' | 'descricao' | 'ativo'> & {
+  itens: GestaoPessoasCargoItemPayload[];
+  acessos: string[];
+};
+
+export interface GestaoPessoasColaboradorRetirada {
+  id: number;
+  colaboradorId: number;
+  itemId: number;
+  itemNome: string;
+  itemTipo: GestaoPessoasItemTipo | string;
+  itemCodigo: string;
+  itemTamanho: string;
+  quantidade: number;
+  dataRetirada: string;
+  dataDevolucao?: string | null;
+  status: string;
+  observacoes: string;
+}
+
+export type GestaoPessoasColaboradorRetiradaPayload = Pick<
+  GestaoPessoasColaboradorRetirada,
+  'itemId' | 'quantidade' | 'dataRetirada' | 'dataDevolucao' | 'status' | 'observacoes'
+>;
+
+export interface GestaoPessoasColaborador {
+  id: number;
+  nome: string;
+  cpf: string;
+  email: string;
+  telefone: string;
+  departamento: string;
+  cargoId?: number | null;
+  cargoNome: string;
+  unidadeId?: number | null;
+  unidadeNome: string;
+  dataNascimento?: string | null;
+  dataAdmissao?: string | null;
+  status: string;
+  observacoes: string;
+  dataCadastro: string;
+  dataAtualizacao?: string | null;
+  itensDoCargo: GestaoPessoasCargoItem[];
+  retiradas: GestaoPessoasColaboradorRetirada[];
+}
+
+export type GestaoPessoasColaboradorPayload = Omit<
+  GestaoPessoasColaborador,
+  | 'id'
+  | 'cargoNome'
+  | 'unidadeNome'
+  | 'dataCadastro'
+  | 'dataAtualizacao'
+  | 'itensDoCargo'
+  | 'retiradas'
+>;
+
 export interface GuiaIcms {
   id: string;
   documento: string;
