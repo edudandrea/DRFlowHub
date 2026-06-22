@@ -23,6 +23,8 @@ namespace UniFlowHub.Api.Data
         public DbSet<SolicitacaoCompraComunicacao> SolicitacaoCompraComunicacao { get; set; }
         public DbSet<Unidade> Unidade { get; set; }
         public DbSet<Empresa> Empresa { get; set; }
+        public DbSet<MontadoraRevendaConfig> MontadoraRevendaConfig { get; set; }
+        public DbSet<EmpresaRevendaStatusConfig> EmpresaRevendaStatusConfig { get; set; }
         public DbSet<CartaoPontoArquivo> CartaoPontoArquivo { get; set; }
         public DbSet<CartaoPontoRegistro> CartaoPontoRegistro { get; set; }
         public DbSet<GuiaIcmsPagamento> GuiaIcmsPagamento { get; set; }
@@ -80,6 +82,22 @@ namespace UniFlowHub.Api.Data
 
             modelBuilder.Entity<Empresa>()
                 .Property(e => e.LogoUrl)
+                .HasColumnType("text");
+
+            modelBuilder.Entity<MontadoraRevendaConfig>()
+                .HasIndex(e => new { e.EmpresaNumero, e.RevendaNumero })
+                .IsUnique();
+
+            modelBuilder.Entity<MontadoraRevendaConfig>()
+                .Property(e => e.LogoMontadoraUrl)
+                .HasColumnType("text");
+
+            modelBuilder.Entity<EmpresaRevendaStatusConfig>()
+                .HasIndex(e => e.EmpresaNumero)
+                .IsUnique();
+
+            modelBuilder.Entity<Unidade>()
+                .Property(u => u.LogoMontadoraUrl)
                 .HasColumnType("text");
 
             modelBuilder.Entity<Unidade>()

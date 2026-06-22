@@ -360,6 +360,31 @@ namespace UniFlowHub.Migrations
                     b.ToTable("Empresa");
                 });
 
+            modelBuilder.Entity("UniFlowHub.Api.Models.EmpresaRevendaStatusConfig", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Ativa")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("DataAtualizacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EmpresaNumero")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaNumero")
+                        .IsUnique();
+
+                    b.ToTable("EmpresaRevendaStatusConfig");
+                });
+
             modelBuilder.Entity("UniFlowHub.Api.Models.EquipamentoTI", b =>
                 {
                     b.Property<int>("Id")
@@ -908,6 +933,41 @@ namespace UniFlowHub.Migrations
                     b.ToTable("GuiaIcmsPagamento");
                 });
 
+            modelBuilder.Entity("UniFlowHub.Api.Models.MontadoraRevendaConfig", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Ativa")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("DataAtualizacao")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EmpresaNumero")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LogoMontadoraUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Montadora")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("RevendaNumero")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaNumero", "RevendaNumero")
+                        .IsUnique();
+
+                    b.ToTable("MontadoraRevendaConfig");
+                });
+
             modelBuilder.Entity("UniFlowHub.Api.Models.PecaVendedorMeta", b =>
                 {
                     b.Property<int>("Id")
@@ -1314,6 +1374,13 @@ namespace UniFlowHub.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("Endereco")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LogoMontadoraUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Montadora")
                         .IsRequired()
                         .HasColumnType("text");
 
