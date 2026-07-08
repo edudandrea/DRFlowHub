@@ -11,6 +11,7 @@ namespace UniFlowHub.Api.Services
         private const string StatusEmAndamento = "Em andamento";
         private const string StatusConcluido = "Concluido";
         private const string StatusCancelado = "Cancelado";
+        private const string PerfilPadraoUsuario = "Usuario";
 
         private readonly AppDbContext _context;
 
@@ -370,6 +371,10 @@ namespace UniFlowHub.Api.Services
             if (dto.CargoId.HasValue && !await _context.GestaoPessoasCargo.AnyAsync(s => s.Id == dto.CargoId.Value))
                 throw new InvalidOperationException("Cargo invalido.");
 
+            var isNew = !id.HasValue || id.Value <= 0;
+            if (isNew && (string.IsNullOrWhiteSpace(dto.Cpf) || string.IsNullOrWhiteSpace(dto.Email)))
+                throw new InvalidOperationException("CPF e email sao obrigatorios para criar o usuario do colaborador.");
+
             GestaoPessoasColaborador colaborador;
             if (id.HasValue && id.Value > 0)
             {
@@ -576,18 +581,26 @@ namespace UniFlowHub.Api.Services
                     .FirstOrDefaultAsync() ?? string.Empty;
             }
 
-            _context.User.Add(new Users
+            var user = new Users
             {
                 Nome = colaborador.Nome.Trim(),
                 Cpf = cpf,
                 Email = email,
                 Senha = PasswordHasher.Hash("123456"),
-                Role = "Usuario",
+                Role = PerfilPadraoUsuario,
                 Departamento = colaborador.Departamento.Trim(),
                 Cargo = cargoNome,
                 Ativo = string.Equals(colaborador.Status, "Ativo", StringComparison.OrdinalIgnoreCase),
                 UnidadeId = colaborador.UnidadeId,
                 DataNascimento = colaborador.DataNascimento ?? DateTime.UtcNow
+            };
+            _context.User.Add(user);
+            await _context.SaveChangesAsync();
+
+            _context.UserPerfil.Add(new UserPerfil
+            {
+                UserId = user.Id,
+                Perfil = PerfilPadraoUsuario
             });
             await _context.SaveChangesAsync();
         }

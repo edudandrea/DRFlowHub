@@ -1,0 +1,380 @@
+<main class="ecommerce-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Vendas digitais</p>
+        <h1>E-commerce</h1>
+      </div>
+    </button>
+
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="filters">
+    <div class="filter-copy">
+      <p class="system-name">Filtros</p>
+      <h2>Recorte por periodo, empresa e revenda.</h2>
+    </div>
+    <div class="filters-table">
+      <label class="empresa-field">
+        Empresa
+        <select [ngModel]="empresaNumero()" (ngModelChange)="setEmpresa($event)">
+          <option [ngValue]="null">Todas</option>
+          @for (empresa of empresasDisponiveis(); track empresa.numero) {
+            <option [ngValue]="empresa.numero">{{ empresa.numero }} - {{ empresa.nome }}</option>
+          }
+        </select>
+      </label>
+      <div class="filter-field revenda-picker revenda-field">
+        <span>Revenda</span>
+        <button class="picker-trigger" type="button" (click)="revendaPickerOpen.set(!revendaPickerOpen())">
+          {{ revendasSelecionadasLabel() }}
+        </button>
+        @if (revendaPickerOpen()) {
+          <div class="picker-menu">
+            <button type="button" (click)="clearRevendas()">Todas as revendas</button>
+            @for (revenda of revendasDaEmpresa(); track revenda.id) {
+              <label>
+                <input type="checkbox" [checked]="isRevendaSelected(revenda)" (change)="toggleRevenda(revenda)" />
+                {{ revendaLabel(revenda) }}
+              </label>
+            }
+          </div>
+        }
+      </div>
+      <label class="date-field">
+        Data inicial
+        <input type="date" [ngModel]="dataInicio()" (ngModelChange)="setDataInicio($event)" />
+      </label>
+      <label class="date-field">
+        Data final
+        <input type="date" [ngModel]="dataFim()" (ngModelChange)="setDataFim($event)" />
+      </label>
+      <button class="primary filter-action" type="button" (click)="load()" [disabled]="loading()">
+        {{ loading() ? 'Atualizando...' : 'Atualizar' }}
+      </button>
+      <app-auto-refresh-control
+        storageKey="uniflowhub.autoRefresh.e-commerce"
+        [updatedAt]="data()?.atualizadoEm ?? null"
+        [loading]="loading()"
+        (refresh)="load()"
+      />
+    </div>
+  </section>
+
+  <section class="hero-band">
+    <div>
+      <p class="eyebrow">KPI Vendas Digitais</p>
+      <h2>Dashboard E-commerce</h2>
+      <p class="hero-copy">Performance real por empresa e revenda cadastradas no sistema.</p>
+    </div>
+    <div class="hero-score">
+      <span>Margem de contribuição</span>
+      <strong>{{ formatPercent(totals().contributionMargin) }}</strong>
+      <div class="progress">
+        <i [style.width.%]="progressWidth(totals().contributionMargin)"></i>
+      </div>
+    </div>
+  </section>
+
+  <section class="kpi-grid" aria-label="Indicadores principais">
+    <article>
+      <span>Faturamento</span>
+      <strong>{{ formatCurrency(totals().realized) }}</strong>
+      <small>Periodo selecionado</small>
+    </article>
+    <article>
+      <span>Margem contribuição</span>
+      <strong>{{ formatCurrency(totals().contribution) }}</strong>
+      <small>{{ formatPercent(totals().contributionMargin) }} sobre vendas</small>
+    </article>
+    <article>
+      <span>NFs emitidas</span>
+      <strong>{{ formatNumber(totals().invoices) }}</strong>
+      <small>Tkt médio {{ formatCurrency(totals().averageTicket) }}</small>
+    </article>
+    <article>
+      <span>Custos e impostos</span>
+      <strong>{{ formatCurrency(totals().cost + totals().taxes) }}</strong>
+      <small>Custo, impostos e despesas</small>
+    </article>
+  </section>
+
+  <section class="executive-grid" aria-label="Graficos executivos">
+    <article class="panel annual-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Evolucao mensal</p>
+          <h2>Vendas digitais por ano</h2>
+        </div>
+        <div class="annual-summary">
+          @for (item of evolucaoAnual(); track item.ano) {
+            <span>{{ item.ano }} <strong>{{ formatCurrency(item.realizado) }}</strong></span>
+          }
+        </div>
+      </div>
+      <div class="monthly-evolution">
+        @if (monthlySeries().length) {
+          <svg class="monthly-chart" viewBox="0 0 100 100" role="img" aria-label="Evolucao mensal de vendas digitais por ano" preserveAspectRatio="none">
+            <line x1="6" y1="16" x2="94" y2="16" />
+            <line x1="6" y1="36" x2="94" y2="36" />
+            <line x1="6" y1="56" x2="94" y2="56" />
+            <line x1="6" y1="76" x2="94" y2="76" />
+            @for (series of monthlySeries(); track series.ano) {
+              <polygon class="monthly-area" [attr.points]="areaPoints(series)" [style.fill]="series.color" />
+              <polyline class="monthly-line" [attr.points]="linePoints(series)" [style.stroke]="series.color" />
+              @for (point of series.points; track point.mes) {
+                <circle class="monthly-dot" [attr.cx]="point.x" [attr.cy]="point.y" r="0.9" [style.fill]="series.color">
+                  <title>{{ series.ano }} - {{ point.label }}: {{ formatCurrency(point.value) }}</title>
+                </circle>
+              }
+            }
+          </svg>
+          <div class="month-axis" aria-hidden="true">
+            @for (month of monthLabels; track month) {
+              <span>{{ month }}</span>
+            }
+          </div>
+          <div class="series-legend">
+            @for (series of monthlySeries(); track series.ano) {
+              <span><i [style.background]="series.color"></i>{{ series.ano }}</span>
+            }
+          </div>
+        } @else {
+          <p class="empty-chart">Sem historico mensal para o filtro.</p>
+        }
+      </div>
+    </article>
+
+    <article class="panel pie-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Participacao</p>
+          <h2>Faturamento por revenda</h2>
+        </div>
+      </div>
+      <div class="pie-layout">
+        <div class="pie-visual">
+          <svg class="pie-chart" viewBox="0 0 100 100" role="img" aria-label="Participacao do faturamento por revenda">
+            @for (slice of pieSlices(companyPie()); track slice.label) {
+              <path
+                class="pie-slice"
+                [attr.d]="slice.path"
+                [style.fill]="slice.color"
+                (mouseenter)="setHoveredSlice('company', slice, companyPie())"
+                (mouseleave)="clearHoveredSlice('company')"
+              >
+                <title>{{ slice.label }}: {{ formatCurrency(slice.value) }} - {{ formatPercent(slice.share) }}</title>
+              </path>
+            }
+          </svg>
+          <div class="pie-summary">
+            @if (hoveredCompanySlice(); as slice) {
+              <strong>{{ slice.label }}</strong>
+              <span>{{ formatCurrency(slice.value) }} - {{ formatPercent(slice.share) }}</span>
+            } @else {
+              <strong>{{ companyPie().length }}</strong>
+              <span>revendas no filtro</span>
+            }
+          </div>
+        </div>
+        <div class="legend-list">
+          @for (slice of companyPie(); track slice.label) {
+            <div>
+              <i [style.background]="slice.color"></i>
+              <span>{{ slice.label }}</span>
+              <strong>{{ formatPercent(sliceShare(slice, companyPie())) }}</strong>
+            </div>
+          }
+        </div>
+      </div>
+    </article>
+
+    <article class="panel pie-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Resultado</p>
+          <h2>Composicao financeira</h2>
+        </div>
+      </div>
+      <div class="pie-layout">
+        <div class="pie-visual">
+          <svg class="pie-chart" viewBox="0 0 100 100" role="img" aria-label="Composicao financeira do resultado">
+            @for (slice of pieSlices(resultPie()); track slice.label) {
+              <path
+                class="pie-slice"
+                [attr.d]="slice.path"
+                [style.fill]="slice.color"
+                (mouseenter)="setHoveredSlice('result', slice, resultPie())"
+                (mouseleave)="clearHoveredSlice('result')"
+              >
+                <title>{{ slice.label }}: {{ formatCurrency(slice.value) }} - {{ formatPercent(slice.share) }}</title>
+              </path>
+            }
+          </svg>
+          <div class="pie-summary">
+            @if (hoveredResultSlice(); as slice) {
+              <strong>{{ slice.label }}</strong>
+              <span>{{ formatCurrency(slice.value) }} - {{ formatPercent(slice.share) }}</span>
+            } @else {
+              <strong>{{ formatPercent(totals().contributionMargin) }}</strong>
+              <span>margem de contribuicao</span>
+            }
+          </div>
+        </div>
+        <div class="legend-list">
+          @for (slice of resultPie(); track slice.label) {
+            <div>
+              <i [style.background]="slice.color"></i>
+              <span>{{ slice.label }}</span>
+              <strong>{{ formatCurrency(slice.value) }}</strong>
+            </div>
+          }
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="panel sales-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Ranking</p>
+          <h2>Vendas realizadas</h2>
+        </div>
+        <select [value]="sortField()" (change)="sortField.set($any($event.target).value)">
+          <option value="realizado">Realizado</option>
+          <option value="margem">Margem</option>
+          <option value="ticket">Ticket medio</option>
+          <option value="notas">NFs emitidas</option>
+        </select>
+      </div>
+
+      <div class="ranking-list">
+        @for (unit of sortedUnits(); track unit.empresaNumero + '-' + unit.revendaNumero + '-' + (unit.vendedorCodigo ?? unit.nomeCurto)) {
+          <div class="ranking-row">
+            <div>
+              <strong>{{ rankingLabel(unit) }}</strong>
+              <span>{{ formatCurrency(unit.realizado) }} · {{ formatPercent(unit.margemContribuicaoPercentual) }}</span>
+            </div>
+            <div class="bar-track" aria-hidden="true">
+              <i [style.width.%]="realizedWidth(unit)"></i>
+            </div>
+          </div>
+        }
+      </div>
+    </article>
+
+    <article class="panel focus-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Leitura executiva</p>
+          <h2>Pontos de atenção</h2>
+        </div>
+      </div>
+
+      <div class="insight-list">
+        <div class="insight good">
+          @if (strongestUnit(); as unit) {
+            <span>{{ unit.nomeCurto }}</span>
+            <strong>Maior faturamento</strong>
+            <small>{{ formatCurrency(unit.realizado) }}</small>
+          } @else {
+            <span>-</span>
+            <strong>Maior faturamento</strong>
+            <small>Sem dados no filtro</small>
+          }
+        </div>
+        <div class="insight warn">
+          <span>{{ formatNumber(totals().invoices) }}</span>
+          <strong>Notas no periodo</strong>
+          <small>Ticket medio {{ formatCurrency(totals().averageTicket) }}.</small>
+        </div>
+        <div class="insight danger">
+          <span>{{ marginAlerts().length }}</span>
+          <strong>Revendas com margem negativa</strong>
+          <small>{{ firstMarginAlert() ? 'Principal impacto em ' + firstMarginAlert()!.nomeCurto + '.' : 'Nenhuma margem negativa no filtro.' }}</small>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="panel table-panel">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Detalhamento</p>
+        <h2>Indicadores por unidade</h2>
+      </div>
+      <span class="table-summary">{{ data()?.atualizadoEm ? 'Atualizado em ' + (data()!.atualizadoEm | date: 'dd/MM/yyyy HH:mm') : '' }}</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Unidade</th>
+            <th>Realizado</th>
+            <th>Margem</th>
+            <th>NFs</th>
+            <th>Tkt médio</th>
+            <th>Custo</th>
+            <th>Impostos/desp.</th>
+            <th>Resultado</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!hasData()) {
+            <tr>
+              <td colspan="8">Nenhum indicador encontrado para o filtro selecionado.</td>
+            </tr>
+          } @else {
+            @for (unit of sortedUnits(); track unit.nomeCurto) {
+            <tr>
+              <td>
+                <strong>{{ unit.nome }}</strong>
+                <small>{{ unit.empresaNumero }}.{{ unit.revendaNumero }}</small>
+              </td>
+              <td>{{ formatCurrency(unit.realizado) }}</td>
+              <td>
+                <span
+                  class="metric-pill"
+                  [class.ok]="marginClass(unit) === 'ok'"
+                  [class.attention]="marginClass(unit) === 'attention'"
+                >
+                  {{ formatPercent(unit.margemContribuicaoPercentual) }}
+                </span>
+              </td>
+              <td>{{ formatNumber(unit.notasEmitidas) }}</td>
+              <td>{{ formatCurrency(unit.ticketMedio) }}</td>
+              <td>{{ formatCurrency(unit.custo) }}</td>
+              <td>{{ formatCurrency(unit.impostos + unit.despesas) }}</td>
+              <td>{{ formatCurrency(unit.margemContribuicaoValor) }}</td>
+            </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>

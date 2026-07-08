@@ -1,0 +1,114 @@
+<main class="access-shell">
+  <header class="topbar">
+    <button class="brand-heading" type="button" (click)="goHome()" aria-label="Ir para a tela inicial">
+      <img src="/uniflowhub-logo.png" alt="UniFlowHub" />
+      <div>
+        <p class="system-name">Cadastros</p>
+        <h1>Controle de acessos</h1>
+      </div>
+    </button>
+    <div class="user-box profile-area">
+      <label class="theme-picker">
+        Tema
+        <select [value]="theme.current()" (change)="theme.setTheme($any($event.target).value)">
+          @for (option of theme.options; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </label>
+      <button class="profile-trigger" type="button" (click)="profileMenuOpen.set(!profileMenuOpen())">
+        <span>{{ user()?.nome }}</span>
+        <strong>{{ user()?.role }}</strong>
+      </button>
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <button type="button" (click)="editProfile()">Editar perfil</button>
+          <button type="button" (click)="changePassword()">Trocar senha</button>
+          <button type="button" (click)="logout()">Sair</button>
+        </div>
+      }
+    </div>
+  </header>
+
+  <section class="workspace">
+    <section class="stages-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Cadastros</p>
+          <h2>Controle de acessos</h2>
+          <p>{{ cargosCadastro().length }} cargo(s) com permissões configuráveis</p>
+        </div>
+      </div>
+      <div class="filters">
+        <input type="search" placeholder="Buscar cargo ou departamento" [value]="search()" (input)="search.set($any($event.target).value)" />
+      </div>
+      <div class="stage-table-wrap">
+        <table class="stage-table">
+          <thead><tr><th>Cargo</th><th>Departamento</th><th>Acessos vinculados</th></tr></thead>
+          <tbody>
+            @for (cargo of filteredCargos(); track cargo.id) {
+              <tr (click)="openAcessosCargo(cargo)">
+                <td><strong>{{ cargo.nome }}</strong></td>
+                <td>{{ cargo.departamento || '-' }}</td>
+                <td>
+                  @for (acesso of acessosEfetivosCargo(cargo); track acesso) {
+                    <span class="process-pill">{{ acessoNome(acesso) }}</span>
+                  } @empty {
+                    -
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="3">Nenhum cargo cadastrado.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  @if (modalAcessosOpen()) {
+    <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && modalAcessosOpen.set(false)">
+      <form class="modal-panel" (ngSubmit)="submitAcessosCargo()" (click)="$event.stopPropagation()">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Controle de acessos</p>
+            <h2>{{ selectedAcessoCargo()?.nome }}</h2>
+          </div>
+          <button class="icon-button" type="button" (click)="modalAcessosOpen.set(false)">x</button>
+        </div>
+        <section class="access-picker">
+          <div class="assigned-access">
+            <div>
+              <h3>Acessos atuais do cargo</h3>
+              <p>{{ acessosCargoDraft().length }} acesso(s) selecionado(s), incluindo acessos padrao do cargo/departamento</p>
+            </div>
+            <div class="chip-list">
+              @for (acesso of acessosCargoDraft(); track acesso) {
+                <button type="button" class="profile-chip assigned" (click)="toggleAcessoCargo(acesso)">{{ acessoNome(acesso) }}{{ isAcessoPadraoCargo(acesso) ? ' - padrao' : ' - remover' }}</button>
+              } @empty {
+                <span class="empty">Nenhum acesso atribuido.</span>
+              }
+            </div>
+          </div>
+
+          <h3>Todos os acessos</h3>
+          <div class="access-options">
+            @for (acesso of acessosDisponiveis(); track acesso.chave) {
+              @if (!isHiddenAcessoCargo(acesso.chave)) {
+                <button type="button" class="access-option" [class.selected]="hasAcessoCargo(acesso.chave)" (click)="toggleAcessoCargo(acesso.chave)">
+                  <strong>{{ acesso.nome }}</strong>
+                  <small>{{ acesso.grupo }}</small>
+                  @if (hasAcessoCargo(acesso.chave)) {
+                    <span>{{ isAcessoPadraoCargo(acesso.chave) ? 'Padrao do cargo' : 'Atribuido' }}</span>
+                  }
+                </button>
+              }
+            }
+          </div>
+        </section>
+        <div class="actions"><button class="primary" type="submit" [disabled]="saving()">Salvar acessos</button></div>
+      </form>
+    </section>
+  }
+</main>

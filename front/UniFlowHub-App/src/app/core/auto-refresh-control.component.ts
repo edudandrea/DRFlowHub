@@ -39,6 +39,9 @@ export class AutoRefreshControlComponent implements OnInit, OnDestroy {
 
   readonly options: AutoRefreshOption[] = [
     { label: 'Desligada', value: 0 },
+    { label: '5 segundos', value: 5_000 },
+    { label: '10 segundos', value: 10_000 },
+    { label: '15 segundos', value: 15_000 },
     { label: '30 segundos', value: 30_000 },
     { label: '1 minuto', value: 60_000 },
     { label: '5 minutos', value: 300_000 },

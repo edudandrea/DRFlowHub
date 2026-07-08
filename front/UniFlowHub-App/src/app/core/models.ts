@@ -28,8 +28,14 @@ export interface Unidade {
   numeroRevenda: number;
   empresa: string;
   revenda: string;
+  razaoSocial?: string;
   cnpj: string;
   endereco: string;
+  montadora?: string;
+  logoMontadoraUrl?: string | null;
+  ativa?: boolean;
+  empresaAtiva?: boolean;
+  revendaAtiva?: boolean;
   dataCadastro: string;
 }
 
@@ -43,6 +49,7 @@ export interface Empresa {
 
 export type EmpresaPayload = Pick<Empresa, 'numero' | 'nome' | 'logoUrl'>;
 export type UnidadePayload = Pick<Unidade, 'empresaId' | 'numeroRevenda' | 'revenda' | 'cnpj' | 'endereco'>;
+export type MontadoraPayload = Pick<Required<Unidade>, 'montadora'> & { logoMontadoraUrl?: string | null };
 
 export interface LoginResponse {
   token: string;

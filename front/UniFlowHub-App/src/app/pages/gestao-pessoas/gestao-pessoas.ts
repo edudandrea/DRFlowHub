@@ -23,9 +23,8 @@ import {
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { ThemeService } from '../../core/theme.service';
 import { UnidadesService } from '../../core/unidades.service';
-import { AcessoSistema, PerfisService } from '../../core/perfis.service';
 
-type Tab = 'processos' | 'etapas' | 'cargos' | 'itens' | 'colaboradores' | 'acessos';
+type Tab = 'processos' | 'etapas' | 'cargos' | 'itens' | 'colaboradores';
 
 @Component({
   selector: 'app-gestao-pessoas',
@@ -34,11 +33,6 @@ type Tab = 'processos' | 'etapas' | 'cargos' | 'itens' | 'colaboradores' | 'aces
   styleUrl: './gestao-pessoas.scss',
 })
 export class GestaoPessoasPage implements OnInit {
-  private readonly defaultAcessosTi = ['ti', 'ti-admin', 'usuarios', 'empresas-revendas', 'base-conhecimento-ti', 'equipamentos-ti'];
-  private readonly defaultAcessosRh = ['rh', 'rh-admin', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto'];
-  private readonly defaultAcessosTiAdmin = ['ti-admin', 'base-conhecimento-ti', 'equipamentos-ti'];
-  private readonly defaultAcessosRhAdmin = ['rh-admin'];
-  private readonly hiddenAcessosTiAdmin = ['base-conhecimento-ti', 'equipamentos-ti'];
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
@@ -49,7 +43,6 @@ export class GestaoPessoasPage implements OnInit {
   private readonly toastr = inject(ToastrService);
   private readonly spinner = inject(NgxSpinnerService);
   private readonly profileFlow = inject(ProfileFlowService);
-  private readonly perfisService = inject(PerfisService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
   readonly theme = inject(ThemeService);
@@ -59,14 +52,12 @@ export class GestaoPessoasPage implements OnInit {
   readonly cargosCadastro = signal<GestaoPessoasCargo[]>([]);
   readonly itens = signal<GestaoPessoasItem[]>([]);
   readonly colaboradores = signal<GestaoPessoasColaborador[]>([]);
-  readonly acessosDisponiveis = signal<AcessoSistema[]>([]);
   readonly empresas = signal<Empresa[]>([]);
   readonly unidades = signal<Unidade[]>([]);
   readonly users = signal<User[]>([]);
   readonly selected = signal<GestaoPessoasProcesso | null>(null);
   readonly selectedEtapa = signal<GestaoPessoasEtapa | null>(null);
   readonly selectedCargo = signal<GestaoPessoasCargo | null>(null);
-  readonly selectedAcessoCargo = signal<GestaoPessoasCargo | null>(null);
   readonly selectedItem = signal<GestaoPessoasItem | null>(null);
   readonly selectedColaborador = signal<GestaoPessoasColaborador | null>(null);
   readonly loading = signal(false);
@@ -77,7 +68,6 @@ export class GestaoPessoasPage implements OnInit {
   readonly modalItemOpen = signal(false);
   readonly modalColaboradorOpen = signal(false);
   readonly modalRetiradaOpen = signal(false);
-  readonly modalAcessosOpen = signal(false);
   readonly cancelModalOpen = signal(false);
   readonly profileMenuOpen = signal(false);
   readonly activeTab = signal<Tab>('processos');
@@ -86,7 +76,6 @@ export class GestaoPessoasPage implements OnInit {
 
   readonly canManage = computed(() => this.auth.hasAnyAccess(['rh-admin', 'rh', 'gestao-pessoas', 'gestao-pessoas-admin', 'cartao-ponto']) || this.auth.hasAnyRole(['RH']));
   readonly canManageCargos = computed(() => this.canManage());
-  readonly canManageAcessos = computed(() => this.auth.hasAnyAccess(['usuarios', 'empresas-revendas']) || this.auth.hasAnyRole(['Admin', 'TI']));
   readonly canMove = computed(() => this.canManage());
   readonly etapasDoProcesso = computed(() => this.selected() ? this.etapasDoItem(this.selected()!) : []);
   readonly etapaAtualIndex = computed(() => this.etapaAtualIndexFor(this.selected()));
@@ -172,7 +161,6 @@ export class GestaoPessoasPage implements OnInit {
   });
   readonly cargoItensDraft = signal<GestaoPessoasCargoItemPayload[]>([]);
   readonly cargoAcessosDraft = signal<string[]>([]);
-  readonly acessosCargoDraft = signal<string[]>([]);
 
   readonly colaboradorForm = this.fb.nonNullable.group({
     nome: ['', Validators.required],
@@ -189,6 +177,7 @@ export class GestaoPessoasPage implements OnInit {
   });
 
   readonly retiradaForm = this.fb.nonNullable.group({
+    colaboradorId: [0, [Validators.required, Validators.min(1)]],
     itemId: [0, [Validators.required, Validators.min(1)]],
     quantidade: [1, [Validators.required, Validators.min(1)]],
     dataRetirada: [this.todayInput()],
@@ -235,10 +224,6 @@ export class GestaoPessoasPage implements OnInit {
     this.loadCargos();
     this.loadItens();
     this.loadColaboradores();
-    this.perfisService.listAcessos().subscribe({
-      next: (acessos) => this.acessosDisponiveis.set(acessos.filter((acesso) => acesso.chave !== 'perfis')),
-      error: () => this.acessosDisponiveis.set([]),
-    });
   }
 
   load(): void {
@@ -467,92 +452,6 @@ export class GestaoPessoasPage implements OnInit {
     });
   }
 
-  openAcessosCargo(cargo: GestaoPessoasCargo): void {
-    const current = this.cargosCadastro().find((item) => item.id === cargo.id) ?? cargo;
-    this.selectedAcessoCargo.set(current);
-    this.acessosCargoDraft.set(this.acessosEfetivosCargo(current));
-    this.modalAcessosOpen.set(true);
-  }
-
-  toggleAcessoCargo(chave: string): void {
-    const current = this.acessosCargoDraft();
-    this.acessosCargoDraft.set(current.includes(chave) ? current.filter((item) => item !== chave) : [...current, chave]);
-  }
-
-  hasAcessoCargo(chave: string): boolean {
-    return this.acessosCargoDraft().includes(chave);
-  }
-
-  acessoNome(chave: string): string {
-    return this.acessosDisponiveis().find((item) => item.chave === chave)?.nome ?? chave;
-  }
-
-  acessosEfetivosCargo(cargo: GestaoPessoasCargo | null | undefined): string[] {
-    if (!cargo) {
-      return [];
-    }
-
-    const acessos = new Set<string>(cargo.acessos ?? []);
-    const cargoText = `${cargo.nome} ${cargo.departamento}`;
-    if (this.isTiText(cargoText)) {
-      this.defaultAcessosTi.forEach((acesso) => acessos.add(acesso));
-    }
-    if (this.isRhText(cargoText)) {
-      this.defaultAcessosRh.forEach((acesso) => acessos.add(acesso));
-    }
-
-    return Array.from(acessos).sort((a, b) => this.acessoNome(a).localeCompare(this.acessoNome(b)));
-  }
-
-  isAcessoPadraoCargo(chave: string): boolean {
-    const cargo = this.selectedAcessoCargo();
-    if (!cargo) {
-      return false;
-    }
-
-    const cargoText = `${cargo.nome} ${cargo.departamento}`;
-    return (this.isTiText(cargoText) && this.defaultAcessosTiAdmin.includes(chave))
-      || (this.isRhText(cargoText) && this.defaultAcessosRhAdmin.includes(chave));
-  }
-
-  isHiddenAcessoCargo(chave: string): boolean {
-    const cargo = this.selectedAcessoCargo();
-    if (!cargo) {
-      return false;
-    }
-
-    const cargoText = `${cargo.nome} ${cargo.departamento}`;
-    return this.isTiText(cargoText)
-      && cargo.acessos.includes('ti-admin')
-      && this.hiddenAcessosTiAdmin.includes(chave);
-  }
-
-  submitAcessosCargo(): void {
-    const cargo = this.selectedAcessoCargo();
-    if (!cargo || this.saving()) {
-      return;
-    }
-
-    this.saving.set(true);
-    this.service.saveCargo({
-      nome: cargo.nome,
-      departamento: cargo.departamento,
-      descricao: cargo.descricao,
-      ativo: cargo.ativo,
-      itens: cargo.itens.map((item) => ({ itemId: item.itemId, quantidade: item.quantidade, obrigatorio: item.obrigatorio })),
-      acessos: this.acessosCargoDraft(),
-    }, cargo.id).subscribe({
-      next: (saved) => {
-        this.cargosCadastro.set(this.cargosCadastro().map((item) => item.id === saved.id ? saved : item));
-        this.selectedAcessoCargo.set(saved);
-        this.saving.set(false);
-        this.modalAcessosOpen.set(false);
-        this.toastr.success('Acessos do cargo atualizados.', 'Controle de acessos');
-      },
-      error: (error) => this.failSave(error?.error || 'Nao foi possivel salvar os acessos do cargo.'),
-    });
-  }
-
   openNewItem(tipo: GestaoPessoasItemTipo = 'EPI'): void {
     this.selectedItem.set(null);
     this.itemForm.reset({ tipo, nome: '', codigo: '', tamanho: '', descricao: '', ativo: true });
@@ -636,6 +535,11 @@ export class GestaoPessoasPage implements OnInit {
     this.saving.set(true);
     const selected = this.selectedColaborador();
     const raw = this.colaboradorForm.getRawValue();
+    if (!selected && (!raw.cpf.trim() || !raw.email.trim())) {
+      this.saving.set(false);
+      this.toastr.warning('Informe CPF e email para criar o usuario do colaborador.', 'Atencao');
+      return;
+    }
     const payload = {
       ...raw,
       cargoId: raw.cargoId > 0 ? raw.cargoId : null,
@@ -657,19 +561,36 @@ export class GestaoPessoasPage implements OnInit {
 
   openRetirada(colaborador: GestaoPessoasColaborador): void {
     this.selectedColaborador.set(colaborador);
-    this.retiradaForm.reset({ itemId: 0, quantidade: 1, dataRetirada: this.todayInput(), dataDevolucao: '', status: 'Retirado', observacoes: '' });
+    this.retiradaForm.reset({ colaboradorId: colaborador.id, itemId: 0, quantidade: 1, dataRetirada: this.todayInput(), dataDevolucao: '', status: 'Retirado', observacoes: '' });
+    this.modalRetiradaOpen.set(true);
+  }
+
+  openRetiradaItem(item: GestaoPessoasItem): void {
+    this.selectedColaborador.set(null);
+    this.retiradaForm.reset({ colaboradorId: 0, itemId: item.id, quantidade: 1, dataRetirada: this.todayInput(), dataDevolucao: '', status: 'Retirado', observacoes: '' });
     this.modalRetiradaOpen.set(true);
   }
 
   submitRetirada(): void {
-    const colaborador = this.selectedColaborador();
-    if (!colaborador || this.retiradaForm.invalid || this.saving()) {
+    if (this.retiradaForm.invalid || this.saving()) {
       this.retiradaForm.markAllAsTouched();
       return;
     }
     const raw = this.retiradaForm.getRawValue();
+    const colaborador = this.colaboradores().find((item) => item.id === raw.colaboradorId);
+    if (!colaborador) {
+      this.toastr.warning('Selecione o colaborador que esta retirando o item.', 'Atencao');
+      return;
+    }
     this.saving.set(true);
-    this.service.addRetirada(colaborador.id, { ...raw, dataDevolucao: raw.dataDevolucao || null }).subscribe({
+    this.service.addRetirada(colaborador.id, {
+      itemId: raw.itemId,
+      quantidade: raw.quantidade,
+      dataRetirada: raw.dataRetirada,
+      dataDevolucao: raw.dataDevolucao || null,
+      status: raw.status,
+      observacoes: raw.observacoes,
+    }).subscribe({
       next: (retirada) => {
         const updated = { ...colaborador, retiradas: [retirada, ...colaborador.retiradas] };
         this.colaboradores.set(this.colaboradores().map((item) => item.id === colaborador.id ? updated : item));
@@ -878,19 +799,6 @@ export class GestaoPessoasPage implements OnInit {
       .trim();
   }
 
-  private isTiText(value: string): boolean {
-    const normalized = ` ${this.normalize(value)} `;
-    return normalized.includes(' ti ')
-      || normalized.includes(' t.i ')
-      || normalized.includes(' tecnologia ');
-  }
-
-  private isRhText(value: string): boolean {
-    const normalized = ` ${this.normalize(value)} `;
-    return normalized.includes(' rh ')
-      || normalized.includes(' recursos humanos ');
-  }
-
   private uniqueSorted(values: Array<string | null | undefined>): string[] {
     return Array.from(new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b));
@@ -912,9 +820,6 @@ export class GestaoPessoasPage implements OnInit {
   private canUseTab(tab: Tab): boolean {
     if (tab === 'cargos') {
       return this.canManageCargos();
-    }
-    if (tab === 'acessos') {
-      return this.canManageAcessos();
     }
     if (['etapas', 'itens', 'colaboradores'].includes(tab)) {
       return this.canManage();

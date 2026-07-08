@@ -35,108 +35,94 @@
     <article class="panel">
       <div class="panel-title">
         <div>
-          <h2>Arvore de empresas</h2>
-          <span>{{ empresas().length }} registros</span>
+          <h2>Empresas e revendas do Oracle</h2>
+          <span>{{ revendas().length }} revenda(s), incluindo inativas</span>
         </div>
-        <button type="button" (click)="novaEmpresa()">Nova Empresa</button>
+        <button class="secondary" type="button" (click)="load()">Atualizar</button>
       </div>
 
       <div class="company-tree">
-        @for (node of empresaTree(); track node.empresa.id) {
-          <section class="company-node" [class.active]="expandedEmpresaId() === node.empresa.id">
+        @for (node of empresaTree(); track node.empresaNumero) {
+          <section class="company-node" [class.active]="expandedEmpresaNumero() === node.empresaNumero" [class.inactive]="!node.empresaAtiva">
             <div class="company-row">
-              <button class="record-row" type="button" (click)="selectEmpresa(node.empresa)">
-                <span class="code">{{ node.empresa.numero }}</span>
-                <strong>{{ node.empresa.nome }}</strong>
-                <small>{{ node.revendas.length }} revenda(s) cadastrada(s)</small>
-                <span class="row-hint">{{ expandedEmpresaId() === node.empresa.id ? 'Recolher' : 'Ver revendas' }}</span>
+              <button class="record-row" type="button" (click)="selectEmpresa(node.empresaNumero)">
+                <span class="code">{{ node.empresaNumero }}</span>
+                <strong>{{ node.empresaNome }}</strong>
+                <small>{{ node.revendas.length }} revenda(s) no Oracle</small>
+                <small>{{ node.empresaAtiva ? 'Ativa' : 'Inativa' }}</small>
+                <span class="row-hint">{{ expandedEmpresaNumero() === node.empresaNumero ? 'Recolher' : 'Ver revendas' }}</span>
               </button>
-              <div class="company-logo-editor">
-                <img [src]="node.empresa.logoUrl || branding.defaultLogo" [alt]="'Logo de ' + node.empresa.nome" />
-                <label class="secondary logo-upload compact">
-                  Escolher
-                  <input type="file" accept="image/*" [disabled]="savingLogoId() === node.empresa.id" (change)="onCompanyLogoSelected($event, node.empresa)" />
-                </label>
-                <button class="secondary logo-remove" type="button" [disabled]="savingLogoId() === node.empresa.id || !node.empresa.logoUrl" (click)="clearCompanyLogo(node.empresa)">
-                  Remover
-                </button>
-              </div>
-              <button class="secondary action-button" type="button" (click)="editEmpresa(node.empresa)">Editar</button>
+              <button class="secondary status-action" type="button" [disabled]="savingKey() === 'empresa:' + node.empresaNumero" (click)="toggleEmpresaStatus(node, $event)">
+                {{ node.empresaAtiva ? 'Desativar' : 'Reativar' }}
+              </button>
             </div>
-            @if (expandedEmpresaId() === node.empresa.id) {
+
+            @if (expandedEmpresaNumero() === node.empresaNumero) {
               <div class="branch-list">
-                @for (revenda of node.revendas; track revenda.id) {
-                  <button class="branch-row" type="button" (click)="editRevenda(revenda)">
-                    <span>{{ node.empresa.numero }}/{{ revenda.numeroRevenda }}</span>
+                @for (revenda of node.revendas; track revenda.empresaNumero + '-' + revenda.numeroRevenda) {
+                  <button class="branch-row" type="button" [class.inactive]="revenda.ativa === false" (click)="editMontadora(revenda)">
+                    <span>{{ revenda.empresaNumero }}/{{ revenda.numeroRevenda }}</span>
                     <strong>{{ revenda.revenda }}</strong>
-                    <small>{{ revenda.cnpj }}</small>
-                    <span class="row-hint">Editar</span>
+                    <small>{{ revenda.razaoSocial || revenda.cnpj }}</small>
+                    <small>{{ revenda.montadora || 'Sem montadora' }}</small>
+                    <small>{{ revenda.ativa === false ? 'Inativa' : 'Ativa' }}</small>
+                    <span class="row-hint">Montadora</span>
                   </button>
                 } @empty {
-                  <p class="empty">Nenhuma revenda cadastrada para esta empresa.</p>
+                  <p class="empty">Nenhuma revenda retornada para esta empresa.</p>
                 }
-                <button class="branch-add" type="button" (click)="novaRevenda(node.empresa.id)">Nova Revenda</button>
               </div>
             }
           </section>
         } @empty {
-          <p class="empty">Nenhuma empresa cadastrada.</p>
+          <p class="empty">Nenhuma empresa retornada pelo Oracle.</p>
         }
       </div>
     </article>
-
   </section>
 
-  @if (empresaModalOpen()) {
+  @if (montadoraModalOpen()) {
     <section class="modal-backdrop">
-      <form class="modal-dialog" [formGroup]="empresaForm" (ngSubmit)="saveEmpresa()" (click)="$event.stopPropagation()">
+      <form class="modal-dialog" [formGroup]="montadoraForm" (ngSubmit)="saveMontadora()" (click)="$event.stopPropagation()">
         <header>
           <div>
-            <p>Empresa</p>
-            <h2>{{ selectedEmpresa() ? 'Editar empresa' : 'Nova empresa' }}</h2>
+            <p>Montadora</p>
+            <h2>{{ selectedRevenda()?.empresaNumero }}/{{ selectedRevenda()?.numeroRevenda }} - {{ selectedRevenda()?.revenda }}</h2>
           </div>
-          <button class="icon-button" type="button" (click)="closeEmpresaModal()">x</button>
+          <button class="icon-button" type="button" (click)="closeMontadoraModal()">x</button>
         </header>
-        <div class="form-grid">
-          <label>Codigo <input type="number" formControlName="numero" /></label>
-          <label>Nome <input formControlName="nome" /></label>
-        </div>
-        <div class="modal-actions">
-          <button class="secondary" type="button" (click)="closeEmpresaModal()">Cancelar</button>
-          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar empresa' }}</button>
-        </div>
-      </form>
-    </section>
-  }
 
-  @if (revendaModalOpen()) {
-    <section class="modal-backdrop">
-      <form class="modal-dialog" [formGroup]="revendaForm" (ngSubmit)="saveRevenda()" (click)="$event.stopPropagation()">
-        <header>
-          <div>
-            <p>Revenda</p>
-            <h2>{{ selectedRevenda() ? 'Editar revenda' : 'Nova revenda' }}</h2>
-          </div>
-          <button class="icon-button" type="button" (click)="closeRevendaModal()">x</button>
-        </header>
-        <div class="form-grid two">
-          <label>
-            Empresa
-            <select formControlName="empresaId">
-              <option [ngValue]="0">Selecione</option>
-              @for (empresa of empresas(); track empresa.id) {
-                <option [ngValue]="empresa.id">{{ empresa.numero }} - {{ empresa.nome }}</option>
-              }
-            </select>
-          </label>
-          <label>Código Revenda <input type="number" formControlName="numeroRevenda" /></label>
-          <label>Revenda <input formControlName="revenda" /></label>
-          <label>CNPJ <input formControlName="cnpj" /></label>
-          <label class="wide">Endereco <textarea formControlName="endereco" rows="3"></textarea></label>
+        <div class="readonly-grid">
+          <span><strong>Empresa</strong>{{ selectedRevenda()?.empresa }}</span>
+          <span><strong>Razao social</strong>{{ selectedRevenda()?.razaoSocial || '-' }}</span>
+          <span><strong>CNPJ</strong>{{ selectedRevenda()?.cnpj || '-' }}</span>
+          <span><strong>Endereco</strong>{{ selectedRevenda()?.endereco || '-' }}</span>
+          <span><strong>Status</strong>{{ selectedRevenda()?.ativa === false ? 'Inativa' : 'Ativa' }}</span>
         </div>
+
+        <div class="form-grid">
+          <label>Montadora <input formControlName="montadora" /></label>
+          <label class="logo-field">
+            <span>Logo da montadora</span>
+            <div class="logo-editor">
+              <img [src]="montadoraForm.controls.logoMontadoraUrl.value || branding.defaultLogo" alt="Logo da montadora" />
+              <label class="secondary logo-upload">
+                Escolher
+                <input type="file" accept="image/*" [disabled]="savingKey() !== null" (change)="onLogoSelected($event)" />
+              </label>
+              <button class="secondary" type="button" [disabled]="savingKey() !== null || !montadoraForm.controls.logoMontadoraUrl.value" (click)="clearLogo()">
+                Remover
+              </button>
+            </div>
+          </label>
+        </div>
+
         <div class="modal-actions">
-          <button class="secondary" type="button" (click)="closeRevendaModal()">Cancelar</button>
-          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar revenda' }}</button>
+          <button class="secondary" type="button" [disabled]="savingKey() !== null" (click)="selectedRevenda() && toggleRevendaStatus(selectedRevenda()!)">
+            {{ selectedRevenda()?.revendaAtiva === false ? 'Reativar revenda' : 'Desativar revenda' }}
+          </button>
+          <button class="secondary" type="button" (click)="closeMontadoraModal()">Cancelar</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Salvando...' : 'Salvar montadora' }}</button>
         </div>
       </form>
     </section>

@@ -1012,6 +1012,20 @@ button[type='submit']:not(.ghost):hover,
 .bi-shell .filter-action { width: 100%; }
 .bi-shell .client-rankings.single { grid-template-columns: 1fr; }
 
+/* Modal sizing and centering */
+.modal-md {
+  max-width: 500px !important;
+  width: 90vw !important;
+  margin: auto !important;
+}
+
+.modal-dialog-centered {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 100% !important;
+}
+
 @keyframes modal-enter {
   from {
     opacity: 0;

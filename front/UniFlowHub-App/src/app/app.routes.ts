@@ -16,6 +16,7 @@ import { VeiculosComponent } from './pages/veiculos/veiculos.component';
 import { VeiculosBiPage } from './pages/veiculos-bi/veiculos-bi';
 import { EmpresasRevendasPage } from './pages/empresas-revendas/empresas-revendas';
 import { GestaoPessoasPage } from './pages/gestao-pessoas/gestao-pessoas';
+import { ControleAcessosPage } from './pages/controle-acessos/controle-acessos';
 
 const PECAS_BI_ACCESSES = [
   'pecas-admin',
@@ -104,6 +105,11 @@ export const routes: Routes = [
     canActivate: [accessGuard(PECAS_BI_ACCESSES)],
   },
   {
+    path: 'e-commerce',
+    loadComponent: () => import('./pages/e-commerce/e-commerce.component').then((m) => m.ECommerceComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'estoque/veiculos',
     component: VeiculosComponent,
     canActivate: [accessGuard(['veiculos'])],
@@ -130,9 +136,8 @@ export const routes: Routes = [
   },
   {
     path: 'cadastros/controle-acessos',
-    component: GestaoPessoasPage,
+    component: ControleAcessosPage,
     canActivate: [accessGuard(['usuarios'])],
-    data: { tab: 'acessos' },
   },
   { path: '', redirectTo: 'hub', pathMatch: 'full' },
   { path: '**', redirectTo: '' },

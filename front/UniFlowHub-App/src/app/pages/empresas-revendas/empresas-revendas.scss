@@ -67,7 +67,7 @@ header p,
 
 .company-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: stretch;
 }
@@ -75,6 +75,12 @@ header p,
 .company-node.active .record-row {
   background: color-mix(in srgb, var(--color-brand-blue) 7%, var(--color-surface));
   box-shadow: inset 3px 0 0 var(--color-brand-blue);
+}
+
+.company-node.inactive .record-row,
+.branch-row.inactive {
+  opacity: 0.62;
+  background: color-mix(in srgb, var(--color-muted) 8%, var(--color-surface));
 }
 
 .action-button {
@@ -91,7 +97,7 @@ header p,
 
 .branch-row {
   display: grid;
-  grid-template-columns: 96px minmax(220px, 1fr) minmax(180px, 0.7fr) 72px;
+  grid-template-columns: 96px minmax(170px, 0.8fr) minmax(220px, 1fr) minmax(140px, 0.5fr) 76px 92px;
   align-items: center;
   gap: 14px;
   width: 100%;
@@ -165,7 +171,7 @@ header p,
 
 .record-row {
   display: grid;
-  grid-template-columns: 72px minmax(220px, 1fr) minmax(180px, 0.45fr) 110px;
+  grid-template-columns: 72px minmax(220px, 1fr) minmax(180px, 0.45fr) 76px 110px;
   align-items: center;
   gap: 14px;
   width: 100%;
@@ -210,6 +216,11 @@ header p,
   font-size: 12px;
   font-weight: 900;
   text-align: right;
+}
+
+.status-action {
+  min-width: 112px;
+  padding-inline: 14px;
 }
 
 .code {
@@ -308,8 +319,7 @@ label {
   color: var(--color-text);
 }
 
-.logo-editor,
-.company-logo-editor {
+.logo-editor {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -320,25 +330,13 @@ label {
   background: color-mix(in srgb, var(--color-brand-blue-soft) 46%, var(--color-surface));
 }
 
-.company-logo-editor {
-  justify-content: flex-end;
-  min-width: 274px;
-  padding: 8px;
-}
-
-.logo-editor img,
-.company-logo-editor img {
+.logo-editor img {
   width: 74px;
   height: 74px;
   object-fit: contain;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: #ffffff;
-}
-
-.company-logo-editor img {
-  width: 42px;
-  height: 42px;
 }
 
 .logo-upload {
@@ -378,6 +376,31 @@ textarea {
   font: inherit;
 }
 
+.readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readonly-grid span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card-alt);
+  color: var(--color-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.readonly-grid strong {
+  color: var(--color-text);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 textarea {
   padding-block: 10px;
 }
@@ -400,17 +423,10 @@ textarea {
     grid-column: span 1;
   }
 
-  .company-row {
-    grid-template-columns: 1fr;
-  }
-
-  .company-logo-editor {
-    justify-content: flex-start;
-    min-width: 0;
-  }
-
   .record-row,
-  .branch-row {
+  .branch-row,
+  .readonly-grid,
+  .company-row {
     grid-template-columns: 1fr;
     gap: 8px;
     align-items: flex-start;

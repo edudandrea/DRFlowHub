@@ -28,6 +28,13 @@ interface MonitorItem {
   incidenteCriadoEm?: string;
 }
 
+interface MonitorHistoryEntry {
+  timestamp: Date;
+  latency: number;
+  status: MonitorStatus;
+  speed?: number;
+}
+
 interface MonitoramentoTesteResponse {
   online: boolean;
   status: string;
@@ -55,6 +62,7 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
   private readonly chamadosTIService = inject(ChamadosTIService);
   private readonly incidentCreationInProgress = new Set<number>();
   readonly theme = inject(ThemeService);
+  readonly Math = Math; // Expor Math para o template
 
   readonly itens = signal<MonitorItem[]>([]);
   readonly testingAll = signal(false);
@@ -79,7 +87,12 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
     intervaloSegundos: [DEFAULT_INTERVAL_SECONDS, [Validators.required, Validators.min(10)]],
   });
 
+  readonly selectedPanelItem = signal<MonitorItem | null>(null);
+  readonly panelHistory = signal<MonitorHistoryEntry[]>([]);
+  readonly fullscreenMode = signal<boolean>(false);
+
   private timers = new Map<number, ReturnType<typeof setInterval>>();
+  private historyMap = new Map<number, MonitorHistoryEntry[]>();
 
   ngOnInit(): void {
     this.itens.set(this.loadItems());
@@ -164,6 +177,17 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
     this.editingItem.set(null);
   }
 
+  openPanel(item: MonitorItem): void {
+    this.selectedPanelItem.set(item);
+    const history = this.historyMap.get(item.id) || [];
+    this.panelHistory.set(history.slice(-60)); // Últimos 60 registros
+  }
+
+  closePanel(): void {
+    this.selectedPanelItem.set(null);
+    this.panelHistory.set([]);
+  }
+
   saveEdit(): void {
     const item = this.editingItem();
     if (!item) {
@@ -225,6 +249,12 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
         incidenteChamadoId: undefined,
         incidenteCriadoEm: undefined,
       });
+
+      this.recordHistory(item.id, {
+        timestamp: new Date(),
+        latency: response.tempoRespostaMs,
+        status: 'online',
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sem resposta no tempo configurado';
       this.patchItem(item.id, {
@@ -232,6 +262,12 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
         ultimaConsulta: new Date().toISOString(),
         tempoRespostaMs: undefined,
         erro: message,
+      });
+
+      this.recordHistory(item.id, {
+        timestamp: new Date(),
+        latency: 0,
+        status: 'offline',
       });
 
       if (previousStatus !== 'offline' || !item.incidenteChamadoId) {
@@ -356,6 +392,110 @@ export class MonitoramentoComponent implements OnInit, OnDestroy {
   private patchItem(id: number, patch: Partial<MonitorItem>): void {
     this.itens.set(this.itens().map((item) => item.id === id ? { ...item, ...patch } : item));
     this.saveItems();
+  }
+
+  private recordHistory(itemId: number, entry: MonitorHistoryEntry): void {
+    const history = this.historyMap.get(itemId) || [];
+    history.push(entry);
+
+    // Manter apenas os últimos 120 registros (2 horas com intervalo de 60s)
+    if (history.length > 120) {
+      history.shift();
+    }
+
+    this.historyMap.set(itemId, history);
+
+    // Atualizar painel se este item estiver selecionado
+    const selectedItem = this.selectedPanelItem();
+    if (selectedItem && selectedItem.id === itemId) {
+      this.panelHistory.set(history.slice(-60));
+    }
+  }
+
+  getMaxLatency(): number {
+    const history = this.panelHistory();
+    return Math.max(0, ...history.map((h) => h.latency), 100);
+  }
+
+  getAverageLatency(): number {
+    const history = this.panelHistory();
+    if (history.length === 0) return 0;
+    return Math.round(history.reduce((sum, h) => sum + h.latency, 0) / history.length);
+  }
+
+  getIncidentTimes(): string[] {
+    const history = this.panelHistory();
+    return history
+      .filter((h) => h.status === 'offline')
+      .map((h) => h.timestamp.toLocaleTimeString('pt-BR'))
+      .slice(-5); // Últimos 5 incidentes
+  }
+
+  getChartPoints(): string {
+    const history = this.panelHistory();
+    if (history.length === 0) return '';
+
+    const maxLatency = this.getMaxLatency() || 100;
+    const chartWidth = 1090; // 1150 - 60
+    const chartHeight = 300; // 350 - 50
+    const xStart = 60;
+    const yStart = 350;
+
+    const points = history.map((entry, index) => {
+      const x = xStart + (index / (history.length - 1 || 1)) * chartWidth;
+      const y = yStart - (entry.latency / maxLatency) * chartHeight;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    return points.join(' ');
+  }
+
+  toggleFullscreenMode(): void {
+    this.fullscreenMode.set(!this.fullscreenMode());
+  }
+
+  getItemHistory(itemId: number): MonitorHistoryEntry[] {
+    return this.historyMap.get(itemId) || [];
+  }
+
+  getItemMaxLatency(itemId: number): number {
+    const history = this.getItemHistory(itemId);
+    if (history.length === 0) return 100;
+    return Math.max(100, ...history.map((h) => h.latency));
+  }
+
+  getItemAverageLatency(itemId: number): number {
+    const history = this.getItemHistory(itemId);
+    if (history.length === 0) return 0;
+    const sum = history.reduce((acc, h) => acc + h.latency, 0);
+    return Math.round(sum / history.length);
+  }
+
+  getItemChartPoints(itemId: number): string {
+    const history = this.getItemHistory(itemId).slice(-30); // Últimos 30 para não ficar muito denso
+    if (history.length === 0) return '';
+
+    const maxLatency = this.getItemMaxLatency(itemId) || 100;
+    const chartWidth = 380; // 420 - 40
+    const chartHeight = 80; // 120 - 40
+    const xStart = 40;
+    const yStart = 120;
+
+    const points = history.map((entry, index) => {
+      const x = xStart + (index / (history.length - 1 || 1)) * chartWidth;
+      const y = yStart - (entry.latency / maxLatency) * chartHeight;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    return points.join(' ');
+  }
+
+  getItemIncidents(itemId: number): string[] {
+    const history = this.getItemHistory(itemId);
+    return history
+      .filter((h) => h.status === 'offline')
+      .map((h) => h.timestamp.toLocaleTimeString('pt-BR'))
+      .slice(-3); // Últimos 3 incidentes
   }
 
   private loadItems(): MonitorItem[] {

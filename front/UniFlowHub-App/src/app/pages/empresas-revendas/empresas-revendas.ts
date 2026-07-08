@@ -4,13 +4,15 @@ import { Router } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
 import { AuthService } from '../../core/auth.service';
 import { BrandingService } from '../../core/branding.service';
-import { Empresa, Unidade } from '../../core/models';
+import { Unidade } from '../../core/models';
 import { ProfileFlowService } from '../../core/profile-flow.service';
 import { ThemeService } from '../../core/theme.service';
 import { UnidadesService } from '../../core/unidades.service';
 
 interface EmpresaRevendasNode {
-  empresa: Empresa;
+  empresaNumero: number;
+  empresaNome: string;
+  empresaAtiva: boolean;
   revendas: Unidade[];
 }
 
@@ -28,37 +30,42 @@ export class EmpresasRevendasPage implements OnInit {
   private readonly toastr = inject(ToastrService);
   private readonly profileFlow = inject(ProfileFlowService);
   readonly branding = inject(BrandingService);
-
   readonly theme = inject(ThemeService);
-  readonly user = computed(() => this.auth.user());
-  readonly empresas = signal<Empresa[]>([]);
-  readonly revendas = signal<Unidade[]>([]);
-  readonly selectedEmpresa = signal<Empresa | null>(null);
-  readonly selectedRevenda = signal<Unidade | null>(null);
-  readonly expandedEmpresaId = signal<number | null>(null);
-  readonly profileMenuOpen = signal(false);
-  readonly empresaModalOpen = signal(false);
-  readonly revendaModalOpen = signal(false);
-  readonly saving = signal(false);
-  readonly savingLogoId = signal<number | null>(null);
-  readonly empresaTree = computed<EmpresaRevendasNode[]>(() => this.empresas().map((empresa) => ({
-    empresa,
-    revendas: this.revendas()
-      .filter((revenda) => revenda.empresaId === empresa.id)
-      .sort((a, b) => a.numeroRevenda - b.numeroRevenda || a.revenda.localeCompare(b.revenda)),
-  })));
 
-  readonly empresaForm = this.fb.nonNullable.group({
-    numero: [0, [Validators.required, Validators.min(1)]],
-    nome: ['', Validators.required],
+  readonly user = computed(() => this.auth.user());
+  readonly revendas = signal<Unidade[]>([]);
+  readonly selectedRevenda = signal<Unidade | null>(null);
+  readonly expandedEmpresaNumero = signal<number | null>(null);
+  readonly profileMenuOpen = signal(false);
+  readonly montadoraModalOpen = signal(false);
+  readonly saving = signal(false);
+  readonly savingKey = signal<string | null>(null);
+
+  readonly empresaTree = computed<EmpresaRevendasNode[]>(() => {
+    const grouped = new Map<number, EmpresaRevendasNode>();
+    for (const revenda of this.revendas()) {
+      const node = grouped.get(revenda.empresaNumero) ?? {
+        empresaNumero: revenda.empresaNumero,
+        empresaNome: revenda.empresa,
+        empresaAtiva: revenda.empresaAtiva !== false,
+        revendas: [],
+      };
+      node.empresaAtiva = revenda.empresaAtiva !== false;
+      node.revendas.push(revenda);
+      grouped.set(revenda.empresaNumero, node);
+    }
+
+    return Array.from(grouped.values())
+      .map((node) => ({
+        ...node,
+        revendas: node.revendas.sort((a, b) => a.numeroRevenda - b.numeroRevenda || a.revenda.localeCompare(b.revenda)),
+      }))
+      .sort((a, b) => a.empresaNumero - b.empresaNumero || a.empresaNome.localeCompare(b.empresaNome));
   });
 
-  readonly revendaForm = this.fb.nonNullable.group({
-    empresaId: [0, [Validators.required, Validators.min(1)]],
-    numeroRevenda: [0, [Validators.required, Validators.min(1)]],
-    revenda: ['', Validators.required],
-    cnpj: ['', Validators.required],
-    endereco: ['', Validators.required],
+  readonly montadoraForm = this.fb.nonNullable.group({
+    montadora: ['', Validators.required],
+    logoMontadoraUrl: [''],
   });
 
   ngOnInit(): void {
@@ -66,12 +73,127 @@ export class EmpresasRevendasPage implements OnInit {
   }
 
   load(): void {
-    this.service.listEmpresas().subscribe({ next: (items) => this.empresas.set(items.sort((a, b) => a.numero - b.numero)) });
-    this.service.list().subscribe({ next: (items) => this.revendas.set(items.sort((a, b) => a.empresaNumero - b.empresaNumero || a.numeroRevenda - b.numeroRevenda || a.revenda.localeCompare(b.revenda))) });
+    this.service.listEmpresasRevendas(true).subscribe({
+      next: (items) => this.revendas.set(items.map((item) => this.normalizeRevenda(item)).sort((a, b) => a.empresaNumero - b.empresaNumero || a.numeroRevenda - b.numeroRevenda)),
+      error: () => this.toastr.error('Nao foi possivel consultar empresas e revendas no Oracle.', 'Erro'),
+    });
   }
 
-  selectEmpresa(item: Empresa): void {
-    this.expandedEmpresaId.set(this.expandedEmpresaId() === item.id ? null : item.id);
+  selectEmpresa(empresaNumero: number): void {
+    this.expandedEmpresaNumero.set(this.expandedEmpresaNumero() === empresaNumero ? null : empresaNumero);
+  }
+
+  editMontadora(item: Unidade): void {
+    this.selectedRevenda.set(item);
+    this.montadoraForm.reset({
+      montadora: item.montadora ?? '',
+      logoMontadoraUrl: item.logoMontadoraUrl ?? '',
+    });
+    this.montadoraModalOpen.set(true);
+  }
+
+  closeMontadoraModal(): void {
+    if (!this.saving()) {
+      this.montadoraModalOpen.set(false);
+    }
+  }
+
+  saveMontadora(): void {
+    const selected = this.selectedRevenda();
+    if (!selected) {
+      return;
+    }
+
+    if (this.montadoraForm.invalid) {
+      this.montadoraForm.markAllAsTouched();
+      return;
+    }
+
+    this.saving.set(true);
+    this.service.updateMontadora(selected.empresaNumero, selected.numeroRevenda, this.montadoraForm.getRawValue()).subscribe({
+      next: (saved) => {
+        const normalized = this.normalizeRevenda(saved);
+        this.revendas.set(this.revendas().map((item) => this.sameRevenda(item, normalized) ? { ...item, ...normalized } : item));
+        this.saving.set(false);
+        this.montadoraModalOpen.set(false);
+        this.selectedRevenda.set(null);
+        this.toastr.success('Montadora atualizada.', 'Cadastros');
+      },
+      error: () => {
+        this.saving.set(false);
+        this.toastr.error('Nao foi possivel salvar a montadora.', 'Erro');
+      },
+    });
+  }
+
+  onLogoSelected(event: Event, revenda = this.selectedRevenda()): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || !revenda) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      this.toastr.warning('Selecione um arquivo de imagem.', 'Logo da montadora');
+      input.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.updateMontadoraLogo(revenda, String(reader.result ?? ''));
+      input.value = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  clearLogo(revenda = this.selectedRevenda()): void {
+    if (revenda) {
+      this.updateMontadoraLogo(revenda, '');
+    }
+  }
+
+  toggleEmpresaStatus(node: EmpresaRevendasNode, event: Event): void {
+    event.stopPropagation();
+    const ativa = !node.empresaAtiva;
+    this.savingKey.set(`empresa:${node.empresaNumero}`);
+    this.service.updateEmpresaStatus(node.empresaNumero, ativa).subscribe({
+      next: () => {
+        this.revendas.set(this.revendas().map((item) => {
+          if (item.empresaNumero !== node.empresaNumero) {
+            return item;
+          }
+
+          const revendaAtiva = item.revendaAtiva !== false;
+          return { ...item, empresaAtiva: ativa, ativa: ativa && revendaAtiva };
+        }));
+        this.savingKey.set(null);
+        this.toastr.success(ativa ? 'Empresa reativada.' : 'Empresa desativada com suas revendas.', 'Cadastros');
+      },
+      error: () => {
+        this.savingKey.set(null);
+        this.toastr.error('Nao foi possivel atualizar o status da empresa.', 'Erro');
+      },
+    });
+  }
+
+  toggleRevendaStatus(revenda: Unidade, event?: Event): void {
+    event?.stopPropagation();
+    const ativa = revenda.revendaAtiva === false;
+    this.savingKey.set(this.revendaKey(revenda));
+    this.service.updateRevendaStatus(revenda.empresaNumero, revenda.numeroRevenda, ativa).subscribe({
+      next: (saved) => {
+        const normalized = this.normalizeRevenda(saved);
+        this.revendas.set(this.revendas().map((item) => this.sameRevenda(item, normalized) ? { ...item, ...normalized } : item));
+        this.selectedRevenda.update((item) => item && this.sameRevenda(item, normalized) ? { ...item, ...normalized } : item);
+        this.savingKey.set(null);
+        this.toastr.success(ativa ? 'Revenda reativada.' : 'Revenda desativada.', 'Cadastros');
+      },
+      error: () => {
+        this.savingKey.set(null);
+        this.toastr.error('Nao foi possivel atualizar o status da revenda.', 'Erro');
+      },
+    });
   }
 
   goHome(): void {
@@ -100,143 +222,40 @@ export class EmpresasRevendasPage implements OnInit {
     }
   }
 
-  editEmpresa(item: Empresa): void {
-    this.selectedEmpresa.set(item);
-    this.empresaForm.reset({ numero: item.numero, nome: item.nome });
-    this.empresaModalOpen.set(true);
-  }
-
-  novaEmpresa(): void {
-    this.selectedEmpresa.set(null);
-    this.empresaForm.reset({ numero: 0, nome: '' });
-    this.empresaModalOpen.set(true);
-  }
-
-  closeEmpresaModal(): void {
-    if (!this.saving()) {
-      this.empresaModalOpen.set(false);
-    }
-  }
-
-  saveEmpresa(): void {
-    if (this.empresaForm.invalid) {
-      this.empresaForm.markAllAsTouched();
-      return;
-    }
-
-    this.saving.set(true);
-    const selected = this.selectedEmpresa();
-    const payload = {
-      ...this.empresaForm.getRawValue(),
-      logoUrl: selected?.logoUrl ?? '',
-    };
-    const request = selected ? this.service.updateEmpresa(selected.id, payload) : this.service.createEmpresa(payload);
-    request.subscribe({
-      next: () => {
-        this.branding.refresh();
-        this.saving.set(false);
-        this.empresaModalOpen.set(false);
-        this.selectedEmpresa.set(null);
-        this.load();
-        this.toastr.success('Empresa salva.', 'Cadastros');
-      },
-      error: () => {
-        this.saving.set(false);
-        this.toastr.error('Não foi possível salvar a empresa.', 'Erro');
-      },
-    });
-  }
-
-  onCompanyLogoSelected(event: Event, empresa: Empresa): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      this.toastr.warning('Selecione um arquivo de imagem.', 'Logo da empresa');
-      input.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      this.updateCompanyLogo(empresa, String(reader.result ?? ''));
-      input.value = '';
-    };
-    reader.readAsDataURL(file);
-  }
-
-  clearCompanyLogo(empresa: Empresa): void {
-    this.updateCompanyLogo(empresa, '');
-  }
-
-  private updateCompanyLogo(empresa: Empresa, logoUrl: string): void {
-    this.savingLogoId.set(empresa.id);
-    this.service.updateEmpresa(empresa.id, {
-      numero: empresa.numero,
-      nome: empresa.nome,
-      logoUrl,
+  private updateMontadoraLogo(revenda: Unidade, logoMontadoraUrl: string): void {
+    const key = this.revendaKey(revenda);
+    this.savingKey.set(key);
+    this.service.updateMontadora(revenda.empresaNumero, revenda.numeroRevenda, {
+      montadora: revenda.montadora ?? this.montadoraForm.controls.montadora.value,
+      logoMontadoraUrl,
     }).subscribe({
       next: (saved) => {
-        this.empresas.set(this.empresas().map((item) => item.id === saved.id ? saved : item).sort((a, b) => a.numero - b.numero));
-        this.branding.refresh();
-        this.savingLogoId.set(null);
-        this.toastr.success(logoUrl ? 'Logo atualizada.' : 'Logo removida.', 'Empresas');
+        const normalized = this.normalizeRevenda(saved);
+        this.revendas.set(this.revendas().map((item) => this.sameRevenda(item, normalized) ? { ...item, ...normalized } : item));
+        this.montadoraForm.controls.logoMontadoraUrl.setValue(normalized.logoMontadoraUrl ?? '');
+        this.savingKey.set(null);
+        this.toastr.success(logoMontadoraUrl ? 'Logo atualizada.' : 'Logo removida.', 'Cadastros');
       },
       error: () => {
-        this.savingLogoId.set(null);
-        this.toastr.error('NÃ£o foi possÃ­vel atualizar a logo.', 'Erro');
+        this.savingKey.set(null);
+        this.toastr.error('Nao foi possivel atualizar a logo.', 'Erro');
       },
     });
   }
 
-  editRevenda(item: Unidade): void {
-    this.selectedRevenda.set(item);
-    this.revendaForm.reset({
-      empresaId: item.empresaId ?? 0,
-      numeroRevenda: item.numeroRevenda,
-      revenda: item.revenda,
-      cnpj: item.cnpj,
-      endereco: item.endereco,
-    });
-    this.revendaModalOpen.set(true);
+  private sameRevenda(a: Unidade, b: Unidade): boolean {
+    return a.empresaNumero === b.empresaNumero && a.numeroRevenda === b.numeroRevenda;
   }
 
-  novaRevenda(empresaId = this.expandedEmpresaId() ?? 0): void {
-    this.selectedRevenda.set(null);
-    this.revendaForm.reset({ empresaId, numeroRevenda: 0, revenda: '', cnpj: '', endereco: '' });
-    this.revendaModalOpen.set(true);
+  private normalizeRevenda(item: Unidade & { empresaNome?: string; nomeRevenda?: string }): Unidade {
+    return {
+      ...item,
+      empresa: item.empresa || item.empresaNome || '',
+      revenda: item.revenda || item.nomeRevenda || '',
+    };
   }
 
-  closeRevendaModal(): void {
-    if (!this.saving()) {
-      this.revendaModalOpen.set(false);
-    }
-  }
-
-  saveRevenda(): void {
-    if (this.revendaForm.invalid) {
-      this.revendaForm.markAllAsTouched();
-      return;
-    }
-
-    this.saving.set(true);
-    const selected = this.selectedRevenda();
-    const request = selected ? this.service.update(selected.id, this.revendaForm.getRawValue()) : this.service.create(this.revendaForm.getRawValue());
-    request.subscribe({
-      next: () => {
-        this.saving.set(false);
-        this.revendaModalOpen.set(false);
-        this.selectedRevenda.set(null);
-        this.load();
-        this.toastr.success('Revenda salva.', 'Cadastros');
-      },
-      error: () => {
-        this.saving.set(false);
-        this.toastr.error('Não foi possível salvar a revenda.', 'Erro');
-      },
-    });
+  private revendaKey(revenda: Unidade): string {
+    return `${revenda.empresaNumero}:${revenda.numeroRevenda}`;
   }
 }

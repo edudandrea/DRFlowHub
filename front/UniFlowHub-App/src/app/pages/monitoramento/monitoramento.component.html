@@ -93,9 +93,14 @@
           <h2>Links e firewalls</h2>
           <p>{{ itens().length }} item(ns) cadastrados</p>
         </div>
-        <button class="secondary" type="button" (click)="testAll()" [disabled]="testingAll() || itens().length === 0">
-          {{ testingAll() ? 'Testando...' : 'Testar agora' }}
-        </button>
+        <div class="section-actions">
+          <button class="secondary" type="button" (click)="testAll()" [disabled]="testingAll() || itens().length === 0">
+            {{ testingAll() ? 'Testando...' : 'Testar agora' }}
+          </button>
+          <button class="secondary" type="button" (click)="toggleFullscreenMode()" [disabled]="itens().length === 0">
+            {{ fullscreenMode() ? '← Voltar' : '📺 Exibir em TV' }}
+          </button>
+        </div>
       </div>
 
       @if (itens().length === 0) {
@@ -136,6 +141,7 @@
                 <button class="secondary" type="button" (click)="testItem(item)" [disabled]="item.status === 'testando'">
                   {{ item.status === 'testando' ? 'Testando...' : 'Testar' }}
                 </button>
+                <button class="secondary" type="button" (click)="openPanel(item)">Exibir em painel</button>
                 <button class="secondary" type="button" (click)="openEditModal(item)">Editar</button>
                 <button class="danger" type="button" (click)="removeItem(item)">Remover</button>
               </div>
@@ -196,6 +202,261 @@
           <button class="primary" type="submit">Salvar alteracoes</button>
         </div>
       </form>
+    </section>
+  }
+
+  @if (selectedPanelItem()) {
+    <section class="panel-backdrop" (click)="closePanel()">
+      <div class="panel-container" (click)="$event.stopPropagation()">
+        <header class="panel-header">
+          <div class="panel-title">
+            <span class="status-dot" [class]="selectedPanelItem()!.status"></span>
+            <div>
+              <p class="system-name">Monitoramento - Painel</p>
+              <h1>{{ selectedPanelItem()?.nome }}</h1>
+              <p class="panel-subtitle">{{ selectedPanelItem()?.tipo }} • {{ formatTarget(selectedPanelItem()?.alvo || '') }}</p>
+            </div>
+          </div>
+          <button class="close-button" type="button" (click)="closePanel()">✕</button>
+        </header>
+
+        <div class="panel-content">
+          <section class="info-grid">
+            <article>
+              <span>Status</span>
+              <strong class="status-pill" [class]="selectedPanelItem()!.status">{{ statusLabel(selectedPanelItem()!.status) }}</strong>
+            </article>
+            <article>
+              <span>Latência média</span>
+              <strong>{{ getAverageLatency() }}ms</strong>
+            </article>
+            <article>
+              <span>Pico de latência</span>
+              <strong>{{ getMaxLatency() }}ms</strong>
+            </article>
+            <article>
+              <span>Última consulta</span>
+              <strong>{{ selectedPanelItem()?.ultimaConsulta ? (selectedPanelItem()!.ultimaConsulta | date: 'dd/MM HH:mm:ss') : '-' }}</strong>
+            </article>
+          </section>
+
+          <section class="chart-section">
+            <h2>Gráfico de latência (últimos 60 registros)</h2>
+            <svg class="latency-chart" viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid meet">
+              <!-- Grid lines -->
+              <g class="grid" stroke="#ddd" stroke-width="1" stroke-dasharray="5,5">
+                <line x1="60" y1="50" x2="1150" y2="50" />
+                <line x1="60" y1="125" x2="1150" y2="125" />
+                <line x1="60" y1="200" x2="1150" y2="200" />
+                <line x1="60" y1="275" x2="1150" y2="275" />
+                <line x1="60" y1="350" x2="1150" y2="350" />
+              </g>
+
+              <!-- Y-axis labels -->
+              <text x="40" y="55" text-anchor="end" font-size="12" fill="#666">{{ getMaxLatency() }}ms</text>
+              <text x="40" y="130" text-anchor="end" font-size="12" fill="#666">{{ Math.round(getMaxLatency() * 0.75) }}ms</text>
+              <text x="40" y="205" text-anchor="end" font-size="12" fill="#666">{{ Math.round(getMaxLatency() * 0.5) }}ms</text>
+              <text x="40" y="280" text-anchor="end" font-size="12" fill="#666">{{ Math.round(getMaxLatency() * 0.25) }}ms</text>
+              <text x="40" y="355" text-anchor="end" font-size="12" fill="#666">0ms</text>
+
+              <!-- Axes -->
+              <line x1="60" y1="350" x2="1150" y2="350" stroke="#333" stroke-width="2" />
+              <line x1="60" y1="50" x2="60" y2="350" stroke="#333" stroke-width="2" />
+
+              <!-- Data points and line -->
+              @if (panelHistory().length > 0) {
+                <polyline
+                  [attr.points]="getChartPoints()"
+                  fill="none"
+                  stroke="#4CAF50"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+
+                <!-- Data points -->
+                @for (point of getChartPoints().split(' '); track $index; let i = $index) {
+                  <circle
+                    [attr.cx]="point.split(',')[0]"
+                    [attr.cy]="point.split(',')[1]"
+                    r="3"
+                    [class]="panelHistory()[i]?.status === 'online' ? 'point-online' : 'point-offline'"
+                  />
+                }
+              }
+
+              <!-- Title -->
+              <text x="600" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">Latência ao longo do tempo</text>
+            </svg>
+          </section>
+
+          <section class="incidents-section">
+            <h2>Incidentes detectados</h2>
+            @if (getIncidentTimes().length === 0) {
+              <p class="no-incidents">Nenhum incidente detectado nos últimos registros.</p>
+            } @else {
+              <div class="incidents-list">
+                @for (time of getIncidentTimes(); track time) {
+                  <article class="incident-item">
+                    <span class="incident-time">⚠️ {{ time }}</span>
+                    <span class="incident-label">Link ficou offline</span>
+                  </article>
+                }
+              </div>
+            }
+          </section>
+
+          <section class="speed-section">
+            <h2>Velocidade da conexão</h2>
+            <div class="speed-stats">
+              <article>
+                <span>Tempo de resposta</span>
+                <strong class="speed-value">{{ selectedPanelItem()?.tempoRespostaMs || 0 }}ms</strong>
+              </article>
+              <article>
+                <span>Alvo monitorado</span>
+                <strong class="target-value">{{ formatTarget(selectedPanelItem()?.alvo || '') }}</strong>
+              </article>
+              <article>
+                <span>Intervalo de teste</span>
+                <strong class="interval-value">{{ selectedPanelItem()?.intervaloSegundos }}s</strong>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <footer class="panel-footer">
+          <button class="secondary" type="button" (click)="testItem(selectedPanelItem()!)">Testar agora</button>
+          <button class="primary" type="button" (click)="closePanel()">Fechar painel</button>
+        </footer>
+      </div>
+    </section>
+  }
+
+  @if (fullscreenMode()) {
+    <section class="fullscreen-mode">
+      <div class="fullscreen-header">
+        <h1>Monitoramento em Tempo Real</h1>
+        <button class="close-button" type="button" (click)="toggleFullscreenMode()">✕</button>
+      </div>
+
+      <div class="fullscreen-grid">
+        @if (itens().length === 0) {
+          <p class="fullscreen-empty">Nenhum link ou firewall cadastrado.</p>
+        } @else {
+          @for (item of itens(); track item.id) {
+            <div class="fullscreen-card" [class]="item.status">
+              <div class="card-header">
+                <span class="status-indicator" [class]="item.status" title="{{ statusLabel(item.status) }}"></span>
+                <h2>{{ item.nome }}</h2>
+              </div>
+
+              <div class="card-details">
+                <div class="detail-row">
+                  <span class="label">Tipo:</span>
+                  <span class="value">{{ item.tipo }}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="label">Alvo:</span>
+                  <span class="value">{{ formatTarget(item.alvo) }}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="label">Latência Atual:</span>
+                  <span class="value">{{ item.tempoRespostaMs || '-' }}ms</span>
+                </div>
+                <div class="detail-row">
+                  <span class="label">Média:</span>
+                  <span class="value">{{ getItemAverageLatency(item.id) }}ms</span>
+                </div>
+                <div class="detail-row">
+                  <span class="label">Pico:</span>
+                  <span class="value">{{ getItemMaxLatency(item.id) }}ms</span>
+                </div>
+                <div class="detail-row">
+                  <span class="label">Status:</span>
+                  <span class="value status-value">{{ statusLabel(item.status) }}</span>
+                </div>
+              </div>
+
+              <!-- Mini Chart -->
+              @if (getItemHistory(item.id).length > 0) {
+                <div class="mini-chart-section">
+                  <p class="mini-chart-title">Histórico (últimos 30)</p>
+                  <svg class="mini-chart" viewBox="0 0 420 140" preserveAspectRatio="xMidYMid meet">
+                    <!-- Grid lines -->
+                    <g class="grid" stroke="#e0e0e0" stroke-width="0.5" opacity="0.5">
+                      <line x1="40" y1="40" x2="420" y2="40" />
+                      <line x1="40" y1="80" x2="420" y2="80" />
+                      <line x1="40" y1="120" x2="420" y2="120" />
+                    </g>
+
+                    <!-- Axes -->
+                    <line x1="40" y1="120" x2="420" y2="120" stroke="#999" stroke-width="1" />
+                    <line x1="40" y1="40" x2="40" y2="120" stroke="#999" stroke-width="1" />
+
+                    <!-- Data line -->
+                    <polyline
+                      [attr.points]="getItemChartPoints(item.id)"
+                      fill="none"
+                      stroke="#4CAF50"
+                      stroke-width="1.5"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+
+                    <!-- Data points -->
+                    @for (point of getItemChartPoints(item.id).split(' '); track $index; let i = $index) {
+                      @if (point && point.includes(',')) {
+                        <circle
+                          [attr.cx]="point.split(',')[0]"
+                          [attr.cy]="point.split(',')[1]"
+                          r="1.5"
+                          [class]="getItemHistory(item.id)[(getItemHistory(item.id).length - (getItemChartPoints(item.id).split(' ').length - i)) || 0]?.status === 'online' ? 'point-online' : 'point-offline'"
+                        />
+                      }
+                    }
+
+                    <!-- Y-axis labels -->
+                    <text x="35" y="45" text-anchor="end" font-size="10" fill="#666">{{ getItemMaxLatency(item.id) }}ms</text>
+                    <text x="35" y="85" text-anchor="end" font-size="10" fill="#666">{{ Math.round(getItemMaxLatency(item.id) / 2) }}ms</text>
+                    <text x="35" y="125" text-anchor="end" font-size="10" fill="#666">0ms</text>
+                  </svg>
+                </div>
+              }
+
+              <!-- Incidents -->
+              @if (getItemIncidents(item.id).length > 0) {
+                <div class="mini-incidents">
+                  <p class="incidents-title">⚠️ Incidentes</p>
+                  <div class="incidents-times">
+                    @for (time of getItemIncidents(item.id); track time) {
+                      <span class="incident-badge">{{ time }}</span>
+                    }
+                  </div>
+                </div>
+              }
+
+              <div class="card-footer">
+                <button class="expand-button" type="button" (click)="openPanel(item)">Ver detalhes →</button>
+                <span class="card-timestamp">{{ item.ultimaConsulta ? (item.ultimaConsulta | date: 'dd/MM HH:mm:ss') : 'Nunca testado' }}</span>
+              </div>
+            </div>
+          }
+        }
+      </div>
+
+      <div class="fullscreen-footer">
+        <button type="button" (click)="testAll()" [disabled]="testingAll() || itens().length === 0">
+          {{ testingAll() ? '⏳ Testando...' : '▶ Testar todos' }}
+        </button>
+        <p class="stats">
+          Total: {{ itens().length }} • 
+          Online: {{ onlineCount() }} • 
+          Offline: {{ offlineCount() }} • 
+          Pendente: {{ pendingCount() }}
+        </p>
+        <button type="button" (click)="toggleFullscreenMode()" class="back-button">← Voltar</button>
+      </div>
     </section>
   }
 </main>

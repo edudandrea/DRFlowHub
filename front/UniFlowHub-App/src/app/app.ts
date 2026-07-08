@@ -121,6 +121,7 @@ export class App {
       ],
     },
     { label: 'Vendas Peças', description: 'B.I comercial de pecas', route: '/vendas-pecas', enabled: true, access: PECAS_BI_ACCESSES },
+    { label: 'E-commerce', description: 'KPI vendas digitais', route: '/e-commerce', enabled: true },
     { label: 'Financeiro', description: 'Fluxo financeiro', route: '/hub', enabled: false },
     { label: 'Administrativo', description: 'Demandas internas', route: '/hub', enabled: false },
     { label: 'Operacional', description: 'Solicitações operacionais', route: '/hub', enabled: false },
@@ -288,5 +289,4 @@ export class App {
     return dashboard ? [dashboard, ...sorted.filter((link) => link !== dashboard)] : sorted;
   }
 }
-
 

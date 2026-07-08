@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Empresa, EmpresaPayload, Unidade, UnidadePayload } from './models';
+import { Empresa, EmpresaPayload, MontadoraPayload, Unidade, UnidadePayload } from './models';
 
 const API_URL = '/api';
 
@@ -11,6 +11,12 @@ export class UnidadesService {
 
   list(): Observable<Unidade[]> {
     return this.http.get<Unidade[]>(`${API_URL}/unidades`);
+  }
+
+  listEmpresasRevendas(includeInativas = false): Observable<Unidade[]> {
+    return this.http.get<Unidade[]>(`${API_URL}/unidades/empresas-revendas`, {
+      params: includeInativas ? { includeInativas: 'true' } : {},
+    });
   }
 
   listEmpresas(): Observable<Empresa[]> {
@@ -31,5 +37,17 @@ export class UnidadesService {
 
   update(id: number, payload: UnidadePayload): Observable<Unidade> {
     return this.http.put<Unidade>(`${API_URL}/unidades/${id}`, payload);
+  }
+
+  updateMontadora(empresaNumero: number, revendaNumero: number, payload: MontadoraPayload): Observable<Unidade> {
+    return this.http.put<Unidade>(`${API_URL}/unidades/empresas-revendas/${empresaNumero}/${revendaNumero}/montadora`, payload);
+  }
+
+  updateEmpresaStatus(empresaNumero: number, ativa: boolean): Observable<Unidade> {
+    return this.http.put<Unidade>(`${API_URL}/unidades/empresas-revendas/${empresaNumero}/status`, { ativa });
+  }
+
+  updateRevendaStatus(empresaNumero: number, revendaNumero: number, ativa: boolean): Observable<Unidade> {
+    return this.http.put<Unidade>(`${API_URL}/unidades/empresas-revendas/${empresaNumero}/${revendaNumero}/status`, { ativa });
   }
 }

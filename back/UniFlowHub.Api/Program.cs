@@ -124,6 +124,7 @@ builder.Services.AddScoped<ControladoriaService>();
 builder.Services.AddScoped<VeiculosService>();
 builder.Services.AddScoped<VeiculosBiService>();
 builder.Services.AddScoped<PecasBiService>();
+builder.Services.AddScoped<ECommerceService>();
 builder.Services.AddScoped<PerfisService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<RepassesService>();

@@ -176,13 +176,12 @@
         </div>
         <div class="stage-table-wrap">
           <table class="stage-table">
-            <thead><tr><th>Cargo</th><th>Departamento</th><th>Acessos</th><th>Itens vinculados</th><th>Status</th></tr></thead>
+            <thead><tr><th>Cargo</th><th>Departamento</th><th>Itens vinculados</th><th>Status</th></tr></thead>
             <tbody>
               @for (cargo of cargosCadastro(); track cargo.id) {
                 <tr (click)="editCargo(cargo)">
                   <td><strong>{{ cargo.nome }}</strong></td>
                   <td>{{ cargo.departamento || '-' }}</td>
-                  <td>{{ cargo.acessos.length }} acesso(s)</td>
                   <td>
                     @for (item of cargo.itens; track item.itemId) {
                       <span class="process-pill">{{ item.quantidade }}x {{ item.itemTipo }} - {{ item.itemNome }}</span>
@@ -191,41 +190,6 @@
                     }
                   </td>
                   <td>{{ cargo.ativo ? 'Ativo' : 'Inativo' }}</td>
-                </tr>
-              } @empty {
-                <tr><td colspan="5">Nenhum cargo cadastrado.</td></tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </section>
-    } @else if (activeTab() === 'acessos') {
-      <section class="stages-panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Cadastros</p>
-            <h2>Controle de acessos</h2>
-            <p>{{ cargosCadastro().length }} cargo(s) com permissões configuráveis</p>
-          </div>
-        </div>
-        <div class="stage-table-wrap">
-          <table class="stage-table">
-            <thead><tr><th>Cargo</th><th>Departamento</th><th>Acessos vinculados</th><th>Ações</th></tr></thead>
-            <tbody>
-              @for (cargo of cargosCadastro(); track cargo.id) {
-                <tr>
-                  <td><strong>{{ cargo.nome }}</strong></td>
-                  <td>{{ cargo.departamento || '-' }}</td>
-                  <td>
-                    @for (acesso of acessosEfetivosCargo(cargo); track acesso) {
-                      <span class="process-pill">{{ acessoNome(acesso) }}</span>
-                    } @empty {
-                      -
-                    }
-                  </td>
-                  <td>
-                    <button class="primary small" type="button" (click)="openAcessosCargo(cargo)">Editar acessos</button>
-                  </td>
                 </tr>
               } @empty {
                 <tr><td colspan="4">Nenhum cargo cadastrado.</td></tr>
@@ -243,13 +207,12 @@
             <p>{{ itens().length }} item(ns)</p>
           </div>
           <div class="actions">
-            <button class="secondary" type="button" (click)="openNewItem('Uniforme')">Novo uniforme</button>
-            <button class="primary" type="button" (click)="openNewItem('EPI')">Novo EPI</button>
+            <button class="primary" type="button" (click)="openNewItem()">Novo Uniforme/EPI</button>
           </div>
         </div>
         <div class="stage-table-wrap">
           <table class="stage-table">
-            <thead><tr><th>Tipo</th><th>Item</th><th>Codigo/CA</th><th>Tamanho</th><th>Status</th></tr></thead>
+            <thead><tr><th>Tipo</th><th>Item</th><th>Codigo/CA</th><th>Tamanho</th><th>Status</th><th>Acoes</th></tr></thead>
             <tbody>
               @for (item of itens(); track item.id) {
                 <tr (click)="editItem(item)">
@@ -258,9 +221,12 @@
                   <td>{{ item.codigo || '-' }}</td>
                   <td>{{ item.tamanho || '-' }}</td>
                   <td>{{ item.ativo ? 'Ativo' : 'Inativo' }}</td>
+                  <td>
+                    <button class="primary small" type="button" (click)="$event.stopPropagation(); openRetiradaItem(item)">Retirada</button>
+                  </td>
                 </tr>
               } @empty {
-                <tr><td colspan="5">Nenhum EPI ou uniforme cadastrado.</td></tr>
+                <tr><td colspan="6">Nenhum EPI ou uniforme cadastrado.</td></tr>
               }
             </tbody>
           </table>
@@ -277,25 +243,29 @@
             </div>
             <button class="primary" type="button" (click)="openNewColaborador()">Novo colaborador</button>
           </div>
-          <div class="process-table-wrap">
-            <table class="process-table">
-              <thead><tr><th>Colaborador</th><th>Cargo</th><th>Unidade</th><th>Retiradas</th><th>Acoes</th></tr></thead>
+          <div class="process-table-wrap colaboradores-table-wrap">
+            <table class="process-table colaboradores-table">
+              <thead><tr><th>Colaborador</th><th>Cargo</th><th>Unidade</th><th>Retiradas</th></tr></thead>
               <tbody>
                 @for (colaborador of colaboradores(); track colaborador.id) {
-                  <tr [class.selected]="selectedColaborador()?.id === colaborador.id" (click)="selectedColaborador.set(colaborador)">
-                    <td><strong>{{ colaborador.nome }}</strong><small>{{ colaborador.cpf || colaborador.email }}</small></td>
-                    <td><strong>{{ colaborador.cargoNome || '-' }}</strong><small>{{ colaborador.departamento }}</small></td>
-                    <td>{{ colaborador.unidadeNome || '-' }}</td>
-                    <td>{{ colaborador.retiradas.length }} retirada(s)</td>
+                  <tr [class.selected]="selectedColaborador()?.id === colaborador.id" (click)="editColaborador(colaborador)">
                     <td>
-                      <div class="row-actions">
-                        <button class="secondary small" type="button" (click)="$event.stopPropagation(); editColaborador(colaborador)">Editar</button>
-                        <button class="primary small" type="button" (click)="$event.stopPropagation(); openRetirada(colaborador)">Retirada</button>
+                      <div class="colaborador-cell">
+                        <strong>{{ colaborador.nome }}</strong>
+                        <small>{{ colaborador.cpf || colaborador.email }}</small>
                       </div>
                     </td>
+                    <td>
+                      <div class="colaborador-cell">
+                        <strong>{{ colaborador.cargoNome || '-' }}</strong>
+                        <small>{{ colaborador.departamento || '-' }}</small>
+                      </div>
+                    </td>
+                    <td><span class="table-muted">{{ colaborador.unidadeNome || '-' }}</span></td>
+                    <td><span class="table-muted">{{ colaborador.retiradas.length }} retirada(s)</span></td>
                   </tr>
                 } @empty {
-                  <tr><td colspan="5">Nenhum colaborador cadastrado.</td></tr>
+                  <tr><td colspan="4">Nenhum colaborador cadastrado.</td></tr>
                 }
               </tbody>
             </table>
@@ -434,51 +404,6 @@
     </section>
   }
 
-  @if (modalAcessosOpen()) {
-    <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && modalAcessosOpen.set(false)">
-      <form class="modal-panel" (ngSubmit)="submitAcessosCargo()" (click)="$event.stopPropagation()">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Controle de acessos</p>
-            <h2>{{ selectedAcessoCargo()?.nome }}</h2>
-          </div>
-          <button class="icon-button" type="button" (click)="modalAcessosOpen.set(false)">x</button>
-        </div>
-        <section class="access-picker">
-          <div class="assigned-access">
-            <div>
-              <h3>Acessos atuais do cargo</h3>
-              <p>{{ acessosCargoDraft().length }} acesso(s) selecionado(s), incluindo acessos padrao do cargo/departamento</p>
-            </div>
-            <div class="chip-list">
-              @for (acesso of acessosCargoDraft(); track acesso) {
-                <button type="button" class="profile-chip assigned" (click)="toggleAcessoCargo(acesso)">{{ acessoNome(acesso) }}{{ isAcessoPadraoCargo(acesso) ? ' - padrao' : ' - remover' }}</button>
-              } @empty {
-                <span class="empty">Nenhum acesso atribuido.</span>
-              }
-            </div>
-          </div>
-
-          <h3>Todos os acessos</h3>
-          <div class="access-options">
-            @for (acesso of acessosDisponiveis(); track acesso.chave) {
-              @if (!isHiddenAcessoCargo(acesso.chave)) {
-                <button type="button" class="access-option" [class.selected]="hasAcessoCargo(acesso.chave)" (click)="toggleAcessoCargo(acesso.chave)">
-                  <strong>{{ acesso.nome }}</strong>
-                  <small>{{ acesso.grupo }}</small>
-                  @if (hasAcessoCargo(acesso.chave)) {
-                    <span>{{ isAcessoPadraoCargo(acesso.chave) ? 'Padrao do cargo' : 'Atribuido' }}</span>
-                  }
-                </button>
-              }
-            }
-          </div>
-        </section>
-        <div class="actions"><button class="primary" type="submit" [disabled]="saving()">Salvar acessos</button></div>
-      </form>
-    </section>
-  }
-
   @if (modalItemOpen()) {
     <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && modalItemOpen.set(false)">
       <form class="modal-panel compact" [formGroup]="itemForm" (ngSubmit)="submitItem()" (click)="$event.stopPropagation()">
@@ -522,6 +447,7 @@
     <section class="modal-backdrop" (click)="$event.target === $event.currentTarget && modalRetiradaOpen.set(false)">
       <form class="modal-panel compact" [formGroup]="retiradaForm" (ngSubmit)="submitRetirada()" (click)="$event.stopPropagation()">
         <div class="section-heading"><h2>Registrar retirada</h2><button class="icon-button" type="button" (click)="modalRetiradaOpen.set(false)">x</button></div>
+        <label>Colaborador<select formControlName="colaboradorId"><option [ngValue]="0">Selecione</option>@for (colaborador of colaboradores(); track colaborador.id) { <option [ngValue]="colaborador.id">{{ colaborador.nome }} - {{ colaborador.cpf || colaborador.email }}</option> }</select></label>
         <label>Item<select formControlName="itemId"><option [ngValue]="0">Selecione</option>@for (item of itensAtivos(); track item.id) { <option [ngValue]="item.id">{{ item.tipo }} - {{ item.nome }} {{ item.tamanho }}</option> }</select></label>
         <div class="grid two">
           <label>Quantidade<input type="number" min="1" formControlName="quantidade" /></label>
