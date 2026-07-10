@@ -1,7 +1,8 @@
-import { Component, ElementRef, HostListener, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { ToastrService } from 'ngx-toastr';
 import { finalize } from 'rxjs';
 import { ECommerceDashboard, ECommerceMonthlySale, ECommerceService, ECommerceUnit } from '../../core/e-commerce.service';
 import { AuthService } from '../../core/auth.service';
@@ -60,6 +61,7 @@ export class ECommerceComponent implements OnInit {
   private readonly unidadesService = inject(UnidadesService);
   private readonly eCommerceService = inject(ECommerceService);
   private readonly elementRef = inject(ElementRef<HTMLElement>);
+  private readonly toastr = inject(ToastrService);
 
   readonly theme = inject(ThemeService);
   readonly user = computed(() => this.auth.user());
@@ -69,6 +71,9 @@ export class ECommerceComponent implements OnInit {
   readonly hoveredCompanySlice = computed(() => this.hoveredSlice()?.context === 'company' ? this.hoveredSlice() : null);
   readonly hoveredResultSlice = computed(() => this.hoveredSlice()?.context === 'result' ? this.hoveredSlice() : null);
   readonly loading = signal(false);
+  readonly importingSpreadsheet = signal(false);
+  readonly selectedSpreadsheetName = signal('');
+  readonly spreadsheetContribution = signal<number | null>(null);
   readonly sortField = signal<UnitSortField>('realizado');
   readonly empresas = signal<Empresa[]>([]);
   readonly revendas = signal<Unidade[]>([]);
@@ -78,6 +83,8 @@ export class ECommerceComponent implements OnInit {
   readonly dataInicio = signal(this.toDateInput(this.firstDayOfCurrentMonth()));
   readonly dataFim = signal(this.toDateInput(new Date()));
   readonly monthLabels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  private selectedSpreadsheet: File | null = null;
+  @ViewChild('ecommerceSpreadsheetInput') private ecommerceSpreadsheetInput?: ElementRef<HTMLInputElement>;
 
   readonly unidades = computed(() => this.data()?.unidades ?? []);
   readonly evolucaoAnual = computed(() => this.data()?.evolucaoAnual ?? []);
@@ -108,7 +115,8 @@ export class ECommerceComponent implements OnInit {
     const unidades = this.unidades();
     const realizado = unidades.reduce((total, unit) => total + unit.realizado, 0);
     const invoices = unidades.reduce((total, unit) => total + unit.notasEmitidas, 0);
-    const contribution = unidades.reduce((total, unit) => total + unit.margemContribuicaoValor, 0);
+    const contribution = this.spreadsheetContribution() ?? 0;
+    const profitability = unidades.reduce((total, unit) => total + unit.realizado - unit.custo - unit.impostos, 0);
     const cost = unidades.reduce((total, unit) => total + unit.custo, 0);
     const taxes = unidades.reduce((total, unit) => total + unit.impostos + unit.despesas, 0);
 
@@ -118,6 +126,8 @@ export class ECommerceComponent implements OnInit {
       averageTicket: invoices ? realizado / invoices : 0,
       contribution,
       contributionMargin: realizado ? contribution / realizado : 0,
+      profitability,
+      profitabilityMargin: realizado ? profitability / realizado : 0,
       cost,
       taxes,
     };
@@ -188,6 +198,7 @@ export class ECommerceComponent implements OnInit {
   }
 
   load(): void {
+    this.spreadsheetContribution.set(null);
     this.loading.set(true);
     this.eCommerceService
       .load({
@@ -206,6 +217,40 @@ export class ECommerceComponent implements OnInit {
   loadEmpresas(): void {
     this.unidadesService.listEmpresas().subscribe({ next: (empresas) => this.empresas.set(empresas), error: () => this.empresas.set([]) });
     this.unidadesService.listEmpresasRevendas().subscribe({ next: (revendas) => this.revendas.set(revendas), error: () => this.revendas.set([]) });
+  }
+
+  onSpreadsheetSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.selectedSpreadsheet = file;
+    this.selectedSpreadsheetName.set(file?.name ?? '');
+  }
+
+  importSpreadsheet(): void {
+    if (!this.selectedSpreadsheet) {
+      this.toastr.warning('Selecione uma planilha .xlsx de e-commerce.', 'E-commerce');
+      return;
+    }
+
+    if (this.importingSpreadsheet()) {
+      return;
+    }
+
+    this.importingSpreadsheet.set(true);
+    this.eCommerceService.importarPlanilha(this.selectedSpreadsheet)
+      .pipe(finalize(() => this.importingSpreadsheet.set(false)))
+      .subscribe({
+        next: (result) => {
+          this.spreadsheetContribution.set(result.margemContribuicaoValor);
+          this.selectedSpreadsheet = null;
+          this.selectedSpreadsheetName.set('');
+          if (this.ecommerceSpreadsheetInput?.nativeElement) {
+            this.ecommerceSpreadsheetInput.nativeElement.value = '';
+          }
+          this.toastr.success(`${result.linhasImportadas} linha(s) importada(s).`, 'E-commerce');
+        },
+        error: () => this.toastr.error('Nao foi possivel importar a planilha.', 'E-commerce'),
+      });
   }
 
   setEmpresa(value: string | number | null): void {

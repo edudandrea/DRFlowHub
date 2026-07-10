@@ -29,5 +29,18 @@ namespace UniFlowHub.Api.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        [HttpPost("importar-planilha")]
+        public async Task<IActionResult> ImportarPlanilha([FromForm] IFormFile arquivo)
+        {
+            try
+            {
+                return Ok(await _service.ImportSpreadsheetAsync(arquivo));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }

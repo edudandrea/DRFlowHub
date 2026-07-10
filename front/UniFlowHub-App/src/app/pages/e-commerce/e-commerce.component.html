@@ -71,6 +71,16 @@
         Data final
         <input type="date" [ngModel]="dataFim()" (ngModelChange)="setDataFim($event)" />
       </label>
+      <label class="spreadsheet-field">
+        Planilha e-commerce
+        <input #ecommerceSpreadsheetInput type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" (change)="onSpreadsheetSelected($event)" />
+        @if (selectedSpreadsheetName()) {
+          <small class="selected-file">{{ selectedSpreadsheetName() }}</small>
+        }
+      </label>
+      <button class="filter-action import-action" type="button" (click)="importSpreadsheet()" [disabled]="importingSpreadsheet()">
+        {{ importingSpreadsheet() ? 'Importando...' : 'Importar planilha e-commerce' }}
+      </button>
       <button class="primary filter-action" type="button" (click)="load()" [disabled]="loading()">
         {{ loading() ? 'Atualizando...' : 'Atualizar' }}
       </button>
@@ -90,10 +100,10 @@
       <p class="hero-copy">Performance real por empresa e revenda cadastradas no sistema.</p>
     </div>
     <div class="hero-score">
-      <span>Margem de contribuição</span>
-      <strong>{{ formatPercent(totals().contributionMargin) }}</strong>
+      <span>Rentabilidade</span>
+      <strong>{{ formatPercent(totals().profitabilityMargin) }}</strong>
       <div class="progress">
-        <i [style.width.%]="progressWidth(totals().contributionMargin)"></i>
+        <i [style.width.%]="progressWidth(totals().profitabilityMargin)"></i>
       </div>
     </div>
   </section>

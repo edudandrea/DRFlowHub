@@ -19,6 +19,8 @@ export interface ECommerceUnit {
   despesas: number;
   margemContribuicaoValor: number;
   margemContribuicaoPercentual: number;
+  rentabilidadeValor: number;
+  rentabilidadePercentual: number;
 }
 
 export interface ECommerceDashboard {
@@ -45,6 +47,12 @@ export interface ECommerceMonthlySale {
   margemContribuicaoPercentual: number;
 }
 
+export interface ECommerceSpreadsheetImport {
+  dashboard: ECommerceDashboard;
+  linhasImportadas: number;
+  margemContribuicaoValor: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ECommerceService {
   constructor(private readonly http: HttpClient) {}
@@ -65,5 +73,11 @@ export class ECommerceService {
     }
 
     return this.http.get<ECommerceDashboard>(`${API_URL}/e-commerce`, { params });
+  }
+
+  importarPlanilha(arquivo: File): Observable<ECommerceSpreadsheetImport> {
+    const formData = new FormData();
+    formData.append('arquivo', arquivo, arquivo.name);
+    return this.http.post<ECommerceSpreadsheetImport>(`${API_URL}/e-commerce/importar-planilha`, formData);
   }
 }

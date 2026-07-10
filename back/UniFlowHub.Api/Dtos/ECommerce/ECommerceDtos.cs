@@ -32,6 +32,8 @@ namespace UniFlowHub.Api.Dtos.ECommerce
         public decimal Despesas { get; set; }
         public decimal MargemContribuicaoValor { get; set; }
         public decimal MargemContribuicaoPercentual { get; set; }
+        public decimal RentabilidadeValor { get; set; }
+        public decimal RentabilidadePercentual { get; set; }
     }
 
     public class ECommerceAnnualSaleDto
@@ -51,5 +53,12 @@ namespace UniFlowHub.Api.Dtos.ECommerce
         public int NotasEmitidas { get; set; }
         public decimal MargemContribuicaoValor { get; set; }
         public decimal MargemContribuicaoPercentual { get; set; }
+    }
+
+    public class ECommerceSpreadsheetImportDto
+    {
+        public ECommerceDashboardDto Dashboard { get; set; } = new();
+        public int LinhasImportadas { get; set; }
+        public decimal MargemContribuicaoValor { get; set; }
     }
 }

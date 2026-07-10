@@ -179,6 +179,10 @@ h2 {
   grid-column: span 3;
 }
 
+.spreadsheet-field {
+  grid-column: span 4;
+}
+
 .filters-table label,
 .filter-field {
   display: grid;
@@ -286,6 +290,15 @@ h2 {
 .filter-action:disabled {
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+.selected-file {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filters-table app-auto-refresh-control {
@@ -763,6 +776,7 @@ td:first-child {
   .empresa-field,
   .revenda-field,
   .date-field,
+  .spreadsheet-field,
   .filter-action {
     grid-column: 1 / -1;
   }
